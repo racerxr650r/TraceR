@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/TraceR.png" alt="TraceR logo" width="200">
+</p>
+
 # TraceR
 
 Software project traceability tools. TraceR turns a single
