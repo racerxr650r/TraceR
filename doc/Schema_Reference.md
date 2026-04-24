@@ -1,8 +1,11 @@
-# Project.xml — Schema Reference
+# Schema Reference: `doc/Project.xml`
 
 `doc/Project.xml` is the **single source of truth** for the project's
 specification, design, and verification artefacts. This document
-describes its schema. The companion document for AI agents is
+describes its schema, the renderer's data surface, how to author
+Jinja2 templates against that surface, and how to add a brand-new
+generated document to the project. The companion document for AI
+agents is
 [.github/skills/project-xml/SKILL.md](../.github/skills/project-xml/SKILL.md).
 
 ## Role
@@ -11,8 +14,8 @@ describes its schema. The companion document for AI agents is
 
 1.  **To document** the project. The five spec markdown documents in
     [doc/](../doc/) are *generated* from `Project.xml` via Jinja2
-    templates in [templates/](templates/) and the renderer
-    [render_doc.py](render_doc.py).
+    templates in [tools/templates/](../tools/templates/) and the renderer
+    [render_doc.py](../tools/render_doc.py).
 2.  **To measure traceability** across the four layers of the stack —
     SDD → HLRs → LLRs → Tests. Every relation lives in a `<traces>`
     block on the originating element, so a renderer can compose a
@@ -29,7 +32,7 @@ The five generated documents are:
 Sitting **above** the generated stack is the hand-authored
 [doc/PVD.md](../doc/PVD.md) (Product Vision Document). It is *not*
 generated; a starter template is provided at
-[templates/PVD.md.template](templates/PVD.md.template).
+[templates/PVD.md.template](../tools/templates/PVD.md.template).
 
 Together with the per-test annotations under [test/](../test/), the
 file holds enough structured information to regenerate any of the five
@@ -55,6 +58,15 @@ generated documents from a single edit point.
 | `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.1`. |
 
 Children may appear in any order; the renderer looks them up by tag.
+The XSD declares `<project>`'s children with `xs:all`, so an
+XSD-aware editor accepts any ordering at the top level. Inside a
+payload (`<sdd>`, `<stp>`, etc.) the same `xs:all` rule applies to
+direct children, but **list-bearing wrappers** like
+`<sdd>/<modules>`, `<sdd>/<architecture>`, and `<sdd>/<modules>/<module>`
+use `xs:sequence` and require their own children in the order shown
+in this document. The most common cause of an XSD failure is
+putting an SDD module's `<error_handling>` block *before* its
+`<dependencies>` block (see §3.8).
 
 ## 2. `<metadata>`
 
@@ -87,7 +99,7 @@ from counting the corresponding child elements at render time.
 ## 3. `<sdd>` — Software Design Document Payload
 
 The `<sdd>` element is a **data-only payload** consumed by
-[templates/SDD.md.j2](templates/SDD.md.j2). All standard SDD scaffolding
+[templates/SDD.md.j2](../tools/templates/SDD.md.j2). All standard SDD scaffolding
 (section numbers, standard headings such as "Purpose of the Document",
 boilerplate lead-in sentences, and the auto-generated "Document
 Overview") lives in the template, *not* in the data. This lets the same
@@ -198,7 +210,20 @@ Each `<ref>` body is one markdown bullet.
 ### 3.8 `<modules>` — §3..N
 
 One `<module>` per design unit. Each renders as its own top-level
-section ("Detailed Design for *path-or-title*").
+section ("Detailed Design for *path-or-title*"). The XSD requires
+the child elements **in the order shown below**:
+
+1.  `<purpose>`
+2.  `<responsibility>` (repeatable)
+3.  `<interfaces>`
+4.  `<data_structures>`
+5.  `<functions>`
+6.  `<algorithm>`
+7.  `<dependencies>`
+8.  `<error_handling>`
+
+A module that swaps `<dependencies>` and `<error_handling>` is
+the single most common XSD violation when authoring SDDs by hand.
 
 ```xml
 <modules>
@@ -279,6 +304,13 @@ A `<module>` with a `path` attribute renders its heading as
 `instance` and `instance_in` are optional; when present, the template
 adds "instantiated as the global `<instance>` in [`<instance_in>`]".
 
+The XSD permits multiple `<constants>` blocks (each optionally
+labelled with its own `header` attribute) so that a project can group
+constants by their owning header file. The current renderer and SDD
+template only consume the **first** `<constants>` block; until the
+renderer is extended to handle the list, keep all constants in one
+block (or split per-header projects across types instead).
+
 ### 3.10 `<traceability>` — §N+2
 
 ```xml
@@ -296,7 +328,7 @@ element (see §8).
 ## 4. `<stp>` — Software Test Plan Payload
 
 The `<stp>` element is the data-only payload consumed by
-[templates/STP.md.j2](templates/STP.md.j2). It supplies the prose for
+[templates/STP.md.j2](../tools/templates/STP.md.j2). It supplies the prose for
 STP §1, §2, §5, §6, and §7. STP §3 (Test Catalogue) and §4 (LLR
 Coverage Matrix) are computed by the template directly from `<tests>`
 and `<llrs>`, not from `<stp>`.
@@ -499,7 +531,7 @@ reported in
 ## 9. Renderer Data Surface
 
 Templates receive a single `project` namespace. The values below are
-all populated by [render_doc.py](render_doc.py); use them directly
+all populated by [render_doc.py](../tools/render_doc.py); use them directly
 rather than recomputing relations in Jinja.
 
 | Name | Description |
@@ -564,7 +596,7 @@ python3 tools/render_doc.py --init \
 This writes `doc/Project.xml` (a valid schema-1.1 skeleton with empty
 `<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`, `<tests>` payloads and a fully
 populated `<metadata>` block) and `doc/PVD.md` (the
-[templates/PVD.md.template](templates/PVD.md.template) with the title,
+[templates/PVD.md.template](../tools/templates/PVD.md.template) with the title,
 short name, date, and author placeholders substituted). Both files are
 refused if they already exist; pass `--force` to overwrite. From there
 the workflow is: edit `doc/PVD.md`, then start populating
@@ -574,14 +606,14 @@ the workflow is: edit `doc/PVD.md`, then start populating
 
 Two validators ship alongside the schema:
 
-*   **[tools/project.xsd](project.xsd)** — XML Schema describing the
+*   **[tools/project.xsd](../tools/project.xsd)** — XML Schema describing the
     structural shape (element nesting, attribute names and required-ness,
     `HLR-NNN` / `LLR-XXX-NN` id formats, trace target enum). The
     canonical `doc/Project.xml` references it via
     `xsi:noNamespaceSchemaLocation="../tools/project.xsd"`, so any
     XSD-aware editor (VS Code's Red Hat XML extension, IntelliJ,
     oXygen) provides autocomplete and inline error squigglies for free.
-*   **[tools/lint_project.py](lint_project.py)** — semantic checker
+*   **[tools/lint_project.py](../tools/lint_project.py)** — semantic checker
     that resolves every `<trace>` against the actual HLR/LLR/test ids,
     flags duplicates, warns about coverage gaps (LLRs/HLRs with no
     verifying test), and validates against the XSD when `lxml` or
@@ -640,3 +672,229 @@ ET.parse("doc/Project.xml")  # raises on malformed XML
 *   **Bump `schema_version`** on the `<project>` root whenever you
     change the structure of `Project.xml` in a way the existing
     templates and `tools/render_doc.py` could not consume unchanged.
+
+## 12. Writing Templates
+
+A template is a [Jinja2](https://jinja.palletsprojects.com/) file
+under [tools/templates/](../tools/templates/) whose only inputs are the
+`project` namespace described in §9 and the
+[`gh_slug`](#9-renderer-data-surface) filter. Everything else —
+titles, section numbering, table headers, anchor `<a id>` tags,
+lead-in sentences — lives in the template, *not* in the data.
+
+### 12.1 Anatomy of a template
+
+Look at [templates/SDD.md.j2](../tools/templates/SDD.md.j2) and
+[templates/HLRs.md.j2](../tools/templates/HLRs.md.j2) for working examples.
+A typical template has four parts, in order:
+
+1.  **A leading `{# ... #}` comment block** documenting which
+    `project.*` fields the template reads, the standard headings
+    it owns, and any non-obvious editing tips. The renderer
+    strips this from the output but it is the contract for future
+    template maintainers.
+2.  **Helper macros** (`{% macro foo(...) %}`) for any markdown
+    fragment used more than once — typically the per-bullet
+    rendering of a complex element (e.g. `fn_block(fn)` in
+    SDD.md.j2). Macros use `| indent(N)` so multi-line bullet
+    bodies render as one bullet item rather than fragmenting.
+3.  **The document title and metadata block**. Read project name,
+    version, date, and author from `project.metadata.*`. The
+    document `title` and `id` come from the
+    `<metadata><document id="...">` entry chosen by the second
+    CLI argument to `render_doc.py`.
+4.  **The body**, which iterates over the relevant payload(s)
+    (`project.sdd`, `project.hlrs`, `project.flat_llrs`,
+    `project.tests_by_hlr`, etc.) and emits Markdown.
+
+### 12.2 Conventions enforced by every existing template
+
+*   **Section numbering lives in the template.** Use a `{% set %}`
+    counter or `loop.index + N` rather than reading a number from
+    the data. The data carries content, not structure.
+*   **Anchors come from the template.** Every HLR, LLR, test, and
+    SDD section heading the Traceability Matrix links to must be
+    preceded by an `<a id="..."></a>` tag emitted by the
+    template. Inspect the existing four templates before adding a
+    new one to see the exact anchor format.
+*   **Use the precomputed indexes.** Never recompute relations in
+    Jinja. `project.tests_by_llr[lid]`, `project.llrs_by_hlr[hid]`,
+    `project.hlr_by_id[hid]`, and friends exist for this. If your
+    template needs a relation that does not yet exist on the
+    `project` namespace, add a `build_*` function in
+    [render_doc.py](../tools/render_doc.py) and expose it; do not loop in
+    Jinja.
+*   **Wrap relative paths against `../`.** Every link to a source
+    file uses `../<path>` because the rendered document lives
+    under `doc/` while the source files live above it. Existing
+    templates use the form
+    `[{{ m.path }}](../{{ m.path }})`.
+*   **Trim with care.** Jinja's `{%- ... -%}` whitespace markers
+    are essential; without them the output gets stray blank lines
+    around `{% for %}` and `{% if %}` blocks. Match the trim
+    style of the existing templates; in particular, keep blank
+    lines *between* logical paragraphs (Markdown needs them) and
+    suppress whitespace *inside* control structures.
+*   **Treat optional fields as optional.** Use
+    `{% if project.sdd.scope %}...{% endif %}` rather than
+    indexing unconditionally. The XSD makes most fields optional;
+    real-world payloads frequently omit them.
+*   **CDATA bodies are markdown.** Markdown-emitting templates
+    pass them through verbatim; non-markdown emitters (HTML, PDF)
+    must run the body through a markdown renderer.
+
+### 12.3 The `gh_slug` filter
+
+The Traceability template links to SDD section headings via
+GitHub's heading-anchor convention. Use the `gh_slug` filter
+rather than reinventing the rule:
+
+```jinja
+[§{{ num }} {{ title }}](SDD.md#{{ (num ~ '-' ~ title) | gh_slug }})
+```
+
+### 12.4 Local development loop
+
+```sh
+# Render one template; the second positional argument selects the
+# <metadata><document id="..."> entry that populates project.metadata.
+python3 tools/render_doc.py tools/templates/MyDoc.md.j2 MyDoc --out doc/MyDoc.md
+
+# Or render to stdout for quick inspection:
+python3 tools/render_doc.py tools/templates/MyDoc.md.j2 MyDoc | less
+```
+
+If rendering raises a Jinja `UndefinedError`, the template referenced
+a field that the renderer did not expose. Either fix the template, or
+add the field to the relevant `build_*` function in
+[render_doc.py](../tools/render_doc.py).
+
+## 13. Adding a New Generated Document
+
+A new document is added by editing data and templates only. From
+[doc/SPD.md](../doc/SPD.md) Phase 2.5 onwards, the VS Code
+extension picks up the new tree node, render command, and Markdown
+preview automatically; no TypeScript change is required.
+
+The canonical recipe is the four steps below. After each step,
+run `make validate-xml` (or `python3 tools/lint_project.py`) before
+moving on.
+
+### Step 1 — Decide whether you need a new payload
+
+Review the existing `<project>` payloads (`<sdd>`, `<stp>`,
+`<hlrs>`, `<llrs>`, `<tests>`) and the renderer indexes (§9). Two
+outcomes:
+
+*   **Reusing existing data** (e.g. a new view over HLRs by SDD
+    section, or a per-author test summary) — skip Step 2
+    entirely. Your template will read the existing
+    `project.flat_hlrs` / `project.tests_by_llr` / etc.
+*   **Brand-new content** (e.g. a `<plan>` payload listing
+    delivery phases) — you need a new payload. Continue with
+    Step 2.
+
+### Step 2 — (If new payload) extend the schema and renderer
+
+1.  **Edit [tools/project.xsd](../tools/project.xsd):**
+    *   Define the new complex types (mirror the style of the
+        existing `Sdd*` and `Stp*` types; use `mixed="true"` for
+        markdown-bearing leaves).
+    *   Add the new top-level element to the `<xs:element
+        name="project">` `xs:all` block (`minOccurs="0"`).
+2.  **Bump `schema_version`** on the `<project>` root in
+    [doc/Project.xml](../doc/Project.xml) (current value is
+    `1.1`; bump to `1.2` for the next change).
+3.  **Edit [render_doc.py](../tools/render_doc.py):**
+    *   Add a `build_<payload>(elem)` function returning a
+        `SimpleNamespace` shaped exactly the way you want
+        templates to read it. Mirror the existing `build_sdd` /
+        `build_stp` patterns.
+    *   In the renderer's main `parse_project_to_dict` /
+        equivalent, call `build_<payload>(root.find("<payload>"))`
+        and attach the result as `project.<payload>`.
+    *   If the new payload introduces cross-references that other
+        documents will need, also build the inverse indexes here
+        and expose them on the `project` namespace (e.g.
+        `project.<payload>_by_hlr[hid]`).
+4.  **Document the new element** in this file under a new
+    `## N. <payload>` section that mirrors the style of §3 and
+    §4 (XML skeleton, child-element table, render mapping).
+5.  **Populate the payload** in [doc/Project.xml](../doc/Project.xml).
+
+### Step 3 — Add the document to `<metadata>`
+
+Every generated document needs a matching `<document>` entry under
+`<metadata>`. Without it, the renderer's `project.metadata` lookup
+fails, the linter flags the absence, and (from SPD Phase 2.5) the
+VS Code extension does not contribute a render command for the
+new document.
+
+```xml
+<metadata>
+  ...existing <document> entries...
+  <document id="MyDoc"
+            title="My New Document"
+            source="doc/MyDoc.md"
+            version="0.1"
+            date="YYYY-MM-DD"
+            author="Your Name"/>
+</metadata>
+```
+
+*   `id` must be unique within `<metadata>`. The renderer's second
+    CLI argument matches against this id. Stick to PascalCase
+    (matching the existing `SDD`, `HLRs`, `LLRs`, `STP`,
+    `Traceability`).
+*   `source` is the workspace-relative path the rendered output
+    will be written to.
+
+### Step 4 — Author the template
+
+Create [`tools/templates/<DocId>.md.j2`](../tools/templates/) following the
+guidelines in §12. The minimum viable template is:
+
+```jinja
+{#- MyDoc.md.j2 - Renders <metadata><document id="MyDoc"> -#}
+# {{ project.metadata.title }}: {{ project.name }} ({{ project.short_name }})
+
+**Version:** {{ project.metadata.version }}
+**Date:** {{ project.metadata.date }}
+**Author(s):** {{ project.metadata.author }}
+
+{# ... iterate project.<payload> here ... #}
+```
+
+Render once to verify:
+
+```sh
+python3 tools/render_doc.py tools/templates/MyDoc.md.j2 MyDoc --out doc/MyDoc.md
+python3 tools/lint_project.py
+```
+
+A clean lint result and a non-empty `doc/MyDoc.md` with the right
+headings means the document is in. Re-render the Traceability
+Matrix afterwards if your new document or payload introduced any
+`<traces>` blocks.
+
+### Step 5 (optional) — Wire it into automated regeneration
+
+If the project has a `Makefile` target that batch-regenerates all
+documents, add the new render line there alongside the existing
+five. From SPD Phase 2.5 onwards the VS Code extension's
+`Render All` command enumerates `<metadata><document>` entries
+automatically; you do not need to teach it about the new id.
+
+### What you do *not* need to change
+
+*   Not [tools/lint_project.py](../tools/lint_project.py): from SPD Phase
+    2.5 onwards its required-document set is derived from the
+    templates under `tools/templates/`, not a hard-coded list.
+    Until that retrofit lands, you may need to add the new id to
+    its `STANDARD_DOCS` set.
+*   Not the VS Code extension's TypeScript code: the schema-driven
+    surfaces (`SPD` Phase 2.5) discover new documents and payloads
+    via `<metadata><document>` and `xs:appinfo` UI hints in the
+    XSD. The only TypeScript change ever needed is for **bespoke
+    visualisations** that go beyond a generic tree node, form, or
+    code lens.

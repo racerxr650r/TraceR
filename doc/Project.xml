@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Project.xml — single source of truth for this project's spec stack.
-  See tools/Project_xml_README.md for the schema reference.
+  See Schema_Reference.md for the schema reference.
 
   This file was created by `render_doc.py` in init mode. Fill in the
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
@@ -24,28 +24,1035 @@
     </counts>
   </metadata>
 
-  <!-- Software Design Document payload (see tools/Project_xml_README.md §3). -->
+  <!-- Software Design Document payload (see Schema_Reference.md §3). -->
   <sdd>
+    <kind>Software Design Document</kind>
+    <audience><![CDATA[the five personas named in [PVD §4](PVD.md):
+**developer-authors** (the primary audience for the structured
+editing, AI assistance, and merge surfaces); **tech leads /
+reviewers** (the audience for the diff- and PR-review-friendly
+generated documents); **QA / verification engineers** (the
+audience for the STP and the per-test traceability annotations);
+**auditors / external stakeholders** (the audience for the
+self-contained Markdown traceability matrix); and **tooling
+integrators** (the audience for the JSON-RPC sidecar). This
+document is also written to be consumable by **AI authoring
+agents** working through the schema-grounded pipeline described
+in [PVD §5 #6](PVD.md).]]></audience>
+
+    <scope>
+      <intro><![CDATA[describes the design of every component that participates in
+turning a single `doc/Project.xml` source-of-truth into the five
+generated specification documents and the editor-native authoring
+surfaces layered on top]]></intro>
+      <file path="doc/Project.xml"><![CDATA[the structured source-of-truth that every other component
+reads or writes.]]></file>
+      <file path="tools/project.xsd"><![CDATA[the XSD schema (and, from Phase 2.5 onwards, the
+`xs:appinfo` UI-hint vocabulary that drives the schema-driven
+extension surfaces).]]></file>
+      <file path="tools/render_doc.py"><![CDATA[the Jinja2-based renderer that turns `Project.xml` into
+each spec Markdown document.]]></file>
+      <file path="tools/lint_project.py"><![CDATA[the XSD + semantic linter whose findings drive both CI
+and the in-editor diagnostics.]]></file>
+      <file path="tools/templates/"><![CDATA[the per-document Jinja2 templates that own all spec-doc
+scaffolding (headings, numbering, tables).]]></file>
+      <file path="tools/project_io.py"><![CDATA[the long-running JSON-RPC 2.0 sidecar that exposes every
+parse / render / lint / merge / AI operation to all UI surfaces.]]></file>
+      <file path="tools/project_merge.py"><![CDATA[the deterministic three-way structural merger for
+`Project.xml` (Stage A of the merge pipeline).]]></file>
+      <file path="tools/ai/"><![CDATA[the Python AI pipeline: grounding-bundle assembly, intent
+prompts, response schemas, and the validate-then-retry loop.]]></file>
+      <file path="tools/vscode-project-xml/"><![CDATA[the first-class VS Code extension that delivers in-editor
+authoring, schema-driven views, AI assistance, and AI-mediated
+merge resolution.]]></file>
+      <outro><![CDATA[Out of scope for this SDD: the standalone web form (covered by
+[tools/PLAN_web_form.md](../tools/PLAN_web_form.md)); editor
+integrations beyond VS Code (PVD §9 roadmap theme); per-test
+framework annotation conventions, which remain
+project-specific.]]></outro>
+    </scope>
+
+    <overview>
+      <para><![CDATA[`TR` (TraceR) is a repository-native traceability toolkit. A
+single XML file (`doc/Project.xml`) holds the design, the
+high-level requirements, the low-level requirements, the test
+catalogue, and every cross-reference between them. A renderer
+turns that file into five Markdown documents (SDD, HLRs, LLRs,
+STP, Traceability Matrix); a linter validates it; a JSON-RPC
+sidecar exposes the same operations to a VS Code extension and a
+planned web form; an AI authoring layer drafts and reviews
+content under a strict validate-then-retry contract; and a
+structural three-way merger keeps Git merges of `Project.xml`
+sane.]]></para>
+      <para><![CDATA[The unifying design choice (`PVD §5`) is that **the spec
+documents are an output, not an input**. Every authoring surface
+edits the structured source and lets the renderer produce the
+prose. This SDD documents the components that enforce that
+contract; the SPD ([doc/SDD.md](SPD.md)) documents the *plan* to
+build them.]]></para>
+      <para><![CDATA[The architecture is deliberately **schema-driven from Phase 2.5
+onwards** ([PVD §6 Principle 11](PVD.md)). The VS Code
+extension's tree, code lenses, form panels, document-render
+commands, and Markdown preview are built at runtime from
+`tools/project.xsd` UI hints (`xs:appinfo`) and the
+`<metadata><document>` list, so adding a new generated document
+or payload section is a schema-and-template change with zero
+TypeScript involvement. Bespoke widgets and domain-specific
+lint rules remain the only payload-aware code paths.]]></para>
+      <para><![CDATA[Several capabilities are deliberately **deferred to the PVD
+roadmap themes** ([PVD §9](PVD.md)) and therefore have no
+module in this SDD: the standalone web form (covered by its own
+plan); editor breadth beyond VS Code (JetBrains, Neovim, generic
+LSP); output-format breadth (HTML, PDF, DITA); schema-evolution
+migration tooling; and the optional `<plan>`-payload phasing
+overlay. Each is gated on demand and on Phase 1–5.5 having
+stabilised; when one is adopted, this SDD gains a corresponding
+module under [SDD §2.1 System Architecture](#21-system-architecture).]]></para>
+    </overview>
+
+    <definitions>
+      <term name="Project.xml"><![CDATA[The single source of truth. Holds `<sdd>`, `<stp>`,
+`<hlrs>`, `<llrs>`, `<tests>`, plus `<metadata>` describing
+each generated document. Lives at `doc/Project.xml`. Authored
+through structured surfaces; never edited as raw XML on the
+critical path.]]></term>
+      <term name="Payload"><![CDATA[A top-level child of `<project>` (`<sdd>`, `<stp>`,
+`<hlrs>`, `<llrs>`, `<tests>`, or any future schema-declared
+section like `<plan>`) whose data is rendered into one or more
+Markdown documents.]]></term>
+      <term name="Generated document"><![CDATA[A `.md` file under `doc/` produced by the renderer from
+`Project.xml` plus a Jinja2 template. Listed in
+`<metadata><document id="…"/>`. Never edited by hand.]]></term>
+      <term name="Sidecar"><![CDATA[`tools/project_io.py` — the long-running JSON-RPC 2.0 server
+that every UI surface calls into. Owns parsing, validation,
+rendering, AI requests, and the structural merger. Spawned per
+extension activation; killed on deactivate.]]></term>
+      <term name="UI hint"><![CDATA[An `xs:appinfo` annotation in `tools/project.xsd` (under the
+`https://tracer.dev/ui/1` namespace) that tells the extension
+how to surface a schema element: `ui:treeNode`, `ui:form`,
+`ui:lens`, `ui:document`. The hint registry is the contract
+between schema authors and the schema-driven extension surfaces.]]></term>
+      <term name="Hint registry"><![CDATA[The runtime dictionary built by `project_io.parse_to_json`
+from the XSD's UI hints. Drives the tree view, lens provider,
+locator, and form-field generator without per-payload TypeScript
+code.]]></term>
+      <term name="Trace"><![CDATA[A `<trace target="…" ref="…"/>` element on an HLR, LLR, or
+test, naming the upstream item it implements or verifies. The
+basis for the computed forward and reverse traceability matrix.]]></term>
+      <term name="Coverage gap"><![CDATA[An HLR or LLR not referenced by any downstream `<trace>`. Listed
+explicitly in `Traceability.md`; surfaced as a lint warning and
+a tree-view badge. Never silently hidden.]]></term>
+      <term name="Grounding bundle"><![CDATA[The deterministic packed payload (`tools/ai/context.py`) sent
+to the language model on every AI request: schema subtree,
+`Schema_Reference.md` excerpt, PVD excerpt, relevant SDD/HLR/LLR
+context, sibling items, and the lint state of the target. Bounded
+by `projectXml.ai.maxContextTokens`.]]></term>
+      <term name="Intent"><![CDATA[A named AI operation (`draft.hlr`, `expand.hlr_to_llrs`,
+`review.item`, `merge.body`, …) with its own prompt template
+(`tools/ai/intents/`) and JSON response schema
+(`tools/ai/schemas/`). Responses are typed JSON, never raw XML.]]></term>
+      <term name="Validate→retry pipeline"><![CDATA[The AI pipeline (`tools/ai/pipeline.py`) that parses an AI
+response against its intent schema, applies it as a JSON Patch
+on a copy of the tree, runs XSD + lint, and on failure retries
+with the validator output fed back. After max retries the
+suggestion is surfaced to the user instead of written.]]></term>
+      <term name="Stage A merge"><![CDATA[The deterministic structural three-way merge
+(`tools/project_merge.py`) over the parsed `Project.xml` tree.
+Re-keys elements by id, unions non-overlapping additions, unions
+`<traces>`, recomputes `<counts>`. No AI, no network.]]></term>
+      <term name="Stage B merge"><![CDATA[The AI-mediated resolution of residual conflicts left by
+Stage A: overlapping body edits, divergent trace targets, ID
+renames, schema-version bumps. Runs through the same
+validate→retry pipeline as authoring intents.]]></term>
+      <term name="Schema version"><![CDATA[The `schema_version` attribute on `<project>`. Bumped whenever
+`Project.xml`'s structure changes in a way existing templates or
+`render_doc.py` could not consume unchanged.]]></term>
+    </definitions>
+
+    <references>
+      <ref><![CDATA[[doc/PVD.md](PVD.md) — Product Vision Document.]]></ref>
+      <ref><![CDATA[[doc/SPD.md](SPD.md) — Software Plan Document (phased delivery,
+required tools, risks).]]></ref>
+      <ref><![CDATA[[Schema_Reference.md](Schema_Reference.md) —
+human-facing schema reference; canonical for element shapes and
+attribute meanings.]]></ref>
+      <ref><![CDATA[[tools/PLAN_web_form.md](../tools/PLAN_web_form.md) — companion
+plan for the standalone web-form surface.]]></ref>
+      <ref><![CDATA[JSON-RPC 2.0 — <https://www.jsonrpc.org/specification>. Wire
+format used by the sidecar.]]></ref>
+      <ref><![CDATA[JSON Patch (RFC 6902) — <https://www.rfc-editor.org/rfc/rfc6902>.
+Edit operations exchanged between the extension and the sidecar.]]></ref>
+      <ref><![CDATA[VS Code Extension API — <https://code.visualstudio.com/api>.
+Tree views, code lenses, diagnostics, webviews, walkthroughs,
+chat participant API.]]></ref>
+      <ref><![CDATA[Red Hat XML extension (`redhat.vscode-xml`) —
+<https://github.com/redhat-developer/vscode-xml>. Declared as
+`extensionDependencies`; provides syntax/outline/XSD-backed
+completion that this extension layers on top of.]]></ref>
+      <ref><![CDATA[react-jsonschema-form (RJSF) —
+<https://rjsf-team.github.io/react-jsonschema-form/>. Renders
+form panels from JSON Schemas derived from `tools/project.xsd`.]]></ref>
+      <ref><![CDATA[Jinja2 — <https://jinja.palletsprojects.com/>. Template engine
+used by `tools/render_doc.py` and the per-document templates
+under `tools/templates/`.]]></ref>
+      <ref><![CDATA[Industrial requirements-management precedent (out of scope but
+framing the design): IBM DOORS, Siemens Polarion, Jama Connect.
+`TR` is the explicit lightweight, repo-native alternative
+([PVD §3](PVD.md), [PVD §7.3](PVD.md)).]]></ref>
+      <ref><![CDATA[`.edit_doc/ai_history.jsonl` — the per-write provenance log;
+format documented alongside the AI module ([SDD §10](#10),
+[SDD §17](#17)).]]></ref>
+    </references>
+
+    <architecture>
+      <intro><![CDATA[The system is a Python core surrounded by editor-native shells.
+The Python core (`render_doc.py`, `lint_project.py`,
+`project_merge.py`, `tools/ai/`) is invoked by the long-running
+JSON-RPC sidecar (`project_io.py`). All UI surfaces — the VS Code
+extension, the planned web form, AI assistants — speak only to
+the sidecar; none of them re-implement parsing, rendering,
+linting, or merging.]]></intro>
+      <component path="doc/Project.xml"><![CDATA[the structured source of truth that every other component
+reads or writes; XSD-validated and lint-validated.]]></component>
+      <component path="tools/project.xsd"><![CDATA[the schema, including (from Phase 2.5) the `xs:appinfo`
+UI-hint vocabulary that drives the schema-driven extension
+surfaces. The hint registry is built from this file at
+sidecar startup.]]></component>
+      <component path="tools/templates/"><![CDATA[per-document Jinja2 templates. One per `<metadata><document>`
+entry. Templates own all spec-doc scaffolding (headings,
+numbering, tables); payloads carry only content.]]></component>
+      <component path="tools/render_doc.py"><![CDATA[the renderer. CLI for batch regeneration plus an importable
+library API (`render_to_str`, `parse_project_to_dict`) called
+by the sidecar. Never spawns a sub-process; never writes
+files outside its `--out` argument.]]></component>
+      <component path="tools/lint_project.py"><![CDATA[the linter. CLI plus an importable `lint(tree)` library API.
+Validates well-formedness, XSD conformance, ID format and
+uniqueness, broken trace references, and coverage gaps.]]></component>
+      <component path="tools/project_merge.py"><![CDATA[the deterministic three-way structural merger (Stage A of the
+merge pipeline). Operates on the parsed-dict representation
+from `render_doc.parse_project_to_dict`.]]></component>
+      <component path="tools/ai/"><![CDATA[the Python AI pipeline: `context.py` (grounding bundle
+assembler), `pipeline.py` (validate→retry loop),
+`intents/` (per-intent prompt templates), `schemas/`
+(per-intent JSON response schemas).]]></component>
+      <component path="tools/project_io.py"><![CDATA[the JSON-RPC 2.0 sidecar over stdin/stdout. Methods: `lint`,
+`render`, `parse_to_json`, `apply_edit(json_patch)`,
+`init_project`, `list_documents`, `merge_three_way`,
+`ai_request(intent, context, target)`. Started lazily on first
+client call; killed on shutdown.]]></component>
+      <component path="tools/vscode-project-xml/"><![CDATA[the VS Code extension. Hosts the tree view, diagnostics,
+code lenses, form webviews, Markdown preview, walkthrough,
+`@projectspec` chat participant, and merge editor wiring.
+Schema-driven from Phase 2.5 onwards.]]></component>
+      <component path="tools/PLAN_web_form.md"><![CDATA[the standalone web form (planned). Shares the sidecar; outside
+this SDD's detailed-design scope but listed here so the
+"one backend, many surfaces" invariant ([PVD §6](PVD.md)) is
+visible in the architecture.]]></component>
+      <flow>
+        <intro><![CDATA[End-to-end authoring flow (HLR addition shown; LLRs, tests,
+modules, and merge resolution follow the same shape):]]></intro>
+        <step><![CDATA[The user opens `doc/Project.xml` in VS Code. The extension
+spawns `tools/project_io.py` and calls `parse_to_json` plus
+`list_documents` once on activation.]]></step>
+        <step><![CDATA[The schema-driven tree provider walks the hint registry
+returned by `parse_to_json` and contributes one root node per
+`ui:treeNode`-marked element kind, populated from the parsed
+payload.]]></step>
+        <step><![CDATA[The user clicks "Add HLR" on the HLRs tree node. The
+extension opens a form webview whose JSON Schema was derived
+from the relevant XSD subtree plus its `ui:form` hints.]]></step>
+        <step><![CDATA[On submit, the webview posts a JSON Patch to the extension,
+which forwards it to the sidecar's `apply_edit` method. The
+sidecar applies the patch on a working copy, runs XSD + lint,
+and (on success) writes the result back to `Project.xml`
+preserving comments and CDATA via `lxml`.]]></step>
+        <step><![CDATA[The extension's file watcher fires on the write; the tree,
+diagnostics, and code lenses refresh from a fresh
+`parse_to_json` call.]]></step>
+        <step><![CDATA[If `projectXml.previewOnSave` is enabled, the extension calls
+the sidecar's `render(document_id)` for the affected document
+and updates the side-by-side Markdown preview pane.]]></step>
+        <step><![CDATA[On commit + push + merge, if Git produces a conflict on
+`doc/Project.xml`, the extension offers
+`projectXml.resolveMergeConflicts`, pulls `:1`/`:2`/`:3` blobs
+via `git show`, and calls the sidecar's `merge_three_way`
+(Stage A). Residual conflicts are routed to the AI pipeline
+(Stage B) and surfaced in VS Code's three-way merge editor.]]></step>
+      </flow>
+    </architecture>
+
+    <design_goals>
+      <goal name="Single source of truth"><![CDATA[`Project.xml` is the only authoritative artefact. Generated
+Markdown documents are an output, never an input. No design
+element, requirement, or test exists in any other store. From
+[PVD §6 Principle 1](PVD.md).]]></goal>
+      <goal name="Plain text, plain Git"><![CDATA[Inputs and outputs are text files in the repository. No
+database, no server, no binary store, no proprietary format.
+This rules out any feature that would require a runtime service
+to read the spec. From [PVD §6 Principle 2](PVD.md).]]></goal>
+      <goal name="Schema before tooling"><![CDATA[Every payload field is described in `tools/project.xsd` and
+documented in `Schema_Reference.md` before any template,
+renderer, or UI consumes it. `schema_version` is bumped on
+breaking changes. From [PVD §6 Principle 3](PVD.md).]]></goal>
+      <goal name="Minimal dependencies"><![CDATA[The core renderer and linter use only the Python standard
+library plus Jinja2; XSD validation falls back gracefully when
+`lxml` and `xmllint` are absent. No heavy dependencies on the
+spec-generation hot path. From [PVD §6 Principle 4](PVD.md).]]></goal>
+      <goal name="One backend, many surfaces"><![CDATA[CLI, JSON-RPC sidecar, VS Code extension, web form, and AI
+assistance all call the same Python functions — directly or via
+the sidecar. UI layers never re-implement parsing, rendering,
+linting, or merging. From [PVD §6 Principle 5](PVD.md).]]></goal>
+      <goal name="No hand-written XML on the critical path"><![CDATA[Routine authoring is doable end-to-end through the extension's
+structured surfaces. Any workflow that *requires* the user to
+edit XML by hand to perform a common task is a bug. From
+[PVD §6 Principle 6](PVD.md).]]></goal>
+      <goal name="AI as a co-author, not an oracle"><![CDATA[AI-generated content is grounded in project data, constrained
+by typed JSON response schemas, and gated on the same XSD + lint
+pipeline as manual edits. Every AI write is diff-previewed and
+logged to `.edit_doc/ai_history.jsonl`. The linter, not the
+model, is the authority on correctness. From [PVD §6 Principle 7](PVD.md).]]></goal>
+      <goal name="Fail loud, never silently drift"><![CDATA[Every broken trace, duplicate ID, or unverified requirement is
+surfaced by the linter and (in-editor) by a diagnostic. Coverage
+gaps are explicit rows in the Traceability Matrix. Warnings are
+never downgraded to keep CI green. From [PVD §6 Principle 8](PVD.md).]]></goal>
+      <goal name="Stable identifiers"><![CDATA[`HLR-NNN` and `LLR-XXX-NN` IDs are contracts. They are never
+renumbered; new IDs take the next free number. Stage A merges
+honour this when allocating ids to newly-added items on
+collision. From [PVD §6 Principle 9](PVD.md).]]></goal>
+      <goal name="Verifiable"><![CDATA[Every behaviour worth describing is captured as an HLR/LLR
+with at least one bound test. The Traceability Matrix is the
+contract, not a status report. From [PVD §6 Principle 10](PVD.md).]]></goal>
+      <goal name="Schema-driven surfaces"><![CDATA[Adding a new generated document, a new payload section, or a
+new field is a schema-and-template change — not a TypeScript
+change. The extension discovers what to render from
+`tools/project.xsd` UI hints and `<metadata><document>`
+entries. Bespoke visualisations and domain-specific lint rules
+are the only payload-aware code paths. From
+[PVD §6 Principle 11](PVD.md), implemented in SPD Phase 2.5.]]></goal>
+      <goal name="Graceful degradation"><![CDATA[Every optional capability fails closed: AI surfaces hide when
+no language model is available, XSD validation falls back to
+`xmllint` then to a structural-only pass with a note when
+`lxml` is absent, and the structured merger refuses rather than
+guesses when the Git merge base is unavailable. The
+deterministic surfaces (tree, diagnostics, code lenses, form
+panels, render, Stage A merge) keep working in every degraded
+mode. From [PVD §7.1](PVD.md) graceful-degradation contract.]]></goal>
+      <goal name="Trust, transparency, and undo"><![CDATA[No AI write lands without a diff preview; no merge resolution
+lands without the user driving the merge editor; every
+AI-authored edit is logged to `.edit_doc/ai_history.jsonl`;
+every write goes through the same backup pipeline as a manual
+edit. "Undo last AI edit" is one click. From
+[PVD §6 Principle 7](PVD.md) and the `Trust, transparency,
+and undo" requirements throughout PVD §5.6 and §5.7.]]></goal>
+      <goal name="Privacy by default"><![CDATA[Grounding bundles never include `.git`, `node_modules`, or any
+file outside `doc/` and `tools/templates/` by default. AI
+surfaces are off in untrusted workspaces. The
+`projectXml.ai.contextAllowList` setting is the only knob that
+widens the disclosure surface. From [PVD §6 Principle 7](PVD.md)
+and the trusted-workspace gating called out in
+[SPD Phase 5](SPD.md).]]></goal>
+    </design_goals>
+
+    <modules>
+
+      <module path="tools/project.xsd">
+        <purpose><![CDATA[is the canonical schema for `doc/Project.xml`: every payload
+element, attribute, and (from Phase 2.5) the UI-hint
+vocabulary that drives the schema-driven extension surfaces.]]></purpose>
+        <responsibility><![CDATA[Constrain the structure of `<project>` and every payload
+(`<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`, `<tests>`, plus future
+schema-declared sections).]]></responsibility>
+        <responsibility><![CDATA[Carry UI hints in `xs:appinfo` under the
+`https://tracer.dev/ui/1` namespace: `ui:treeNode`, `ui:form`,
+`ui:lens`, `ui:document`. The sidecar distils these into the
+hint registry consumed by the extension.]]></responsibility>
+        <responsibility><![CDATA[Be loadable by `lxml`, `xmllint`, and `xml.etree`. The linter
+detects and reports hint-vocabulary violations; missing UI
+hints are warnings, not errors.]]></responsibility>
+        <interfaces title_suffix="(consumers)">
+          <interface title="The renderer"><![CDATA[`tools/render_doc.py` does not consume the XSD directly;
+it relies on the linter to have validated the document
+before render. Schema-shape changes that templates depend
+on require a coordinated template + `render_doc.py` update.]]></interface>
+          <interface title="The linter"><![CDATA[`tools/lint_project.py` validates `Project.xml` against the
+XSD using `lxml` (preferred) or `xmllint` (fallback), and
+gracefully degrades to "not validated" with a note when
+neither is available. UI-hint validation is additional and
+runs after structural validation succeeds.]]></interface>
+          <interface title="The sidecar"><![CDATA[`tools/project_io.py` parses the XSD on startup, extracts
+the UI-hint registry, caches it on the `parse_to_json`
+response (under `ui_hints_index`), and re-derives a JSON
+Schema for each form-target subtree on demand.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[None at runtime; this is a static schema file.]]></dep>
+          <dep><![CDATA[Authoring depends on `xmllint` for local validation;
+`Schema_Reference.md` is the human-facing reference.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/render_doc.py">
+        <purpose><![CDATA[is the document renderer: it turns `doc/Project.xml` plus a
+Jinja2 template into one Markdown spec document.]]></purpose>
+        <responsibility><![CDATA[Parse `Project.xml` into a `SimpleNamespace` tree (the
+`project.*` namespace consumed by every template).]]></responsibility>
+        <responsibility><![CDATA[Compute derived projections used by templates: flat lists
+(`flat_hlrs`, `flat_llrs`, `flat_tests`), id lookups
+(`hlr_by_id`, `llr_by_id`, `file_of_test`),
+cross-reference indexes (`hlrs_by_sdd`, `llrs_by_hlr`,
+`tests_by_hlr`, `tests_by_llr`), coverage-gap lists, and
+template filters (`gh_slug`).]]></responsibility>
+        <responsibility><![CDATA[Render any template against the `<metadata><document>` entry
+selected by CLI argument; the template owns all
+document-shape decisions (headings, tables, numbering).]]></responsibility>
+        <responsibility><![CDATA[Provide an importable library API (`render_to_str(template,
+doc_id, project_xml)`, `parse_project_to_dict(project_xml)`)
+used by the sidecar so the same code path is used by CLI,
+extension, web form, and AI pipeline.]]></responsibility>
+        <responsibility><![CDATA[Provide an `--init` mode that bootstraps a new project's
+`Project.xml` and `PVD.md` from skeletons.]]></responsibility>
+        <interfaces title_suffix="(public)">
+          <interface title="CLI"><![CDATA[`python3 tools/render_doc.py <template_path>
+<document_id> [--out <path>]` — render one document.
+`python3 tools/render_doc.py --init` — bootstrap.]]></interface>
+          <interface title="Library"><![CDATA[`render_to_str(template_path: Path, document_id: str,
+project_xml: Path) -> str` — render to a string.
+`parse_project_to_dict(project_xml: Path) -> dict` — return
+the raw parsed tree (used by `project_merge.py` and the
+sidecar's JSON projection).
+Raises `ProjectXmlError` on any parse / template / metadata
+error; the CLI converts these to exit codes, library callers
+catch them directly.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Standard library: `xml.etree.ElementTree`, `argparse`,
+`pathlib`, `re`, `types.SimpleNamespace`.]]></dep>
+          <dep><![CDATA[`jinja2` for template rendering.]]></dep>
+          <dep><![CDATA[`tools/templates/*.j2` for the per-document templates.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/lint_project.py">
+        <purpose><![CDATA[is the structural and semantic linter for `Project.xml`. Its
+findings drive both CI and the in-editor diagnostics surface.]]></purpose>
+        <responsibility><![CDATA[Validate well-formedness and XSD conformance against
+`tools/project.xsd`, using `lxml` (preferred), then
+`xmllint` (fallback), then a structural-only pass with a
+"not XSD-validated" note.]]></responsibility>
+        <responsibility><![CDATA[Check `<metadata>` shape: every template under
+`tools/templates/` must have a matching
+`<document id="…">`; document ids are unique. From Phase
+2.5 the required-set is derived from templates, not a
+hard-coded list.]]></responsibility>
+        <responsibility><![CDATA[Check ID format and uniqueness for HLRs (`HLR-NNN`), LLRs
+(`LLR-XXX-NN`), and test names (free-form but unique within
+their `<file>`).]]></responsibility>
+        <responsibility><![CDATA[Resolve every `<trace>` reference; report broken refs as
+errors, weak refs (e.g. SDD section numbers that look
+malformed) as warnings.]]></responsibility>
+        <responsibility><![CDATA[Compute coverage gaps: HLRs with no LLR or test linking to
+them; LLRs with no test linking to them. Report as
+warnings; the Traceability Matrix template renders them as
+explicit rows.]]></responsibility>
+        <responsibility><![CDATA[Provide an importable `lint(project_xml: Path) -> LintResult`
+library API; the CLI is a thin wrapper.]]></responsibility>
+        <interfaces title_suffix="(public)">
+          <interface title="CLI"><![CDATA[`python3 tools/lint_project.py [--xml doc/Project.xml]` —
+prints findings to stdout / stderr; exits non-zero on errors.]]></interface>
+          <interface title="Library"><![CDATA[`lint(project_xml: Path) -> LintResult` where
+`LintResult = { errors: list[Finding], warnings: list[Finding],
+notes: list[Finding], ok: bool }` and each `Finding`
+carries `message`, `line`, `column`, `xpath`, `code`. The
+`code` is stable and used by the extension to attach the
+right Quick Fix.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Standard library: `xml.etree.ElementTree`, `re`,
+`subprocess` (for the `xmllint` fallback).]]></dep>
+          <dep><![CDATA[`lxml` (optional, recommended).]]></dep>
+          <dep><![CDATA[`tools/project.xsd` for structural validation.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/templates/">
+        <purpose><![CDATA[holds the per-document Jinja2 templates that own all spec-doc
+scaffolding (titles, headings, numbering, tables, anchors).]]></purpose>
+        <responsibility><![CDATA[One template per `<metadata><document>` entry. Each consumes
+the `project.*` namespace exposed by `render_doc.py` and
+emits Markdown.]]></responsibility>
+        <responsibility><![CDATA[Emit anchor `<a id="…"></a>` tags immediately before every
+`HLR-NNN`, `LLR-XXX-NN`, and `test_…` row so the Traceability
+template can link to them.]]></responsibility>
+        <responsibility><![CDATA[Never invent payload fields. Adding a new field requires the
+schema, the renderer, and the template to be updated together.]]></responsibility>
+        <interfaces title_suffix="(layout)">
+          <interface title="Per-document templates"><![CDATA[`SDD.md.j2`, `HLRs.md.j2`, `LLRs.md.j2`, `STP.md.j2`,
+`Traceability.md.j2`. New documents add a sibling template
+plus a `<metadata><document id="…">` entry; from Phase 2.5
+the extension picks them up automatically.]]></interface>
+          <interface title="Bootstrap template"><![CDATA[`PVD.md.template` is consumed by `render_doc.py --init` to
+seed `doc/PVD.md` for new projects.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`jinja2`.]]></dep>
+          <dep><![CDATA[The data surface exposed by `tools/render_doc.py` (see its
+module above).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/project_io.py">
+        <purpose><![CDATA[is the long-running JSON-RPC 2.0 sidecar that exposes every
+parse / render / lint / merge / AI operation to all UI
+surfaces. The "one backend, many surfaces" guarantee
+([PVD §6 Principle 5](../doc/PVD.md)) is enforced here.]]></purpose>
+        <responsibility><![CDATA[Speak JSON-RPC 2.0 over stdin/stdout. Methods:
+`lint`, `render`, `parse_to_json`, `apply_edit`,
+`init_project`, `list_documents`, `merge_three_way`,
+`ai_request`, `subscribe_changes`, `shutdown`.]]></responsibility>
+        <responsibility><![CDATA[Be the only writer to `Project.xml` (via `apply_edit`); UI
+surfaces send JSON Patch ops, the sidecar applies them on
+the parsed tree, runs XSD + lint, and serializes back via
+`lxml` so that comments, CDATA, attribute order, and
+whitespace are preserved.]]></responsibility>
+        <responsibility><![CDATA[Cache the parsed tree and the UI-hint registry per session;
+invalidate on file watch, on `apply_edit`, and on schema
+change.]]></responsibility>
+        <responsibility><![CDATA[Be process-safe: started lazily on first client call,
+killed on `shutdown` or extension deactivate; survives a
+single failed request without crashing the session.]]></responsibility>
+        <interfaces title_suffix="(JSON-RPC methods)">
+          <interface title="lint"><![CDATA[`lint() -> LintResult` — re-runs `lint_project.lint(tree)`;
+results carry stable `code` strings used by the extension's
+Quick Fix provider.]]></interface>
+          <interface title="render"><![CDATA[`render(document_id: str) -> { markdown, source_template }`
+— renders one document. The Markdown preview surface calls
+this; it never writes a file.]]></interface>
+          <interface title="parse_to_json"><![CDATA[`parse_to_json() -> { project: ParsedNode, ui_hints_index,
+metadata, counts }` — generic projection of the whole tree
+plus the hint registry. The schema-driven tree, lens, and
+locator providers consume this exclusively.]]></interface>
+          <interface title="apply_edit"><![CDATA[`apply_edit(patch: JsonPatch, expect_clean: bool = true) ->
+{ ok, lint, residual_diff }` — atomically apply, validate,
+write. Refuses if `expect_clean` is true and the in-editor
+text buffer is dirty (the extension prompts the user to
+save or discard).]]></interface>
+          <interface title="init_project"><![CDATA[`init_project(name, short_name, author) -> { paths_written
+}` — wraps `render_doc.py --init`.]]></interface>
+          <interface title="list_documents"><![CDATA[`list_documents() -> [{ id, title, source, template,
+ui_document }]` — enumerates `<metadata><document>`
+entries; the extension's "Render <Doc>" command palette
+contributions are derived from this.]]></interface>
+          <interface title="merge_three_way"><![CDATA[`merge_three_way(base_xml, ours_xml, theirs_xml) -> {
+merged_xml, residual_conflicts: [Conflict], lint }` —
+delegates to `project_merge.merge`.]]></interface>
+          <interface title="ai_request"><![CDATA[`ai_request(intent: str, context: dict, target: dict) -> {
+patch?, suggestion?, validations: [Finding], retries }` —
+delegates to `tools/ai/pipeline.py`. Used by the chat
+participant, the right-click "with AI" actions, and the
+merge resolver's Stage B.]]></interface>
+          <interface title="subscribe_changes"><![CDATA[`subscribe_changes() -> stream` — pushes notifications when
+the file watcher detects an out-of-band change to
+`Project.xml`. The extension uses this to refresh the tree.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`tools/render_doc.py` (library API).]]></dep>
+          <dep><![CDATA[`tools/lint_project.py` (library API).]]></dep>
+          <dep><![CDATA[`tools/project_merge.py` (library API).]]></dep>
+          <dep><![CDATA[`tools/ai/pipeline.py` (validate→retry loop).]]></dep>
+          <dep><![CDATA[`lxml` for whitespace-preserving write-back.]]></dep>
+        </dependencies>
+        <error_handling>
+          <case name="Parse error"><![CDATA[Returns a JSON-RPC error with `code = -32001` and the line/column
+of the failure; the extension surfaces it as a top-level
+diagnostic on the file.]]></case>
+          <case name="Validate-then-write race"><![CDATA[`apply_edit` is serialised per session. A concurrent edit
+landing during validation causes the patch to be rebased on
+the new tree and re-validated; if rebase fails, the call
+returns `code = -32010` ("conflicting concurrent edit") and
+the caller retries.]]></case>
+          <case name="AI provider unavailable"><![CDATA[`ai_request` returns `code = -32020` ("no language model
+available"); the extension hides the AI surfaces gracefully
+per [PVD §7.1](../doc/PVD.md) graceful-degradation contract.]]></case>
+        </error_handling>
+      </module>
+
+      <module path="tools/project_merge.py">
+        <purpose><![CDATA[is the deterministic three-way structural merger over
+`Project.xml` (Stage A of the merge pipeline described in
+SPD Phase 5.5).]]></purpose>
+        <responsibility><![CDATA[Re-key elements by their stable ids (`HLR-NNN`,
+`LLR-XXX-NN`, test names, module paths) so a merge is
+position-independent.]]></responsibility>
+        <responsibility><![CDATA[Union additions when ids do not collide; on collision where
+both sides are new, allocate the next free id to one side
+(existing ids never move, per [PVD §6 Principle 9](../doc/PVD.md)).]]></responsibility>
+        <responsibility><![CDATA[Union `<traces>` entries by `(target, ref)` tuple, deduping.]]></responsibility>
+        <responsibility><![CDATA[Recompute `<metadata>/<counts>` from the merged tree.]]></responsibility>
+        <responsibility><![CDATA[Take the structurally-equivalent side when whitespace,
+comment, or attribute-order differences are the only divergence.]]></responsibility>
+        <responsibility><![CDATA[Emit residual conflicts (genuinely overlapping body edits,
+divergent trace targets, ID renames, schema-version bumps)
+as a structured list rather than fixing them; the AI
+pipeline (Stage B) consumes the list.]]></responsibility>
+        <responsibility><![CDATA[Refuse and report rather than guess when the merge base is
+unavailable (rebase-in-progress, octopus merges,
+cherry-picks without a base).]]></responsibility>
+        <interfaces title_suffix="(public)">
+          <interface title="Library"><![CDATA[`merge(base: dict, ours: dict, theirs: dict) -> { merged:
+dict, residual_conflicts: [Conflict] }` where each input
+is the parsed-dict representation from
+`render_doc.parse_project_to_dict`. The merged tree is
+serialised through the same `lxml`-based write-back path
+as `apply_edit` so comments and CDATA are preserved.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`tools/render_doc.py` for `parse_project_to_dict` and the
+write-back path.]]></dep>
+          <dep><![CDATA[`tools/lint_project.py` for the post-merge lint pass that
+gates acceptance.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/ai/">
+        <purpose><![CDATA[is the AI pipeline. It assembles a grounding bundle from
+project data, calls the language model with a typed JSON
+response schema, and validates the response through the same
+XSD + lint pipeline as manual edits.]]></purpose>
+        <responsibility><![CDATA[`context.py` — `build_ai_context(target) -> bundle` packs
+the schema subtree, `Schema_Reference.md` excerpt,
+PVD excerpt, SDD/HLR/LLR context appropriate to the intent,
+sibling items as style anchors, and the lint state of the
+target. A deterministic packer enforces
+`projectXml.ai.maxContextTokens`; the schema and the user
+intent are never dropped.]]></responsibility>
+        <responsibility><![CDATA[`pipeline.py` — implements the validate→retry loop:
+parse JSON against the intent's response schema, translate
+to a JSON Patch, apply on a copy of the tree, run XSD +
+`lint_project.lint`, and on failure retry with the
+findings as feedback. After max retries surface the
+suggestion + the failures to the user.]]></responsibility>
+        <responsibility><![CDATA[`intents/` — one Markdown file per intent, holding the
+system prompt and few-shot examples grounded in the
+schema. Authoring intents: `draft.hlr`, `draft.llr`,
+`draft.test`, `draft.module`, `expand.hlr_to_llrs`,
+`review.item`, `suggest.traces`, `gap.fix`. Merge intents:
+`merge.body`, `merge.trace`, `merge.rename`,
+`merge.schema_bump`.]]></responsibility>
+        <responsibility><![CDATA[`schemas/` — one JSON Schema per intent describing the
+shape of a valid response (Pydantic-validated). The
+deterministic translator that maps the JSON to a JSON
+Patch lives next to each schema.]]></responsibility>
+        <responsibility><![CDATA[Append a provenance entry to `.edit_doc/ai_history.jsonl`
+per accepted/rejected suggestion (timestamp, intent, model,
+prompt hash, accept/reject, validator state).]]></responsibility>
+        <interfaces title_suffix="(public)">
+          <interface title="Library"><![CDATA[`build_ai_context(target: TargetSpec) -> Bundle`
+(in `context.py`).
+`run(intent: str, context: Bundle, target: TargetSpec) ->
+AiResult` (in `pipeline.py`) — returns either an applied
+JSON Patch + lint result, or a rejected suggestion + the
+validator findings that blocked it.]]></interface>
+          <interface title="Sidecar bridge"><![CDATA[The sidecar exposes `ai_request` (see project_io module
+above), which is the only entry point UI surfaces use; the
+TS side never imports `tools/ai/` directly.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`tools/project.xsd` and `Schema_Reference.md` for
+the grounding bundle's schema and authoring-guidance
+sections.]]></dep>
+          <dep><![CDATA[`tools/lint_project.py` for the validation gate.]]></dep>
+          <dep><![CDATA[`pydantic` for JSON-Schema response validation.]]></dep>
+          <dep><![CDATA[The host's language model (via the VS Code Language Model
+API on the TS side, never called directly from Python).]]></dep>
+        </dependencies>
+        <error_handling>
+          <case name="Schema-invalid response"><![CDATA[Auto-retry with the parser error fed back as a correction
+prompt; counts against the configured retry budget.]]></case>
+          <case name="Lint-regressing patch"><![CDATA[Auto-retry with the new findings fed back. If the
+candidate introduces no *new* errors compared to the
+pre-edit state, it is accepted (an unrelated pre-existing
+warning does not block the suggestion).]]></case>
+          <case name="Retry budget exhausted"><![CDATA[Surface the original suggestion + the validator failures
+to the user instead of writing it; never silently apply.]]></case>
+          <case name="No language model available"><![CDATA[Return an `AiResult` with `kind = "no-model"`. UI surfaces
+hide themselves; the linter, renderer, and Stage A merge
+keep working unchanged.]]></case>
+        </error_handling>
+      </module>
+
+      <module path="tools/vscode-project-xml/">
+        <purpose><![CDATA[is the first-class VS Code extension that turns
+`Project.xml` into a structured editing surface and is the
+primary delivery vehicle for the in-editor authoring,
+schema-driven views, AI assistance, and AI-mediated merge
+resolution called out in [PVD §5 / §7.1](../doc/PVD.md).]]></purpose>
+        <responsibility><![CDATA[Activate on workspaces containing `doc/Project.xml`. Spawn
+`tools/project_io.py` once per session and route every
+operation through it; never parse, render, lint, or merge
+`Project.xml` itself.]]></responsibility>
+        <responsibility><![CDATA[Contribute the "Project Spec" Activity Bar view, the
+Markdown preview pane, the form webviews, the Walkthrough,
+the `@projectspec` chat participant, the merge editor
+integration, and the status bar item.]]></responsibility>
+        <responsibility><![CDATA[From Phase 2.5 onwards, build all generic surfaces (tree,
+diagnostics, lenses, locator, render commands) at runtime
+from the `ui_hints_index` and `<metadata><document>` list
+returned by the sidecar.]]></responsibility>
+        <responsibility><![CDATA[Declare `extensionDependencies` on `redhat.vscode-xml` so
+the user gets XSD-backed XML editing (syntax, outline,
+completion) for free.]]></responsibility>
+        <responsibility><![CDATA[Contribute every `projectXml.*` setting through
+`contributes.configuration` (see Data Dictionary §Settings
+for the authoritative list and defaults).]]></responsibility>
+        <responsibility><![CDATA[Be `untrustedWorkspaces.supported = "limited"`: AI
+surfaces are off until the workspace is trusted; the
+deterministic surfaces (tree, diagnostics, lenses, forms,
+render, Stage A merge) keep working in untrusted mode.]]></responsibility>
+        <interfaces title_suffix="(activation)">
+          <interface title="Activation events"><![CDATA[`workspaceContains:doc/Project.xml`,
+`onLanguage:xml` (filtered to `Project.xml`), and the
+`onCommand:projectXml.*` family.]]></interface>
+          <interface title="Stack"><![CDATA[TypeScript, `@vscode/extension` API, esbuild for bundling,
+mocha + `@vscode/test-electron` for tests. Webviews use
+React + react-jsonschema-form for form panels; the bundle
+is shared with the planned web form to avoid duplication.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`tools/project_io.py` (spawned subprocess; the only
+backend dependency).]]></dep>
+          <dep><![CDATA[`redhat.vscode-xml` (extension dependency, declared in
+`package.json`).]]></dep>
+          <dep><![CDATA[The host's Python interpreter, located via
+`projectXml.pythonPath`, then the Microsoft Python
+extension's interpreter API, then `python3`/`python` on
+PATH.]]></dep>
+          <dep><![CDATA[The host's Language Model API
+(`vscode.lm.selectChatModels`) for AI surfaces; absent
+implies graceful degradation.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/treeView/" title="Project Spec tree view">
+        <purpose><![CDATA[contributes the "Project Spec" Activity Bar view that
+gives every payload a structured outline with inline
+status badges. From Phase 2.5 it is built entirely from
+the schema's UI hints, with no per-payload TypeScript.]]></purpose>
+        <responsibility><![CDATA[Walk `ui_hints_index.treeNodes` and emit one root node per
+`ui:treeNode`-marked element kind, populated from the
+parsed payload returned by `parse_to_json`.]]></responsibility>
+        <responsibility><![CDATA[Annotate each node with a count badge and surface lint-
+derived status badges (`⚠`, `❌`) on items with coverage
+gaps or broken refs.]]></responsibility>
+        <responsibility><![CDATA[Provide context-menu commands: `Edit`, `Reveal in XML`,
+`Add child …`, `Delete`, `Render this section`,
+`Draft / Expand / Review with AI`. The set of available
+commands per node is derived from the hint registry, not
+hard-coded per element kind.]]></responsibility>
+        <responsibility><![CDATA[Locate elements in the underlying XML for `Reveal in XML`
+via the generic locator (`util/locator.ts`), which takes
+`(elementName, idAttr, idValue)` from the hint registry.]]></responsibility>
+        <interfaces title_suffix="(VS Code)">
+          <interface title="View contribution"><![CDATA[`projectXml.tree` registered against the
+`projectXml-explorer` view container in
+`contributes.viewsContainers`.]]></interface>
+          <interface title="Refresh hooks"><![CDATA[Subscribes to `projectXml.fileChanged` (workspace file
+watcher on `doc/Project.xml`) and to the sidecar's
+`subscribe_changes` stream; debounced refresh.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Sidecar `parse_to_json` and `lint`.]]></dep>
+          <dep><![CDATA[`util/locator.ts` (generic, hint-driven).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/diagnostics/" title="Diagnostics and Quick Fixes">
+        <purpose><![CDATA[mirrors lint findings into the Problems panel as VS Code
+`Diagnostic` objects, with payload-agnostic Quick Fixes for
+the most common findings.]]></purpose>
+        <responsibility><![CDATA[Maintain a `DiagnosticCollection` for `doc/Project.xml`;
+update on save, on `apply_edit` success, and on out-of-band
+file change.]]></responsibility>
+        <responsibility><![CDATA[Translate each lint `Finding` to a `Diagnostic` using the
+xpath/line/column carried by the finding; preserve the
+finding's stable `code` so Quick Fixes can target it.]]></responsibility>
+        <responsibility><![CDATA[Provide a `CodeActionProvider` whose Quick Fixes are
+table-driven from the finding's `code`: "Replace ref
+with…" picker for broken-trace findings, "Renumber as
+…" for ID-format errors, "Insert standard
+`<document>` row" for missing-document warnings, "Create
+stub test entry" for missing-test warnings, plus an
+"AI: suggest correct ref" fix on broken-trace findings
+when AI is enabled.]]></responsibility>
+        <interfaces title_suffix="(VS Code)">
+          <interface title="DiagnosticCollection"><![CDATA[`projectXml-lint` collection; cleared and rebuilt on each
+lint pass.]]></interface>
+          <interface title="CodeActionProvider"><![CDATA[Registered for `language: xml` filtered to `Project.xml`.
+Returns the union of generic + AI fixes that apply to the
+findings on the requested range.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Sidecar `lint`.]]></dep>
+          <dep><![CDATA[Sidecar `apply_edit` (Quick Fixes apply through the same
+write path as form edits).]]></dep>
+          <dep><![CDATA[The AI participant module (for the AI-suggest variant of
+each fix).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/codeLens/" title="Code lenses">
+        <purpose><![CDATA[decorates schema-marked elements in `Project.xml` with
+inline status and click-through actions.]]></purpose>
+        <responsibility><![CDATA[Walk `ui_hints_index.lenses` and attach the named lens
+kind (`coverage`, `tracesCount`, custom) to every matching
+element. From Phase 2.5 the lens provider has zero
+hard-coded element selectors.]]></responsibility>
+        <responsibility><![CDATA[Render compact summaries (e.g. "3 LLRs · 5 tests" on an
+HLR) plus action lenses (`Edit`, `Preview section`,
+`🪄 AI`).]]></responsibility>
+        <responsibility><![CDATA[Resolve click targets through the generic locator so
+"jump to LLR-PCL-04" works for any schema-declared id
+attribute.]]></responsibility>
+        <interfaces title_suffix="(VS Code)">
+          <interface title="CodeLensProvider"><![CDATA[Registered for `language: xml` filtered to `Project.xml`.
+Lazily computes lens text from the cached
+`ui_hints_index` and the latest `parse_to_json` payload.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Sidecar `parse_to_json` (for payload + hints).]]></dep>
+          <dep><![CDATA[`util/locator.ts`.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/webview/" title="Form panels and Markdown preview">
+        <purpose><![CDATA[hosts the single-item form webviews used to edit one
+payload element at a time, plus the side-by-side Markdown
+preview pane.]]></purpose>
+        <responsibility><![CDATA[Open one form panel per `Edit`/`Add` action. The form's
+JSON Schema comes from the sidecar's `parse_to_json`
+response, which derives it from the relevant XSD subtree
+plus per-field `ui:form` hints.]]></responsibility>
+        <responsibility><![CDATA[On submit, post a JSON Patch to the extension which
+forwards it to `apply_edit`. On `apply_edit` returning a
+clean lint, the extension closes the panel and refreshes
+the tree.]]></responsibility>
+        <responsibility><![CDATA[Handle dirty-buffer collisions: if `Project.xml` is open
+in a text editor with unsaved changes, prompt the user to
+save or discard before applying the patch.]]></responsibility>
+        <responsibility><![CDATA[Render the Markdown preview by calling sidecar `render`
+for the affected document and writing the result to a
+virtual document; honour `projectXml.previewOnSave`.]]></responsibility>
+        <responsibility><![CDATA[Expose a "Draft this field with AI" button next to long
+Markdown fields; the AI insertion goes into the field, not
+straight to disk.]]></responsibility>
+        <interfaces title_suffix="(webview ↔ extension messaging)">
+          <interface title="Form messages"><![CDATA[`form.ready`, `form.submit`, `form.cancel`,
+`form.aiDraftField`. Bundle is React + RJSF; built once
+and shared with the planned web form (PLAN_web_form.md).]]></interface>
+          <interface title="Preview integration"><![CDATA[Uses VS Code's built-in Markdown preview command
+(`markdown.showPreviewToSide`) against a virtual
+`tracer-preview:/<doc-id>.md` URI served by an in-memory
+content provider.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Sidecar `parse_to_json`, `apply_edit`, `render`,
+`ai_request`.]]></dep>
+          <dep><![CDATA[Shared RJSF bundle (built by the same Vite step as the
+web form).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/walkthrough/" title="Guided authoring (Walkthrough)">
+        <purpose><![CDATA[contributes the VS Code Walkthrough that steps a new user
+through bootstrapping a project and filling each payload in
+order. The IDE-native equivalent of the web form's wizard.]]></purpose>
+        <responsibility><![CDATA[Provide seven steps: bootstrap, PVD, SDD, HLRs, LLRs,
+tests, render & commit. Each step has Markdown content, a
+"Run command" link, and an automatic completion check
+(usually file-state or count-based).]]></responsibility>
+        <responsibility><![CDATA[Each step's "Run command" link can optionally be "Run
+command with AI", which pre-drafts the section through the
+authoring intents (Phase 5) rather than opening an empty
+form.]]></responsibility>
+        <interfaces title_suffix="(VS Code)">
+          <interface title="Walkthrough contribution"><![CDATA[Registered under `contributes.walkthroughs` in the
+extension's `package.json`. Step IDs are stable so VS
+Code can persist completion state across sessions.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[All command modules under `commands/` (each step ends in
+a command invocation).]]></dep>
+          <dep><![CDATA[The AI participant module (for the "with AI" variants).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/ai/" title="AI participant and merge surface">
+        <purpose><![CDATA[hosts the `@projectspec` chat participant, the right-click
+"with AI" actions, and the merge editor integration. The
+TypeScript side of the AI pipeline; the heavy lifting
+lives in `tools/ai/`.]]></purpose>
+        <responsibility><![CDATA[Register the chat participant via
+`vscode.chat.createChatParticipant` with the
+`/draft-hlr`, `/expand`, `/review`, `/gap-fill`, and
+`/resolve-conflicts` slash commands.]]></responsibility>
+        <responsibility><![CDATA[Translate every chat / right-click / Quick Fix invocation
+into an `ai_request` call on the sidecar; surface the
+result through a diff preview before any write.]]></responsibility>
+        <responsibility><![CDATA[Detect a conflicted `doc/Project.xml` via the `git`
+extension API; expose `projectXml.resolveMergeConflicts`;
+pull `:1`/`:2`/`:3` blobs via `git show`; call the
+sidecar's `merge_three_way`; open the result in VS Code's
+three-way merge editor with each AI-resolved region
+badged "✨ AI suggestion".]]></responsibility>
+        <responsibility><![CDATA[Honour `projectXml.ai.enabled`, `projectXml.merge.enabled`,
+and `projectXml.merge.aiResidualResolution`; the last must
+be forced off when `ai.enabled` is false. Hide every AI
+surface cleanly when `vscode.lm.selectChatModels` returns
+no models.]]></responsibility>
+        <responsibility><![CDATA[Never auto-apply: the diff preview (for authoring) and
+the merge editor (for merge resolution) are the only
+commit surfaces.]]></responsibility>
+        <interfaces title_suffix="(VS Code APIs)">
+          <interface title="Chat participant"><![CDATA[`vscode.chat.createChatParticipant('projectspec', …)`;
+streams the sidecar's response with clickable
+`Project.xml` links generated from the locator.]]></interface>
+          <interface title="Merge editor"><![CDATA[Pre-populates VS Code's three-way merge editor with the
+Stage A merged candidate; each Stage B suggestion is a
+distinct region the user accepts or rejects.]]></interface>
+          <interface title="Provenance log"><![CDATA[Appends one entry per AI-resolved region or per
+authoring suggestion to `.edit_doc/ai_history.jsonl`
+(timestamp, intent, model, prompt hash, accept/reject,
+validator state).]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[Sidecar `ai_request` and `merge_three_way`.]]></dep>
+          <dep><![CDATA[`vscode.chat.*`, `vscode.lm.*`, the `git` extension API,
+the merge editor API.]]></dep>
+        </dependencies>
+        <error_handling>
+          <case name="No language model"><![CDATA[All AI surfaces become invisible (commands hidden, chat
+participant unregistered, Quick Fix variants suppressed).
+Stage A merge keeps working without modification.]]></case>
+          <case name="Untrusted workspace"><![CDATA[`untrustedWorkspaces.supported = "limited"` blocks AI
+activation; a warning notification explains the gating
+once per session.]]></case>
+          <case name="Merge base unavailable"><![CDATA[The merge resolver refuses with a notification ("Stage
+A requires the Git merge base; falling back to manual
+resolution") rather than silently picking one side.]]></case>
+        </error_handling>
+      </module>
+
+    </modules>
+
+    <data_dictionary>
+      <type name="ParsedNode" header="tools/project_io.py" summary="Generic JSON projection of a single XML element returned by parse_to_json. The TypeScript side never re-parses the schema.">
+        <field name="tag" type="string" desc="The element's local name (e.g. 'hlr', 'llr', 'module')."/>
+        <field name="attrs" type="dict[string,string]" desc="The element's attributes verbatim."/>
+        <field name="text" type="string?" desc="The element's text content (CDATA-decoded), if any."/>
+        <field name="children" type="dict[string, ParsedNode[]]" desc="Direct children grouped by tag name; preserves order within each group."/>
+        <field name="xpath" type="string" desc="XPath into the source `Project.xml`, used by the locator and diagnostics."/>
+      </type>
+      <type name="LintResult" header="tools/lint_project.py" summary="Aggregate result of a single lint pass.">
+        <field name="errors" type="Finding[]" desc="Hard failures; CI exits non-zero on any error."/>
+        <field name="warnings" type="Finding[]" desc="Coverage gaps, weak refs, missing optional metadata."/>
+        <field name="notes" type="Finding[]" desc="Informational (e.g. 'lxml not available; structural-only validation')."/>
+        <field name="ok" type="bool" desc="True iff `errors` is empty."/>
+      </type>
+      <type name="Finding" header="tools/lint_project.py" summary="One lint finding; the unit the extension turns into a Diagnostic.">
+        <field name="code" type="string" desc="Stable identifier (e.g. 'broken-trace', 'id-format', 'no-test'); the Quick Fix table is keyed on this."/>
+        <field name="message" type="string" desc="Human-readable message."/>
+        <field name="line" type="int" desc="1-based line number in `Project.xml`."/>
+        <field name="column" type="int" desc="1-based column."/>
+        <field name="xpath" type="string" desc="XPath of the offending element/attribute."/>
+        <field name="severity" type="enum" desc="error|warning|note."/>
+      </type>
+      <type name="UiHintsIndex" header="tools/project_io.py" summary="Distilled UI-hint registry derived from `tools/project.xsd`'s `xs:appinfo` annotations. Drives every schema-driven extension surface.">
+        <field name="treeNodes" type="TreeNodeHint[]" desc="One per `ui:treeNode`-marked element kind; carries label expression, idAttr, group."/>
+        <field name="forms" type="dict[string, FormHint[]]" desc="Per element kind, the field hints (text, textarea, enum, ref:HLR, ref:LLR, cdata) used to generate the JSON Schema for the form webview."/>
+        <field name="lenses" type="LensHint[]" desc="One per `ui:lens`-marked element kind; identifies which named lens kind to attach (coverage, tracesCount, custom:&lt;name&gt;)."/>
+        <field name="documents" type="DocumentHint[]" desc="One per `ui:document`-marked `metadata/document`; marks renderable targets and supplies preview metadata."/>
+      </type>
+      <type name="JsonPatch" header="tools/project_io.py" summary="RFC 6902 JSON Patch op exchanged between the extension and the sidecar's apply_edit.">
+        <field name="op" type="enum" desc="add|remove|replace|move|copy|test."/>
+        <field name="path" type="string" desc="JSON pointer into the parsed-tree representation; the sidecar resolves to an XML location for write-back."/>
+        <field name="value" type="any" desc="Op-dependent payload."/>
+      </type>
+      <type name="Bundle" header="tools/ai/context.py" summary="Grounding bundle assembled per AI request. The deterministic packer enforces projectXml.ai.maxContextTokens; schema and user intent are never dropped.">
+        <field name="schema_excerpt" type="string" desc="Relevant XSD subtree for the intent's target."/>
+        <field name="authoring_guide" type="string" desc="Relevant subtree of `Schema_Reference.md`."/>
+        <field name="pvd_excerpt" type="string" desc="First N kb of `doc/PVD.md`."/>
+        <field name="sdd_context" type="string" desc="Slim list or full module/component depending on intent."/>
+        <field name="hlr_context" type="string" desc="Slim id+name list or full HLR depending on intent."/>
+        <field name="llr_context" type="string" desc="Slim id+text list or full LLR depending on intent."/>
+        <field name="siblings" type="string[]" desc="Sibling items in the same scope (style anchors)."/>
+        <field name="lint_state" type="Finding[]" desc="Current findings on the target."/>
+        <field name="user_intent" type="string" desc="The user's chat message or command argument; never dropped by the packer."/>
+      </type>
+      <type name="Conflict" header="tools/project_merge.py" summary="A residual conflict left by Stage A for the AI pipeline (Stage B) to resolve.">
+        <field name="kind" type="enum" desc="body|trace|rename|schema_bump."/>
+        <field name="xpath" type="string" desc="Where in the merged tree the conflict lives."/>
+        <field name="base" type="ParsedNode" desc="Snapshot from the merge base."/>
+        <field name="ours" type="ParsedNode" desc="Snapshot from our side."/>
+        <field name="theirs" type="ParsedNode" desc="Snapshot from their side."/>
+      </type>
+
+      <constants header="tools/vscode-project-xml/package.json">
+        <constant name="projectXml.xmlPath" value="&quot;doc/Project.xml&quot;" purpose="Workspace-relative path to the source-of-truth XML."/>
+        <constant name="projectXml.xsdPath" value="&quot;tools/project.xsd&quot;" purpose="Workspace-relative path to the schema."/>
+        <constant name="projectXml.toolsDir" value="&quot;tools&quot;" purpose="Directory containing the Python sidecar and helpers."/>
+        <constant name="projectXml.pythonPath" value="&quot;&quot;" purpose="Override interpreter; empty defers to the Microsoft Python extension, then `python3`/`python` on PATH."/>
+        <constant name="projectXml.previewOnSave" value="true" purpose="Re-render the affected document into the side preview on save."/>
+        <constant name="projectXml.warningsAsErrors" value="false" purpose="Treat lint warnings as errors in the Problems panel."/>
+        <constant name="projectXml.showCoverageBadges" value="true" purpose="Render coverage status badges in the tree view."/>
+        <constant name="projectXml.autoLintOnChange" value="true" purpose="Re-run lint automatically on file change."/>
+        <constant name="projectXml.ai.enabled" value="true" purpose="Master switch for the AI authoring layer (PVD §5.6)."/>
+        <constant name="projectXml.ai.preferredModel" value="&quot;&quot;" purpose="Empty defers to the user's default Copilot Chat model."/>
+        <constant name="projectXml.ai.maxRetries" value="2" purpose="Validator-feedback retry budget per AI request."/>
+        <constant name="projectXml.ai.autoApplyValidated" value="false" purpose="Skip the diff preview for fully-validated suggestions; off by default."/>
+        <constant name="projectXml.ai.maxContextTokens" value="16000" purpose="Hard cap on the grounding bundle; the deterministic packer drops largest optional sections first."/>
+        <constant name="projectXml.ai.contextAllowList" value="[&quot;doc/**&quot;,&quot;tools/templates/**&quot;]" purpose="File-glob whitelist for the grounding bundle's context sources."/>
+        <constant name="projectXml.ai.logHistory" value="true" purpose="Append AI-write provenance to `.edit_doc/ai_history.jsonl`."/>
+        <constant name="projectXml.merge.enabled" value="true" purpose="Master switch for the structured-merge feature; off hides the merge surface entirely."/>
+        <constant name="projectXml.merge.aiResidualResolution" value="true" purpose="Enable Stage B (AI-mediated residual resolution); forced off when `ai.enabled` is false."/>
+      </constants>
+
+      <other><![CDATA[The repository layout for the extension itself (TypeScript source
+tree, test fixtures, build assets) is project-conventional and
+described in [SPD §7](SPD.md). It is not reproduced here because
+its precise shape is delivery-phase scaffolding rather than a
+design contract — the design contract is the responsibilities and
+interfaces declared per module above.]]></other>
+    </data_dictionary>
+
+    <traceability>
+      <theme name="Single source of truth" sections="3 (Project.xml component), 5 (render_doc.py), 6 (lint_project.py), 9 (project_io.py)"/>
+      <theme name="Schema-driven surfaces" sections="3 (project.xsd component), 9 (project_io.py UI-hint registry), 12 (tree view), 14 (code lenses), 15 (form panels)"/>
+      <theme name="Generated documents" sections="5 (render_doc.py), 7 (templates/), 9 (project_io.list_documents), 15 (Markdown preview)"/>
+      <theme name="Computed traceability" sections="5 (render_doc.py cross-reference indexes), 6 (lint_project.py coverage gaps)"/>
+      <theme name="Built-in linting" sections="6 (lint_project.py), 13 (Diagnostics + Quick Fixes)"/>
+      <theme name="In-editor authoring" sections="11 (extension top), 12 (tree view), 14 (code lenses), 15 (form panels), 16 (Walkthrough)"/>
+      <theme name="AI as a co-author" sections="10 (tools/ai/ pipeline), 17 (chat participant + merge surface)"/>
+      <theme name="Structured merge resolution" sections="8 (project_merge.py), 17 (merge editor integration)"/>
+      <theme name="One backend, many surfaces" sections="9 (project_io.py is the only backend any surface calls)"/>
+      <theme name="Stable identifiers" sections="6 (lint ID-format checks), 8 (project_merge.py id allocation)"/>
+      <theme name="Graceful degradation" sections="6 (lint XSD-validator fallback chain), 9 (sidecar AI-unavailable error code), 10 (AI pipeline no-model result), 17 (extension hides AI surfaces; merge resolver refuses without merge base)"/>
+      <theme name="Trust, transparency, and undo" sections="10 (AI provenance log), 17 (diff preview, merge editor, history.jsonl writes)"/>
+      <theme name="Privacy by default" sections="10 (context allow-list enforced by packer), 17 (untrusted-workspace gating)"/>
+    </traceability>
   </sdd>
 
-  <!-- Software Test Plan payload (see tools/Project_xml_README.md §4). -->
+  <!-- Software Test Plan payload (see Schema_Reference.md §4). -->
   <stp>
   </stp>
 
-  <!-- High-Level Requirements (see tools/Project_xml_README.md §5). -->
-<hlrs>
-  <section number="1" title="Smoke Test">
-    <hlr id="HLR-001" name="Acceptance smoke">
-      <text>Phase 1 verification.</text>
-    </hlr>
-  </section>
-</hlrs>
+  <!-- High-Level Requirements (see Schema_Reference.md §5). -->
+  <hlrs>
+  </hlrs>
 
-  <!-- Low-Level Requirements (see tools/Project_xml_README.md §6). -->
+  <!-- Low-Level Requirements (see Schema_Reference.md §6). -->
   <llrs>
   </llrs>
 
-  <!-- Test sources (see tools/Project_xml_README.md §7). -->
+  <!-- Test sources (see Schema_Reference.md §7). -->
   <tests>
   </tests>
 </project>

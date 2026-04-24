@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Project.xml — single source of truth for this project's spec stack.
+  See doc/Schema_Reference.md for the schema reference.
+
+  This file was created by `render_doc.py` in init mode. Fill in the
+  payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
+  shape, then regenerate the markdown specs with `render_doc.py`.
+-->
+<project name="TraceR Integration Test Fixture" short_name="trft" schema_version="1.1"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../../tools/project.xsd">
+  <metadata>
+    <document id="SDD"          title="Software Design Document"     source="doc/SDD.md"          version="0.1" date="2026-04-24" author="TraceR Tests"/>
+    <document id="HLRs"         title="High-Level Requirements"      source="doc/HLRs.md"         version="0.1" date="2026-04-24" author="TraceR Tests"/>
+    <document id="LLRs"         title="Low-Level Requirements"       source="doc/LLRs.md"         version="0.1" date="2026-04-24" author="TraceR Tests"/>
+    <document id="STP"          title="Software Test Plan"           source="doc/STP.md"          version="0.1" date="2026-04-24" author="TraceR Tests"/>
+    <document id="Traceability" title="Traceability Matrix"          source="doc/Traceability.md" version="0.1" date="2026-04-24" author="TraceR Tests"/>
+    <counts>
+      <count name="hlrs"       value="0"/>
+      <count name="llrs"       value="0"/>
+      <count name="tests"      value="0"/>
+      <count name="test_files" value="0"/>
+    </counts>
+  </metadata>
+
+  <!-- Software Design Document payload (see doc/Schema_Reference.md §3). -->
+  <sdd>
+  </sdd>
+
+  <!-- Software Test Plan payload (see doc/Schema_Reference.md §4). -->
+  <stp>
+  </stp>
+
+  <!-- High-Level Requirements (see doc/Schema_Reference.md §5). -->
+  <hlrs>
+  </hlrs>
+
+  <!-- Low-Level Requirements (see doc/Schema_Reference.md §6). -->
+  <llrs>
+  </llrs>
+
+  <!-- Test sources (see doc/Schema_Reference.md §7). -->
+  <tests>
+  </tests>
+</project>

@@ -14,6 +14,7 @@ everything else.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -23,6 +24,7 @@ from typing import Any
 import jinja2
 
 PROJECT_XML = Path(__file__).resolve().parent.parent / "doc" / "Project.xml"
+PROJECT_XSD = Path(__file__).resolve().parent / "project.xsd"
 
 
 class ProjectXmlError(Exception):
@@ -682,7 +684,7 @@ SKELETON_PROJECT_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Project.xml — single source of truth for this project's spec stack.
-  See tools/Project_xml_README.md for the schema reference.
+  See doc/Schema_Reference.md for the schema reference.
 
   This file was created by `render_doc.py` in init mode. Fill in the
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
@@ -690,7 +692,7 @@ SKELETON_PROJECT_XML = """\
 -->
 <project name="{name}" short_name="{short_name}" schema_version="1.1"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="../tools/project.xsd">
+         xsi:noNamespaceSchemaLocation="{schema_location}">
   <metadata>
     <document id="SDD"          title="Software Design Document"     source="doc/SDD.md"          version="0.1" date="{date}" author="{author}"/>
     <document id="HLRs"         title="High-Level Requirements"      source="doc/HLRs.md"         version="0.1" date="{date}" author="{author}"/>
@@ -705,23 +707,23 @@ SKELETON_PROJECT_XML = """\
     </counts>
   </metadata>
 
-  <!-- Software Design Document payload (see tools/Project_xml_README.md §3). -->
+  <!-- Software Design Document payload (see doc/Schema_Reference.md §3). -->
   <sdd>
   </sdd>
 
-  <!-- Software Test Plan payload (see tools/Project_xml_README.md §4). -->
+  <!-- Software Test Plan payload (see doc/Schema_Reference.md §4). -->
   <stp>
   </stp>
 
-  <!-- High-Level Requirements (see tools/Project_xml_README.md §5). -->
+  <!-- High-Level Requirements (see doc/Schema_Reference.md §5). -->
   <hlrs>
   </hlrs>
 
-  <!-- Low-Level Requirements (see tools/Project_xml_README.md §6). -->
+  <!-- Low-Level Requirements (see doc/Schema_Reference.md §6). -->
   <llrs>
   </llrs>
 
-  <!-- Test sources (see tools/Project_xml_README.md §7). -->
+  <!-- Test sources (see doc/Schema_Reference.md §7). -->
   <tests>
   </tests>
 </project>
@@ -736,6 +738,7 @@ def init_project(
     xml_path: Path | str = PROJECT_XML,
     pvd_path: Path | str | None = None,
     pvd_template: Path | str = PVD_TEMPLATE,
+    schema_location: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     """Bootstrap a new project: write skeleton Project.xml and PVD.md.
@@ -745,6 +748,12 @@ def init_project(
       * ``pvd_path``  — absolute path of the written PVD.md
       * ``existing``  — list of files that already existed (only when
         ``force=True`` and the call overwrote them; empty otherwise).
+
+    ``schema_location`` is written verbatim into the skeleton's
+    ``xsi:noNamespaceSchemaLocation`` attribute so XSD-aware editors
+    can resolve ``tools/project.xsd``. When ``None`` (the default), a
+    relative path from ``xml_path``'s parent directory to the canonical
+    ``tools/project.xsd`` is computed automatically.
 
     Raises ``ProjectXmlError`` if ``force`` is False and either target
     file exists, or if the PVD template is missing. Does not write to
@@ -757,6 +766,11 @@ def init_project(
     if pvd_path is None:
         pvd_path = Path(__file__).resolve().parent.parent / "doc" / "PVD.md"
     pvd_path = Path(pvd_path)
+
+    if schema_location is None:
+        schema_location = os.path.relpath(
+            PROJECT_XSD, start=xml_path.resolve().parent
+        )
 
     today = _date.today().isoformat()
 
@@ -783,6 +797,7 @@ def init_project(
             short_name=short_name,
             date=today,
             author=author,
+            schema_location=schema_location,
         )
     )
 
@@ -811,6 +826,7 @@ def _init_project_cli(
     xml_path: Path,
     pvd_path: Path,
     pvd_template: Path,
+    schema_location: str | None,
     force: bool,
 ) -> int:
     """CLI wrapper around init_project: preserves the original stderr
@@ -842,6 +858,7 @@ def _init_project_cli(
             xml_path=xml_path,
             pvd_path=pvd_path,
             pvd_template=pvd_template,
+            schema_location=schema_location,
             force=force,
         )
     except ProjectXmlError as exc:
@@ -1017,6 +1034,18 @@ def main() -> int:
         action="store_true",
         help="With --init, overwrite existing Project.xml / PVD.md.",
     )
+    init_group.add_argument(
+        "--schema-location",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Value to write into the skeleton's "
+            "xsi:noNamespaceSchemaLocation attribute so XSD-aware editors "
+            "can resolve tools/project.xsd. By default, a relative path "
+            "from --xml's parent directory to tools/project.xsd is "
+            "computed automatically."
+        ),
+    )
     args = parser.parse_args()
 
     if args.init:
@@ -1029,6 +1058,7 @@ def main() -> int:
             xml_path=args.xml,
             pvd_path=args.pvd_out,
             pvd_template=args.pvd_template,
+            schema_location=args.schema_location,
             force=args.force,
         )
 

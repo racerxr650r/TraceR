@@ -24,9 +24,24 @@ purposes:
     [doc/Traceability.md](../../../doc/Traceability.md).
 
 The canonical schema reference for humans is
-[tools/Project_xml_README.md](../../../tools/Project_xml_README.md).
+[doc/Schema_Reference.md](../../../doc/Schema_Reference.md).
 **Read that file before performing any non-trivial edit to
 `Project.xml` or any of its templates.**
+
+> **Keep `Schema_Reference.md` in sync.** Any change to
+> [tools/project.xsd](../../../tools/project.xsd) (new element,
+> renamed attribute, changed cardinality, tightened restriction,
+> bumped `schema_version`) **or** to how
+> [tools/render_doc.py](../../../tools/render_doc.py) parses
+> `Project.xml` and exposes data on the `project.*` namespace
+> consumed by templates (new `build_*` function, new index, new
+> filter, changed field name) **must be reflected in
+> [doc/Schema_Reference.md](../../../doc/Schema_Reference.md)
+> in the same change.** The schema reference is the contract
+> between the data, the renderer, and template authors; if it
+> drifts, future edits made against it will silently produce
+> invalid XML or broken renders. After updating, re-render every
+> document and run `tools/lint_project.py` to confirm.
 
 Sitting **above** the generated stack is the hand-authored
 [doc/PVD.md](../../../doc/PVD.md) — see [Product Vision
@@ -130,7 +145,8 @@ looks the document up by the second positional CLI argument.
 | "Add an LLR" | Append a new `<llr id="LLR-XXX-NN">` inside the matching `<llrs>/<function>`; add `<traces target="HLR" ref="HLR-NNN" name="...">` for every HLR it implements. Regenerate `LLRs.md` and `Traceability.md`. |
 | "Add a test" | Add the `static void test_*(void **state)` under `test/` *with a doc-comment block citing `LLR-XXX-NN` and/or `HLR-NNN`*. Then add a matching `<test name="...">` (with `<purpose>` and `<traces>`) inside the appropriate `<tests>/<file>`. Regenerate `STP.md` and `Traceability.md`. |
 | "Why is HLR-NNN / LLR-XXX-NN listed as having no test?" | It has no `<test>` whose `<traces>` cite it. Either add a test, or document the gap in `Traceability.md §6.x` (the renderer does this from the data). |
-| "Add a new field to a section that doesn't exist yet" | First update the schema (`tools/Project_xml_README.md` + `Project.xml` + bump `schema_version`), then update the relevant template under `tools/templates/`, then regenerate. |
+| "Add a new field to a section that doesn't exist yet" | First update [tools/project.xsd](../../../tools/project.xsd) (and bump `schema_version`), then update [doc/Schema_Reference.md](../../../doc/Schema_Reference.md) so the human-facing reference matches, then `Project.xml`, then the relevant template under `tools/templates/` (and `tools/render_doc.py` if a new `build_*` is needed), then regenerate. |
+| "Change how a payload element is parsed/exposed to templates" | Update [tools/render_doc.py](../../../tools/render_doc.py), then update the *Renderer Data Surface* section of [doc/Schema_Reference.md](../../../doc/Schema_Reference.md) so template authors see the new field/index/filter, then update any affected templates. |
 
 ## Hard Rules
 
@@ -160,124 +176,20 @@ looks the document up by the second positional CLI argument.
     structure of `Project.xml` in a way that existing templates or
     `tools/render_doc.py` could not consume unchanged.
 
-## Schema Quick Reference
+## Schema and Renderer Data Surface
 
-```xml
-<project name="..." short_name="..." schema_version="1.0">
-  <metadata>
-    <document id="SDD|HLRs|LLRs|STP|Traceability" title="..."
-              source="..." version="..." date="..." author="..."/>
-    <counts><count name="..." value="..."/></counts>
-  </metadata>
+All schema details — every element, every attribute, cardinality
+rules, child-order constraints, the full XML skeleton, and the
+`project.*` namespace exposed by
+[tools/render_doc.py](../../../tools/render_doc.py) to templates —
+live in [doc/Schema_Reference.md](../../../doc/Schema_Reference.md).
+Consult that document before authoring or modifying any
+`<sdd>`/`<stp>`/`<hlrs>`/`<llrs>`/`<tests>` content, before writing
+a new template, or before changing how the renderer parses a
+payload.
 
-  <sdd>
-    <kind>...</kind>
-    <audience>...</audience>
-    <scope>           <intro/> <file path="..."/>* <outro/> </scope>
-    <overview>        <para/>* </overview>
-    <definitions>     <term name="..."/>* </definitions>
-    <references>      <ref/>* </references>
-    <architecture>    <intro/> <component path="..."/>* <flow/> </architecture>
-    <design_goals>    <goal name="..."/>* </design_goals>
-    <modules>
-      <module path="...">
-        <purpose/> <responsibility/>*
-        <interfaces title_suffix="...">
-          <prose/> <interface title="..."/>*
-        </interfaces>
-        <data_structures/>
-        <functions>
-          <intro/>
-          <function signature="..." summary="...">
-            <purpose/> <pre/> <post/> <returns/>
-            <logic><step/>*</logic>
-            <notes/>
-          </function>*
-          <group name="..."> <function/>* </group>*
-        </functions>
-        <algorithm/>
-        <dependencies><dep/>*</dependencies>
-        <error_handling><case name="..."/>*</error_handling>
-      </module>*
-    </modules>
-    <data_dictionary>
-      <type name="..." header="..." instance="..." instance_in="..." summary="...">
-        <field name="..." type="..." desc="..."/>*
-      </type>*
-      <constants header="...">
-        <constant name="..." value="..." purpose="..."/>*
-      </constants>
-      <other/>
-    </data_dictionary>
-    <traceability><theme name="..." sections="..."/>*</traceability>
-  </sdd>
-
-  <stp>
-    <introduction>
-      <purpose/> <scope/>
-      <related><doc/>*</related>
-    </introduction>
-    <strategy>
-      <levels><level name="..." source="..." driver="..." style="..."/>*</levels>
-      <framework/>
-      <build_execution><intro/> <step/>* <outro/></build_execution>
-      <pass_fail><criterion/>*</pass_fail>
-      <traceability_convention/>
-    </strategy>
-    <integration_environment>
-      <intro/>
-      <fixture name="..." source="...">
-        <artefact key="..." label="..." path="..."/>*
-      </fixture>*
-      <outro/>
-    </integration_environment>
-    <tooling><tool name="..." required_for="..." notes="..."/>*</tooling>
-    <maintenance/>
-  </stp>
-  <!-- STP §3 (Test Catalogue) and §4 (LLR Coverage Matrix) are
-       computed by the template from <tests> and <llrs>, not <stp>. -->
-
-  <hlrs>
-    <section number="..." title="...">
-      <intro/>
-      <hlr id="HLR-NNN" name="...">
-        <text/>
-        <traces><trace target="SDD" ref="..."/>*</traces>
-      </hlr>*
-    </section>*
-  </hlrs>
-
-  <llrs>
-    <function number="..." title="..." name="..." source="...">
-      <intro/>
-      <llr id="LLR-XXX-NN">
-        <text/>
-        <traces><trace target="HLR" ref="HLR-NNN" name="..."/>*</traces>
-      </llr>*
-    </function>*
-  </llrs>
-
-  <tests>
-    <file path="..." role="..." count="N">
-      <header/>
-      <test name="test_...">
-        <purpose/>
-        <traces><trace target="LLR|HLR" ref="..."/>*</traces>
-      </test>*
-    </file>*
-  </tests>
-</project>
-```
-
-The `role` attribute on `<file>` is a free-form, project-defined
-string (e.g. `unit`, `integration`, `runner+integration`,
-`integration-fixture`). The renderer treats it as opaque metadata;
-adopt whatever vocabulary fits the project's test layout and use it
-consistently.
-
-See [tools/Project_xml_README.md](../../../tools/Project_xml_README.md)
-for the full element-by-element semantics, attribute meanings, and
-authoring conventions.
+Do **not** duplicate schema fragments into this file: keeping them
+here risks silent drift from the canonical reference.
 
 ## Regeneration
 
@@ -291,46 +203,20 @@ python3 tools/render_doc.py tools/templates/STP.md.j2          STP          --ou
 python3 tools/render_doc.py tools/templates/Traceability.md.j2 Traceability --out doc/Traceability.md
 ```
 
-### Renderer Data Surface
-
-[tools/render_doc.py](../../../tools/render_doc.py) exposes the
-following on the `project` namespace passed to every template — use
-these rather than recomputing relations in Jinja:
-
-*   **Payload roots:** `project.sdd`, `project.stp`, `project.hlrs`
-    (sections), `project.llrs` (function groups), `project.tests`
-    (test files), `project.metadata`, `project.counts`,
-    `project.name`, `project.short_name`, `project.schema_version`.
-*   **Flat lists:** `project.flat_hlrs` (each annotated with
-    `section_number`/`section_title`), `project.flat_llrs` (each
-    annotated with `function_name`/`function_number`),
-    `project.flat_tests` (sorted by file then name, each with
-    `file`, `name`, `purpose`, `traces`).
-*   **ID lookups:** `project.hlr_by_id`, `project.llr_by_id`,
-    `project.file_of_test`, `project.sdd_titles` (SDD section number
-    → heading title, mirroring the SDD template's numbering scheme).
-*   **Cross-reference indexes** (built once from every `<traces>`
-    block):
-    *   `project.hlrs_by_sdd[ref]` → list of HLR ids
-    *   `project.llrs_by_hlr[hid]` → list of LLR ids
-    *   `project.tests_by_hlr[hid]` → list of test names
-    *   `project.tests_by_llr[lid]` → list of test names
-*   **Coverage gaps:** `project.llrs_no_test`, `project.hlrs_no_test`
-    (HLRs with neither a direct test nor any LLR-bound test).
-*   **Filters:** `gh_slug` — approximates GitHub's heading-anchor
-    slug rule (lowercase, strip punctuation, spaces → hyphens). Used
-    by the Traceability template to link into SDD section headings.
-
-When extending the schema with a new payload root, add the
-corresponding `build_*` function in `render_doc.py` and expose it on
-the returned `SimpleNamespace` so templates can reach it by attribute
-access.
-
 Validate the XML before regenerating:
 
 ```bash
 python3 -c "import xml.etree.ElementTree as ET; ET.parse('doc/Project.xml')"
 ```
+
+The shape of the `project` namespace passed to every template —
+payload roots, flat lists, ID lookups, cross-reference indexes,
+coverage-gap lists, and available filters — is documented in the
+*Renderer Data Surface* section of
+[doc/Schema_Reference.md](../../../doc/Schema_Reference.md). Use
+those prebuilt structures rather than recomputing relations in
+Jinja, and update that section whenever you add a new `build_*`
+function or index in [tools/render_doc.py](../../../tools/render_doc.py).
 
 ## Common Pitfalls
 

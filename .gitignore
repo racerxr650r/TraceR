@@ -1,0 +1,10 @@
+# Generated specification documents (rendered from doc/Project.xml
+# by tools/render_doc.py — re-render rather than edit by hand).
+doc/HLRs.md
+doc/LLRs.md
+doc/SDD.md
+doc/STP.md
+doc/Traceability.md
+
+# Python bytecode cache
+tools/__pycache__/

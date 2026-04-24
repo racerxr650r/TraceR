@@ -3,7 +3,7 @@
   XML Schema for Project.xml — the single source of truth for a
   project's spec stack (PVD / SDD / HLRs / LLRs / STP / Traceability).
 
-  Companion to tools/Project_xml_README.md (human-facing schema
+  Companion to doc/Schema_Reference.md (human-facing schema
   reference) and tools/lint_project.py (validator + semantic checker).
 
   This schema covers the structural shape of Project.xml. The semantic

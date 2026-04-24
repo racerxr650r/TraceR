@@ -1,8 +1,8 @@
 # vscode-project-xml — Project Spec (TraceR)
 
 Read-only Phase 1 scaffold for the TraceR Project Spec extension.
-See [`tools/PLAN_vscode_extension.md`](../PLAN_vscode_extension.md) for
-the full plan.
+See [`doc/SPD.md`](../../doc/SPD.md) for the full Software Plan
+Document.
 
 ## What this build does
 

@@ -3,15 +3,13 @@
 </p>
 
 # TraceR
+Vibe coding with AI doesn't have to be haphazard or even dangerous.
 
-Software project traceability tools. TraceR turns a single
-[`doc/Project.xml`](doc/Project.xml) source-of-truth into a fully
-linked stack of specification documents (SDD, HLRs, LLRs, STP,
-Traceability Matrix) and provides editor-native authoring on top.
+Is your software fielded in safety/certified environments requiring certification audits? Or, do you simply want to improve and demonstrate the quality of your software? Then you will benefit from a software project traceability tool. TraceR turns a single Project.xml file source-of-truth into a fully linked stack of specification documents (SDD, HLRs, LLRs, STP, Traceability Matrix) and provides editor-native authoring with AI assistance to create and maintain them.
 
 See [`doc/PVD.md`](doc/PVD.md) for the Product Vision Document and
-[`tools/PLAN_vscode_extension.md`](tools/PLAN_vscode_extension.md)
-for the VS Code extension roadmap.
+[`doc/SPD.md`](doc/SPD.md) for the Software Plan Document (the
+phased VS Code extension roadmap).
 
 ## Status
 
@@ -127,15 +125,15 @@ In the Extension Development Host window:
 ```
 doc/
   PVD.md             # Product Vision Document (hand-authored)
+  SPD.md             # Software Plan Document (phased extension roadmap)
   Project.xml        # single source of truth (XSD-validated)
   SDD.md, HLRs.md, LLRs.md, STP.md, Traceability.md   # generated
+  Schema_Reference.md  # human-facing schema reference
 tools/
   render_doc.py      # Project.xml → Markdown via Jinja2
   lint_project.py    # XSD + semantic linter
   project_io.py      # JSON-RPC 2.0 server over stdio
   project.xsd        # canonical schema
-  Project_xml_README.md
-  PLAN_vscode_extension.md
   PLAN_web_form.md
   templates/         # Jinja2 templates for each spec doc
   vscode-project-xml/  # VS Code extension (Phase 1)

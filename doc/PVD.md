@@ -104,7 +104,12 @@ things, in order:
     payload, code lenses, form panels for HLRs/LLRs/tests, inline
     diagnostics from the linter, quick-fixes for the most common
     findings, and a guided walkthrough for new projects. Developers
-    never have to write XML by hand.
+    never have to write XML by hand. The extension's surfaces are
+    **schema-driven**: tree nodes, form panels, code lenses, the
+    Markdown-preview document list, and the render commands are
+    built at runtime from `tools/project.xsd` (UI hints in
+    `xs:appinfo`) and `<metadata><document>` entries in
+    `Project.xml`, not from hard-coded payload knowledge.
 6.  **AI-assisted authoring.** A schema-grounded, lint-validated AI
     layer drafts HLRs, expands LLRs from HLRs, drafts test purposes
     from LLRs, reviews items against their upstream context, and
@@ -146,7 +151,7 @@ These principles are the tie-breakers when requirements conflict.
     binary store, and no proprietary format. This rules out any
     feature that would require a runtime service to read the spec.
 3.  **Schema before tooling.** Every payload field is described in
-    `tools/project.xsd` and `tools/Project_xml_README.md` before
+    `tools/project.xsd` and `Schema_Reference.md` before
     any template, renderer, or UI consumes it. Schema bumps are
     versioned (`schema_version`). This rules out ad-hoc XML tags
     introduced by one tool.
@@ -165,6 +170,16 @@ These principles are the tie-breakers when requirements conflict.
     The raw XML remains a supported escape hatch, but a workflow
     that *requires* the user to edit XML by hand to perform a
     common task is a bug.
+11. **Schema-driven surfaces.** Adding a new generated document, a
+    new payload section, or a new field is a schema-and-template
+    change — not a TypeScript change. The VS Code extension
+    discovers what to render (tree nodes, forms, lenses, preview
+    targets, render commands) from `tools/project.xsd` UI hints
+    and `<metadata><document>` entries. Bespoke visualisations and
+    domain-specific lint rules are the only payload-aware code
+    paths; everything else is generic. This rules out hard-coding
+    new payload types into the extension just to make them
+    editable.
 7.  **AI as a co-author, not an oracle.** AI-generated content is
     grounded in the project's own data (PVD, SDD, existing
     payloads, schema), constrained by a typed JSON response
@@ -211,9 +226,16 @@ These principles are the tie-breakers when requirements conflict.
     side-by-side rendered Markdown preview, a guided walkthrough
     for bootstrapping new projects, and quick-fixes for the most
     common lint findings (broken trace refs, ID-format errors).
-    Distributed as a `.vsix` and (optionally) on the Marketplace.
-    See [PLAN_vscode_extension.md](../tools/PLAN_vscode_extension.md)
-    for the phased delivery plan.
+    All of these surfaces are **schema-driven**: the tree, form
+    panels, code lenses, preview targets, and `Render <Doc>`
+    commands are built at runtime from `tools/project.xsd` UI
+    hints (`xs:appinfo`) and the `<metadata><document>` list, so
+    that adding a new generated document or payload section does
+    not require an extension code change. Bespoke widgets and
+    domain-specific lint rules remain the only payload-aware code
+    paths. Distributed as a `.vsix` and (optionally) on the
+    Marketplace. See [doc/SPD.md](SPD.md) for the phased delivery
+    plan (Software Plan Document).
 *   **Structured three-way merge resolution** for `Project.xml`,
     delivered as part of the baseline product. A deterministic
     structural merger handles non-overlapping additions, trace
@@ -293,6 +315,7 @@ These principles are the tie-breakers when requirements conflict.
 | **AI-grounded authoring** | A user can invoke `@projectspec /draft-hlr <intent>` (or the equivalent right-click action) and receive a schema-valid HLR with at least one plausible SDD trace, on the first response, in well over 90% of attempts. AI responses that fail XSD or lint are auto-retried with the findings as feedback and never silently applied. |
 | **One-backend invariant** | The CLI, JSON-RPC sidecar, VS Code extension, and web form return identical lint findings and identical rendered Markdown for the same `Project.xml`. Divergence is a release-blocking bug. |
 | **Bootstrap time** | A developer can go from `git clone` to a populated `Project.xml` and a fully generated five-document spec stack in under five minutes by running the VS Code extension's guided walkthrough (or, equivalently, the `--init` CLI flow). |
+| **Schema-driven extensibility** | A new generated document (or a new payload section with UI hints) can be added to a project by editing only `tools/project.xsd`, `Project.xml`, and a Jinja2 template under `tools/templates/`. The VS Code extension picks up the new tree nodes, form panels, preview target, and render command on next reload with zero TypeScript changes. |
 | **Self-host quality** | `TR`'s own SDD, HLRs, LLRs, STP, and Traceability Matrix are the canonical reference example. Coverage of `TR`'s own LLRs by `TR`'s own tests is at or above 95%. |
 
 ## 9. Roadmap Themes
