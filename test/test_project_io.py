@@ -1,0 +1,265 @@
+"""Tests for the JSON-RPC surface in tools/project_io.py.
+
+Exercises both the in-process handle_request() entry point and the
+end-to-end stdin/stdout subprocess form.
+"""
+from __future__ import annotations
+
+import io
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import _paths  # noqa: F401  (sys.path side-effect)
+
+import project_io
+from project_io import handle_request, serve
+from render_doc import init_project
+
+
+def _bootstrap_project(tmp: Path) -> Path:
+    xml_path = tmp / "Project.xml"
+    init_project(
+        name="IO", short_name="io",
+        xml_path=xml_path,
+        pvd_path=tmp / "PVD.md",
+    )
+    return xml_path
+
+
+class HandleRequestTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_lint_method_returns_findings(self) -> None:
+        xml_path = _bootstrap_project(self.tmp)
+        resp = handle_request({
+            "jsonrpc": "2.0", "id": 1, "method": "lint",
+            "params": {
+                "xml_path": str(xml_path),
+                "xsd_path": str(_paths.PROJECT_XSD),
+            },
+        })
+        self.assertIsNotNone(resp)
+        self.assertEqual(resp["id"], 1)
+        self.assertIn("result", resp)
+        result = resp["result"]
+        self.assertEqual(set(result.keys()),
+                         {"errors", "warnings", "notes", "ok"})
+        self.assertTrue(result["ok"])
+
+    def test_lint_matches_cli_findings(self) -> None:
+        # Acceptance criterion from the plan: same findings as
+        # tools/lint_project.py for the same Project.xml.
+        if not _paths.DOC_PROJECT_XML.exists():
+            self.skipTest("doc/Project.xml not present")
+        from lint_project import lint as _lint_lib
+        cli_findings = _lint_lib(_paths.DOC_PROJECT_XML, _paths.PROJECT_XSD)
+        resp = handle_request({
+            "id": 1, "method": "lint",
+            "params": {
+                "xml_path": str(_paths.DOC_PROJECT_XML),
+                "xsd_path": str(_paths.PROJECT_XSD),
+            },
+        })
+        self.assertEqual(resp["result"]["errors"], cli_findings.errors)
+        self.assertEqual(resp["result"]["warnings"], cli_findings.warnings)
+        self.assertEqual(resp["result"]["notes"], cli_findings.notes)
+
+    def test_render_method_returns_markdown(self) -> None:
+        xml_path = _bootstrap_project(self.tmp)
+        template = _paths.TEMPLATES_DIR / "HLRs.md.j2"
+        resp = handle_request({
+            "id": 2, "method": "render",
+            "params": {
+                "template": str(template),
+                "metadata_id": "HLRs",
+                "xml_path": str(xml_path),
+            },
+        })
+        self.assertIn("result", resp)
+        self.assertIn("High-Level Requirements", resp["result"]["output"])
+        self.assertTrue(resp["result"]["output"].endswith("\n"))
+        self.assertIsNone(resp["result"]["out_path"])
+
+    def test_render_writes_to_out_path(self) -> None:
+        xml_path = _bootstrap_project(self.tmp)
+        template = _paths.TEMPLATES_DIR / "HLRs.md.j2"
+        out_path = self.tmp / "HLRs.md"
+        resp = handle_request({
+            "id": 3, "method": "render",
+            "params": {
+                "template": str(template),
+                "metadata_id": "HLRs",
+                "xml_path": str(xml_path),
+                "out": str(out_path),
+            },
+        })
+        self.assertIn("result", resp)
+        self.assertEqual(resp["result"]["out_path"], str(out_path))
+        self.assertTrue(out_path.exists())
+        self.assertIn("High-Level Requirements", out_path.read_text())
+
+    def test_parse_to_json_returns_dict(self) -> None:
+        xml_path = _bootstrap_project(self.tmp)
+        resp = handle_request({
+            "id": 4, "method": "parse_to_json",
+            "params": {"xml_path": str(xml_path)},
+        })
+        self.assertIn("result", resp)
+        self.assertEqual(resp["result"]["name"], "IO")
+        # Response must be JSON-serialisable.
+        json.dumps(resp)
+
+    def test_init_project_method(self) -> None:
+        xml_path = self.tmp / "new" / "Project.xml"
+        pvd_path = self.tmp / "new" / "PVD.md"
+        resp = handle_request({
+            "id": 5, "method": "init_project",
+            "params": {
+                "name": "NewProj",
+                "short_name": "np",
+                "xml_path": str(xml_path),
+                "pvd_path": str(pvd_path),
+            },
+        })
+        self.assertIn("result", resp)
+        self.assertEqual(resp["result"]["xml_path"], str(xml_path))
+        self.assertTrue(xml_path.exists())
+        self.assertTrue(pvd_path.exists())
+
+    def test_init_project_refuses_overwrite(self) -> None:
+        xml_path = _bootstrap_project(self.tmp)
+        resp = handle_request({
+            "id": 6, "method": "init_project",
+            "params": {
+                "name": "X", "short_name": "x",
+                "xml_path": str(xml_path),
+                "pvd_path": str(self.tmp / "PVD.md"),
+            },
+        })
+        self.assertIn("error", resp)
+        self.assertEqual(resp["error"]["code"], project_io.APPLICATION_ERROR)
+
+    def test_unknown_method_returns_method_not_found(self) -> None:
+        resp = handle_request({"id": 7, "method": "no_such"})
+        self.assertEqual(resp["error"]["code"], project_io.METHOD_NOT_FOUND)
+
+    def test_missing_method_returns_invalid_request(self) -> None:
+        resp = handle_request({"id": 8})
+        self.assertEqual(resp["error"]["code"], project_io.INVALID_REQUEST)
+
+    def test_invalid_params_returns_invalid_params(self) -> None:
+        # render requires template and metadata_id.
+        resp = handle_request({"id": 9, "method": "render", "params": {}})
+        self.assertEqual(resp["error"]["code"], project_io.INVALID_PARAMS)
+
+    def test_application_error_for_bad_xml_path(self) -> None:
+        resp = handle_request({
+            "id": 10, "method": "render",
+            "params": {
+                "template": str(_paths.TEMPLATES_DIR / "HLRs.md.j2"),
+                "metadata_id": "HLRs",
+                "xml_path": str(self.tmp / "missing.xml"),
+            },
+        })
+        self.assertEqual(resp["error"]["code"], project_io.APPLICATION_ERROR)
+
+    def test_notification_returns_none(self) -> None:
+        # JSON-RPC 2.0 notification: explicit jsonrpc, no id.
+        resp = handle_request({"jsonrpc": "2.0", "method": "lint"})
+        self.assertIsNone(resp)
+
+
+class ServeStreamTests(unittest.TestCase):
+    """Drive serve() with in-memory streams to exercise the loop."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_multiple_requests_one_per_line(self) -> None:
+        xml_path = _bootstrap_project(self.tmp)
+        template = _paths.TEMPLATES_DIR / "HLRs.md.j2"
+        requests = [
+            {"id": 1, "method": "lint",
+             "params": {"xml_path": str(xml_path),
+                        "xsd_path": str(_paths.PROJECT_XSD)}},
+            {"id": 2, "method": "render",
+             "params": {"template": str(template),
+                        "metadata_id": "HLRs",
+                        "xml_path": str(xml_path)}},
+        ]
+        stdin = io.StringIO("\n".join(json.dumps(r) for r in requests) + "\n")
+        stdout = io.StringIO()
+        rc = serve(stdin=stdin, stdout=stdout)
+        self.assertEqual(rc, 0)
+        lines = [line for line in stdout.getvalue().splitlines() if line]
+        self.assertEqual(len(lines), 2)
+        ids = [json.loads(line)["id"] for line in lines]
+        self.assertEqual(ids, [1, 2])
+
+    def test_invalid_json_returns_parse_error(self) -> None:
+        stdin = io.StringIO("not-json\n")
+        stdout = io.StringIO()
+        serve(stdin=stdin, stdout=stdout)
+        resp = json.loads(stdout.getvalue().strip())
+        self.assertEqual(resp["error"]["code"], project_io.PARSE_ERROR)
+
+
+class SubprocessTests(unittest.TestCase):
+    """Drive the actual `python3 tools/project_io.py` process — the
+    acceptance criterion from PLAN_vscode_extension.md Phase 0."""
+
+    def test_echo_lint_request_returns_findings(self) -> None:
+        request = {
+            "id": 1, "method": "lint",
+            "params": {
+                "xml_path": str(_paths.DOC_PROJECT_XML),
+                "xsd_path": str(_paths.PROJECT_XSD),
+            },
+        }
+        proc = subprocess.run(
+            [sys.executable, str(_paths.TOOLS_DIR / "project_io.py")],
+            input=json.dumps(request) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        resp = json.loads(proc.stdout.strip())
+        self.assertEqual(resp["id"], 1)
+        self.assertIn("result", resp)
+        self.assertIn("errors", resp["result"])
+
+    def test_subprocess_lint_matches_in_process_lint(self) -> None:
+        from lint_project import lint as _lint_lib
+        cli_findings = _lint_lib(_paths.DOC_PROJECT_XML, _paths.PROJECT_XSD)
+
+        request = {
+            "id": 1, "method": "lint",
+            "params": {
+                "xml_path": str(_paths.DOC_PROJECT_XML),
+                "xsd_path": str(_paths.PROJECT_XSD),
+            },
+        }
+        proc = subprocess.run(
+            [sys.executable, str(_paths.TOOLS_DIR / "project_io.py")],
+            input=json.dumps(request) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        resp = json.loads(proc.stdout.strip())
+        self.assertEqual(resp["result"]["errors"], cli_findings.errors)
+        self.assertEqual(resp["result"]["warnings"], cli_findings.warnings)
+
+
+if __name__ == "__main__":
+    unittest.main()

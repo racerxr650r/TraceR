@@ -1,0 +1,22 @@
+{
+    // Launches the extension in a new VS Code window (Extension
+    // Development Host) with this folder's source loaded. Press F5
+    // (or pick "Run Extension" from the Run and Debug view) to start.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "runtimeExecutable": "${execPath}",
+            "args": [
+                "${workspaceFolder}/../..",
+                "--extensionDevelopmentPath=${workspaceFolder}"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ],
+            "preLaunchTask": "npm: build"
+        }
+    ]
+}

@@ -1,0 +1,128 @@
+{
+  "name": "vscode-project-xml",
+  "displayName": "Project Spec (TraceR)",
+  "description": "Structured authoring, validation, and traceability views for TraceR's doc/Project.xml.",
+  "version": "0.1.0",
+  "publisher": "tracer",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Linters"
+  ],
+  "extensionDependencies": [
+    "redhat.vscode-xml"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:doc/Project.xml"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Project Spec spawns a Python sidecar (tools/project_io.py); only trusted workspaces may execute it."
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "projectXml",
+          "title": "Project Spec",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "projectXml": [
+        {
+          "id": "projectXml.tree",
+          "name": "Project Spec",
+          "icon": "media/icon.svg",
+          "contextualTitle": "Project Spec"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "projectXml.refresh",
+        "title": "Project Spec: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "projectXml.lint",
+        "title": "Project Spec: Run Linter"
+      },
+      {
+        "command": "projectXml.revealInXml",
+        "title": "Project Spec: Reveal in Project.xml"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "projectXml.refresh",
+          "when": "view == projectXml.tree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "projectXml.revealInXml",
+          "when": "view == projectXml.tree && viewItem =~ /revealable/",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "projectXml.revealInXml",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Project Spec",
+      "properties": {
+        "projectXml.xmlPath": {
+          "type": "string",
+          "default": "doc/Project.xml",
+          "description": "Workspace-relative path to Project.xml."
+        },
+        "projectXml.xsdPath": {
+          "type": "string",
+          "default": "tools/project.xsd",
+          "description": "Workspace-relative path to project.xsd."
+        },
+        "projectXml.toolsDir": {
+          "type": "string",
+          "default": "tools",
+          "description": "Workspace-relative path to the tools/ directory containing project_io.py."
+        },
+        "projectXml.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Python interpreter used to run project_io.py. Empty falls back to python3, then python."
+        },
+        "projectXml.autoLintOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-run the linter when Project.xml is saved."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "compile": "tsc -p . --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}
