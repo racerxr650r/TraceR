@@ -33,8 +33,13 @@
   </stp>
 
   <!-- High-Level Requirements (see tools/Project_xml_README.md §5). -->
-  <hlrs>
-  </hlrs>
+<hlrs>
+  <section number="1" title="Smoke Test">
+    <hlr id="HLR-001" name="Acceptance smoke">
+      <text>Phase 1 verification.</text>
+    </hlr>
+  </section>
+</hlrs>
 
   <!-- Low-Level Requirements (see tools/Project_xml_README.md §6). -->
   <llrs>
