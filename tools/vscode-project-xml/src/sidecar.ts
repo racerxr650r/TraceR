@@ -43,6 +43,10 @@ export class ProjectIoClient implements vscode.Disposable {
         return this.request<ParsedProject>('parse_to_json', params);
     }
 
+    async render(params: RenderParams): Promise<RenderResult> {
+        return this.request<RenderResult>('render', params as unknown as Record<string, unknown>);
+    }
+
     private async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
         const proc = this.ensureStarted();
         const id = this.nextId++;
@@ -187,6 +191,19 @@ export interface LintResult {
     ok: boolean;
 }
 
+export interface RenderParams {
+    template: string;
+    metadata_id: string;
+    xml_path?: string;
+    /** When set, the sidecar writes the rendered output to this path. */
+    out?: string;
+}
+
+export interface RenderResult {
+    output: string;
+    out_path: string | null;
+}
+
 export interface ParsedSection {
     number?: string;
     title?: string;
@@ -197,6 +214,7 @@ export interface ParsedHlr {
     id: string;
     name?: string;
     text?: string;
+    traces?: ParsedTrace[];
 }
 
 export interface ParsedLlrGroup {
@@ -209,6 +227,7 @@ export interface ParsedLlrGroup {
 export interface ParsedLlr {
     id: string;
     text?: string;
+    traces?: ParsedTrace[];
 }
 
 export interface ParsedTestFile {
@@ -219,6 +238,14 @@ export interface ParsedTestFile {
 export interface ParsedTest {
     name: string;
     purpose?: string;
+    traces?: ParsedTrace[];
+}
+
+export interface ParsedTrace {
+    target?: string;
+    ref?: string;
+    name?: string;
+    [key: string]: string | undefined;
 }
 
 export interface ParsedSddModule {

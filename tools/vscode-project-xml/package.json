@@ -17,7 +17,9 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:doc/Project.xml"
+    "workspaceContains:doc/Project.xml",
+    "onCommand:projectXml.renderAndPreview",
+    "onCommand:projectXml.renderAll"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -58,6 +60,18 @@
       {
         "command": "projectXml.revealInXml",
         "title": "Project Spec: Reveal in Project.xml"
+      },
+      {
+        "command": "projectXml.renderAndPreview",
+        "title": "Project Spec: Render & Preview\u2026"
+      },
+      {
+        "command": "projectXml.renderAll",
+        "title": "Project Spec: Render All Documents"
+      },
+      {
+        "command": "projectXml.codeLens.pickRelated",
+        "title": "Project Spec: Pick Related Element"
       }
     ],
     "menus": {
@@ -78,6 +92,10 @@
       "commandPalette": [
         {
           "command": "projectXml.revealInXml",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.codeLens.pickRelated",
           "when": "false"
         }
       ]
@@ -109,6 +127,11 @@
           "type": "boolean",
           "default": true,
           "description": "Re-run the linter when Project.xml is saved."
+        },
+        "projectXml.previewOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "When Project.xml is saved, refresh any open Project Spec Markdown previews. The preview is served from an in-memory virtual document and never writes to doc/."
         }
       }
     }
