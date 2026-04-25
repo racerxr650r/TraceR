@@ -1242,4 +1242,22 @@ The vocabulary's element and attribute names listed in §16.1 are
 new `ui:field` `kind=` values may be added; existing values will not
 change meaning.
 
+### 16.5 Consumer status (Phase 2.5b)
+
+The VS Code extension consumes the vocabulary at four seams:
+
+| Seam | Hint key | Slice |
+|---|---|---|
+| `ProjectSpecProvider.buildGenericPayloadNodes` — auto-projects any uncovered `ui:treeNode`-bearing payload | `tree_node` | E |
+| `ProjectSpecProvider.buildHlrsNode` / `buildLlrsNode` / `buildTestsNode` / `buildSddNode` — leaf locators read `(tag, idAttr)` from the schema | `tree_node.id_attr`, `element` | H |
+| `CoverageCodeLensProvider.getLensTargets` — inline coverage / tracesCount lenses scan whichever elements declare a supported lens | `lenses[].kind`, `tree_node.id_attr`, `element` | F |
+| `LintDiagnosticsProvider` (via `buildIdScanRegistryFromHints`) — diagnostic ranges resolve any payload's id tokens, not only `HLR-NNN` / `LLR-XXX-NN` | `tree_node.id_attr`, `element` | G |
+
+Adding a new payload with a `<ui:treeNode/>` annotation in
+`tools/project.xsd` therefore surfaces in the tree, lens, and
+diagnostic surfaces with **no TypeScript edits**. Adding a `ui:lens
+kind="coverage"` annotation (and registering the per-element related-
+items handler in `RELATED_DISPATCH`) lights up inline coverage lenses
+on the new payload too.
+
 

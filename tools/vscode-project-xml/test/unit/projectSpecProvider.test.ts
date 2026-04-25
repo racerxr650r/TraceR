@@ -10,6 +10,7 @@ import {
     ProjectSpecNode,
     _buildGenericPayloadNodes,
     _renderLabel,
+    locatorMeta,
 } from '../../src/treeView/ProjectSpecProvider';
 import {
     ParsedNode,
@@ -180,5 +181,53 @@ describe('_renderLabel (Phase 2.5b Slice E)', () => {
 
     it('collapses to empty string when no tokens resolve', () => {
         assert.equal(_renderLabel('@missing', node({})), '');
+    });
+});
+
+describe('locatorMeta (Phase 2.5b Slice H)', () => {
+    const hints: UiHintsIndex = {
+        Test: {
+            tree_node: { label: '@name', id_attr: 'name', group: 'tests' },
+            form: [],
+            lenses: [],
+            document: false,
+            element: 'test',
+        },
+        Hlr: {
+            tree_node: { label: '@id', id_attr: 'id', group: 'hlrs' },
+            form: [],
+            lenses: [],
+            document: false,
+            element: 'hlr',
+        },
+    };
+
+    it('reads tag + idAttr from the schema when present', () => {
+        const meta = locatorMeta(hints, 'Test', 'fallback', 'fb');
+        assert.deepEqual(meta, { tag: 'test', idAttr: 'name' });
+    });
+
+    it('falls back when the type key is absent', () => {
+        const meta = locatorMeta(hints, 'Missing', 'fallback', 'fb');
+        assert.deepEqual(meta, { tag: 'fallback', idAttr: 'fb' });
+    });
+
+    it('falls back when hints are undefined', () => {
+        const meta = locatorMeta(undefined, 'Test', 'test', 'name');
+        assert.deepEqual(meta, { tag: 'test', idAttr: 'name' });
+    });
+
+    it('falls back when the type entry has no tree_node', () => {
+        const partial: UiHintsIndex = {
+            Document: {
+                tree_node: null,
+                form: [],
+                lenses: [],
+                document: true,
+                element: 'document',
+            },
+        };
+        const meta = locatorMeta(partial, 'Document', 'document', 'id');
+        assert.deepEqual(meta, { tag: 'document', idAttr: 'id' });
     });
 });
