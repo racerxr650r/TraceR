@@ -23,9 +23,11 @@ out in [doc/PVD.md](PVD.md):
     are built at runtime from `tools/project.xsd` UI hints
     (`xs:appinfo`) and the `<metadata><document>` list, so adding a
     new generated document or payload section requires zero
-    TypeScript changes. Covered by **Phase 2.5** (the retrofit that
-    replaces the hard-coded Phase 1–2 surfaces with schema-driven
-    equivalents) and inherited by Phases 3–4.
+    TypeScript changes. Covered by **Phase 2.5** (delivered: the
+    document-discovery / linter / badge / `<plan>` proof half),
+    **Phase 2.5b** (the generic `ParsedNode` projection plus tree /
+    lens / locator rewrite), and **Phase 2.5c** (the payload-
+    agnostic Quick Fix table); inherited by Phases 3–4.
 *   **AI-assisted authoring** ([PVD §5 #6](PVD.md), [§6 #7](PVD.md),
     [§7.1](PVD.md)) — `@projectspec` chat participant, slash
     commands, grounded prompts, typed responses, validate→retry,
@@ -40,7 +42,7 @@ The success metric **"AI-grounded authoring"** in [PVD §8](PVD.md)
 silently applied) is the acceptance bar for Phase 5; the
 **"Schema-driven extensibility"** metric in [PVD §8](PVD.md) (a new
 doc/payload addable with zero TS changes) is the acceptance bar for
-Phase 2.5; and the [PVD §6 #7](PVD.md) principle ("AI as a
+Phases 2.5 + 2.5b together; and the [PVD §6 #7](PVD.md) principle ("AI as a
 co-author, not an oracle: grounded, validated, diff-previewed,
 logged") is the design contract for §5.8 and §5.9.
 
@@ -392,7 +394,7 @@ important.
 ### Phase 2 — Code Lenses + Render
 1.  `CodeLensProvider` over `Project.xml`. The Phase-2 lens provider
     targets `<hlr>`, `<llr>`, and `<test>` with hard-coded selectors;
-    Phase 2.5 replaces the selectors with the `ui_hints_index.lenses`
+    Phase 2.5b replaces the selectors with the `ui_hints_index.lenses`
     walk so the same provider picks up any new payload kind.
 2.  `projectXml.renderAndPreview` command that opens the rendered
     Markdown in a side-by-side preview pane backed by an in-memory
@@ -400,9 +402,9 @@ important.
     surface **never writes a file** to disk, per [HLR-027](HLRs.md).
     Honours `projectXml.previewOnSave`.
 3.  `projectXml.renderAll` command. Phase 2 enumerates a hard-coded
-    list (`SDD|HLRs|LLRs|STP|Traceability`); Phase 2.5 swaps that for
-    a `list_documents` call so new templates are picked up
-    automatically.
+    list (`SDD|HLRs|LLRs|STP|Traceability`); Phase 2.5 swapped that
+    for a `list_documents` call so new templates are picked up
+    automatically (delivered).
 4.  Acceptance: clicking a Code Lens link jumps to the correct LLR;
     saving the file (with `previewOnSave: true`) updates the preview
     without producing any new files under `doc/`.
@@ -420,12 +422,13 @@ important.
 > under `doc/`. Add a `projectXml.renderAll` command that regenerates
 > every spec under `doc/` using the hard-coded baseline document list
 > (`SDD|HLRs|LLRs|STP|Traceability`); the list will be replaced by a
-> `list_documents` sidecar call in Phase 2.5, so keep the document
-> set in a single named constant that Phase 2.5 can swap. Honour the
+> `list_documents` sidecar call in Phase 2.5 (delivered), so keep
+> the document set in a single named constant that Phase 2.5 can
+> swap. Honour the
 > `projectXml.previewOnSave` setting. Keep all rendering in the
 > sidecar — do not reimplement template logic in TypeScript.
 
-### Phase 2.5 — Schema-driven retrofit
+### Phase 2.5 — Schema-driven retrofit (delivered)
 
 **Why this phase exists.** Phases 1 and 2 ship hard-coded surfaces
 (tree nodes for HLRs/LLRs/Tests/SDD/STP, code lenses keyed on those
@@ -435,147 +438,256 @@ document ids). The PVD update of 2026-04 introduced [Principle 11
 ["Schema-driven extensibility" success metric](PVD.md), which
 require that adding a new generated document, a new payload
 section, or a new field be a schema-and-template change — not a
-TypeScript change. This phase retrofits the Phase 1–2 surfaces to
-that contract before Phase 3's form panels lock in any further
-hard-coded payload assumptions.
+TypeScript change. This phase begins that retrofit before Phase 3's
+form panels lock in any further hard-coded payload assumptions.
 
-1.  **UI-hint vocabulary in the XSD.** Define a small `xs:appinfo`
-    vocabulary under a dedicated namespace (e.g.
-    `xmlns:ui="https://tracer.dev/ui/1"`) covering at minimum:
-    *   `ui:treeNode label="@name|@id" idAttr="id" group="..."`
-        — element appears in the Project Spec tree.
+The retrofit splits into three sub-phases. **Phase 2.5** (this
+section) ships the schema-driven document discovery surface and the
+acceptance proof that proves the contract works end-to-end.
+**Phase 2.5b** (below) takes on the bigger surgery — a generic
+`ParsedNode` projection plus tree / lens / locator / form rewrites
+driven by the `ui_hints_index`. **Phase 2.5c** (below) lands the
+payload-agnostic Quick Fix table.
+
+The split exists because the work in 2.5b is large enough to
+benefit from being driven by a concrete second consumer. With
+`<plan>` shipping in the test fixture as that second consumer (and
+with the badge / discovery infrastructure proving the linter →
+extension contract), 2.5b can be executed against a real second
+payload rather than against the abstract idea of "any future
+payload".
+
+1.  **Schema-driven document discovery.** `tools/project_io.py`
+    grows a `list_documents` JSON-RPC method that enumerates
+    `<metadata><document>` entries (id / title / source / version /
+    date / author / template / output) — convention falls back to
+    `tools/templates/<id>.md.j2` and `<source>` when `template=`
+    and `output=` are absent on the `<document>`. The XSD accepts
+    the optional `template=` / `output=` attributes on
+    `Document` (schema_version 1.2). The five canonical entries in
+    `doc/Project.xml` carry both attributes explicitly so the
+    schema is self-describing without relying on the convention.
+    Both the extension's `projectXml.renderAndPreview`, its
+    `projectXml.renderAll`, and a runtime-registered family of
+    `projectXml.render.<id>` commands enumerate that surface
+    instead of a hard-coded list of `SDD|HLRs|LLRs|STP|Traceability`.
+    The Markdown preview reads the same surface. Pinned by
+    HLR-054 / HLR-055 / HLR-056 / LLR-MET-01..05 in
+    [Project.xml](Project.xml).
+2.  **Linter alignment.** `tools/lint_project.py`'s `STANDARD_DOCS`
+    set is replaced by the document-id set returned by
+    `list_documents` against the project being linted; the
+    "required document missing" check becomes "any
+    `<metadata><document>` whose `template=` (explicit attr or
+    convention) is missing from disk emits `missing-template`".
+    The hard-coded five-doc set is gone. The `Finding` record
+    grows an optional `code` field
+    (`broken-trace` / `id-format` / `missing-template` / `no-test`)
+    so downstream surfaces can dispatch on a stable token rather
+    than the message text; the legacy `errors` / `warnings` /
+    `notes` lists in `Findings.to_dict()` remain byte-identical
+    for cross-surface equivalence (HLR-043).
+3.  **Reserved `ui:*` namespace + `ui:icon` / `ui:color` / `ui:group`
+    on payload elements.** `tools/project.xsd` declares
+    `xmlns:ui="urn:tracer:ui:v1"` and accepts arbitrary `ui:*`
+    attributes via `<xs:anyAttribute namespace="urn:tracer:ui:v1"
+    processContents="skip"/>` on `<hlr>`, `<llr>`, `<test>`, and
+    `<module>`. The Python renderer projects the recognised key
+    subset (`icon`, `color`, `group`) onto a `ui` field on every
+    parsed payload (returns `None` when no recognised hint is
+    present). The VS Code tree provider's leaf builders consume
+    that field via a small `applyHintsToNode(node, hints)` helper
+    that sets `node.iconPath = ThemeIcon(icon, ThemeColor(color))`.
+    `ui:group` is reserved-and-ignored today. Pinned by HLR-058 /
+    LLR-HNT-01..04. **The full `xs:appinfo` vocabulary
+    (`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`) is
+    deferred to Phase 2.5b** — Phase 2.5 only reserves the
+    namespace and ships the per-element decoration channel.
+    Schema_Reference.md §14 documents `<plan>` as the example
+    payload; §15 pins the `Finding` / `LintFinding` / `code`
+    contract.
+4.  **Coverage status badges.** Every HLR / LLR leaf in the Project
+    Spec tree is decorated with ❌ when any error finding cites it
+    and ⚠ when only warnings do, derived from `Findings.items`
+    keyed by `Finding.code`. The badge index lives in
+    `util/badges.ts`; the tree provider's `setBadges()` is fed by
+    the same diagnostics run that populates the Problems panel, so
+    a single source — the linter — drives both surfaces. Gated on
+    the `projectXml.showCoverageBadges` setting. Pinned by HLR-057
+    / LLR-BDG-01..04.
+5.  **Activation cleanup.** `package.json`'s `activationEvents`
+    collapses to a single `workspaceContains:doc/Project.xml`; the
+    redundant `onCommand:projectXml.renderAndPreview` and
+    `onCommand:projectXml.renderAll` entries are removed. The
+    runtime-registered `projectXml.render.<id>` family
+    deliberately rides the same trigger so the static / dynamic
+    halves of the manifest stay symmetrical.
+6.  **`<plan>` acceptance proof.** A synthetic `<plan>` payload, a
+    `tools/templates/Plan.md.j2` template, and a
+    `<metadata><document id="Plan">` entry are added to
+    `test/doc/Project.xml`. With **zero** TypeScript changes, the
+    extension shows a `Plan` document under the dynamic render
+    commands, opens the rendered `Plan.md` in the side preview,
+    lints cleanly, and renders byte-identically across the CLI,
+    the in-process library, and the JSON-RPC sidecar. This is the
+    canonical regression test for the schema-driven contract; if a
+    future contributor adds a hard-coded reference to one of the
+    five "standard" payloads, the `<plan>` proof fails first.
+
+**Not in Phase 2.5 (carried into 2.5b / 2.5c):**
+
+*   The generic `ParsedNode` projection and `ui_hints_index`
+    surface — sidecar still emits the hand-typed
+    `ParsedSdd` / `ParsedHlr` / `ParsedLlr` / `ParsedTest`
+    interfaces, augmented only with the optional `ui` field.
+*   The generic tree / lens / locator rewrite — five
+    `build*Node` builders and the HLR / LLR / test / module
+    selectors are still hard-coded; the schema-driven payoff for
+    *new* tree nodes / lenses / reveal-in-XML targets is the work
+    of 2.5b.
+*   The full `xs:appinfo` UI-hint vocabulary (`ui:treeNode`,
+    `ui:form`, `ui:lens`, `ui:document`) — only the per-element
+    `ui:icon` / `ui:color` / `ui:group` decoration channel is in.
+*   The payload-agnostic `CodeActionProvider` Quick Fix table
+    keyed on `Finding.code` — covered by Phase 2.5c.
+
+### Phase 2.5b — Generic schema-driven projection
+
+The bigger surgery. Phase 2.5 proved the linter and document-
+discovery sides of the schema-driven contract; 2.5b pushes the
+contract through the rest of the extension surfaces so adding a
+new `<payload>` to the XSD (with `ui:treeNode` / `ui:lens` /
+`ui:form` annotations) wires up the Project Spec tree, code
+lenses, locator, and Phase 3 form panels with no TypeScript edits.
+
+1.  **Full `xs:appinfo` UI-hint vocabulary.** Extend
+    `tools/project.xsd` with `<xs:appinfo>` annotations under the
+    existing `urn:tracer:ui:v1` namespace covering at minimum:
+    *   `ui:treeNode label="@name|@id" idAttr="id" group="..."` —
+        element appears in the Project Spec tree.
     *   `ui:form field="text|textarea|enum|ref:HLR|ref:LLR|cdata"`
         on each editable attribute / child element.
     *   `ui:lens kind="coverage|tracesCount|custom:<name>"` —
         which code lens to attach.
-    *   `ui:document id="..."` on `metadata/document` to mark which
-        ids are renderable targets.
+    *   `ui:document id="..."` on `<metadata><document>` to mark
+        which ids are renderable targets (today inferred from the
+        presence of the `<document>` row itself).
     Document the vocabulary in
-    [Schema_Reference.md](Schema_Reference.md)
-    alongside the existing schema reference. Bump
-    `<project schema_version>` to reflect the additive change.
+    [Schema_Reference.md](Schema_Reference.md) alongside §14
+    (`<plan>` payload) and §15 (linter contract) shipped in 2.5.
+    Bump `<project schema_version>` (1.3 → 1.4).
 2.  **Generic JSON projection.** Replace the hand-typed
-    `ParsedSdd` / `ParsedHlr` / `ParsedLlr` / `ParsedStp` interfaces
-    in `tools/vscode-project-xml/src/sidecar.ts` with a generic
+    `ParsedSdd` / `ParsedHlr` / `ParsedLlr` / `ParsedTest` /
+    `ParsedSddModule` interfaces in
+    `tools/vscode-project-xml/src/sidecar.ts` with a generic
     `ParsedNode { tag, attrs, text?, children: Record<string,
     ParsedNode[]> }`. Extend `tools/project_io.py`'s
     `parse_to_json` to emit this shape plus an inline
-    `ui_hints_index` derived from the XSD so the TypeScript side
-    never re-parses the schema.
+    `ui_hints_index` derived from the XSD `<xs:appinfo>` blocks so
+    the TypeScript side never re-parses the schema. The
+    `Finding.code` table from 2.5 stays exactly as it is.
 3.  **Generic tree provider.** Rewrite
     `src/treeView/ProjectSpecProvider.ts` to walk
     `ui_hints_index.treeNodes` instead of calling `buildHlrsNode` /
     `buildLlrsNode` / `buildSddNode` / `buildStpNode` /
     `buildTestsNode`. The five hard-coded builders are deleted; the
     same view rebuilds itself when the schema declares a new
-    top-level node.
+    top-level node. The `applyHintsToNode()` decoration path
+    shipped in 2.5 stays as the seam for icon / color / group
+    application; the badge index from 2.5 stays as the seam for
+    `Finding.code`-driven status decoration.
 4.  **Generic locator.** Rewrite `src/util/locator.ts` so it takes
     `(elementName, idAttr, idValue)` from the hint registry rather
-    than special-casing HLR/LLR/test/module element names.
+    than special-casing HLR / LLR / test / module element names.
+    Reveal-in-XML for new tree nodes works without locator edits.
 5.  **Generic code lenses.** Replace the Phase 2 lens provider's
-    fixed `<hlr>`/`<llr>`/`<test>` selectors with one driven by
+    fixed `<hlr>` / `<llr>` / `<test>` selectors with one driven by
     `ui_hints_index.lenses`; the existing coverage and
     traces-count computations move into named lens kinds that any
     new payload can opt into via `ui:lens`.
-6.  **Schema-driven document discovery.** The Phase 2
-    `projectXml.renderAndPreview`, `projectXml.renderAll`, and
-    Markdown-preview commands enumerate `<metadata><document>`
-    entries (filtered by `ui:document`) instead of a hard-coded
-    list of `SDD|HLRs|LLRs|STP|Traceability`. The Command Palette
-    contributes one `Render <Doc>` command per discovered document
-    via `package.json`'s dynamic command activation, populated at
-    activation time from a sidecar `list_documents` call.
-7.  **Linter alignment.** Change `tools/lint_project.py`'s
-    `STANDARD_DOCS` set into a function that returns the document
-    ids declared in `<metadata><document>`; the existing
-    "required document missing" check becomes "any document id
-    referenced by a template under `tools/templates/` must have a
-    matching `<metadata><document>`". Templates discovered under
-    `tools/templates/` define the required set; the hard-coded
-    five-doc set is removed.
-8.  **Status badges in the tree.** Annotate every payload node with
-    a count badge (already present) plus a lint-derived status
-    badge (`⚠` for coverage gaps, `❌` for broken trace refs / ID
-    errors), driven by the `Finding.code` set returned by `lint`
-    against the node's xpath. Per [HLR-022](HLRs.md) and SDD §12.
-    Honours `projectXml.showCoverageBadges`.
-9.  **Payload-agnostic Quick Fix table.** Implement
-    `CodeActionProvider` Quick Fixes keyed on `Finding.code`
-    rather than payload element name (per [HLR-012](HLRs.md),
-    [HLR-025](HLRs.md), SDD §13):
+6.  **Acceptance.** Add a new top-level payload to the test
+    fixture `Project.xml` whose XSD type carries `ui:treeNode`,
+    `ui:lens kind="coverage"`, and per-attribute `ui:form` hints,
+    and a corresponding template under `tools/templates/`. With
+    **zero** TypeScript edits, the extension must show the new
+    payload's tree node, attach the coverage lens, reveal-in-XML
+    correctly, and (when Phase 3 lands) drive a form panel from
+    the same hints. The `<plan>` regression case shipped in 2.5
+    must continue to pass.
+7.  **Carry-forward contract for Phases 3–6.** From the moment
+    2.5b lands, every new surface (form panels, walkthrough steps,
+    AI tree context-menu commands per [HLR-053](HLRs.md), AI
+    intents, merge intents, status bar) consults the hint registry
+    rather than naming payload elements directly. Bespoke widgets
+    and domain-specific lint rules remain the only payload-aware
+    code paths, as required by [PVD §6 #11](PVD.md).
+
+**AI prompt:**
+> Complete the schema-driven retrofit started in Phase 2.5: extend
+> `tools/project.xsd` with the full `<xs:appinfo>` UI-hint
+> vocabulary (`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`)
+> under the existing `urn:tracer:ui:v1` namespace, document it in
+> `Schema_Reference.md`, and bump `schema_version` to 1.4. Extend
+> `tools/project_io.py`'s `parse_to_json` to emit a generic
+> `ParsedNode` tree plus a `ui_hints_index` distilled from the
+> XSD. On the TypeScript side, replace the hand-typed
+> `ParsedSdd` / `ParsedHlr` / `ParsedLlr` / `ParsedTest` /
+> `ParsedSddModule` interfaces in `sidecar.ts` with one generic
+> `ParsedNode`; rewrite `ProjectSpecProvider`, the lens provider,
+> and `util/locator.ts` to walk the hint registry instead of
+> calling per-payload builders. Keep the per-element
+> `applyHintsToNode()` decoration path and the `Finding.code`
+> badge index from Phase 2.5 in place — both stay as seams. Prove
+> the retrofit by adding a second synthetic payload (one beyond
+> `<plan>`) whose XSD type carries `ui:treeNode`,
+> `ui:lens kind="coverage"`, and per-attribute `ui:form` hints,
+> and showing that the extension picks up the new tree node, the
+> coverage lens, and (in Phase 3) a form panel with **zero**
+> TypeScript edits. The existing `<plan>` regression case must
+> continue to pass.
+
+### Phase 2.5c — Payload-agnostic Quick Fix table
+
+A standalone surface that does not depend on 2.5b's generic
+projection — it keys on `Finding.code` (already shipped in 2.5)
+and uses VS Code `WorkspaceEdit` text edits, so it does not need
+the Phase 3 `apply_edit` write path.
+
+1.  Implement a `CodeActionProvider` whose Quick Fix table is
+    keyed on `Finding.code` rather than payload element name (per
+    [HLR-012](HLRs.md), [HLR-025](HLRs.md), SDD §13):
     *   `broken-trace` — "Replace ref with…" picker populated from
         the parsed tree (HLRs / LLRs / module paths in scope).
     *   `id-format` — "Renumber as next free `HLR-NNN` /
         `LLR-XXX-NN`".
-    *   `missing-document` — "Insert standard `<document>` row".
+    *   `missing-template` — "Insert standard `<document>` row" or
+        "Stub the missing template file".
     *   `no-test` — "Create stub `<test>` entry".
-    Phase 2.5 fixes use VS Code `WorkspaceEdit` text edits so they
-    do not require the Phase 3 `apply_edit` write path; the
-    AI-suggest variant of each fix lands in Phase 5.
-10. **Acceptance.** Add a synthetic `<plan>` payload to a fixture
-    `Project.xml` plus a `tools/templates/Plan.md.j2` template and
-    a `<metadata><document id="Plan">` entry. With **zero**
-    TypeScript changes, the extension must:
-    *   Show a `Plan (n phases)` node in the Project Spec tree.
-    *   Offer a `Render Plan` command in the Command Palette.
-    *   Open the rendered `Plan.md` in the side preview.
-    *   Lint cleanly with no "unknown document" or "unknown
-        element" findings.
-    *   Reveal-in-XML must work for the new tree nodes via the
-        generic locator.
-    Additionally: triggering a `broken-trace` finding on the
-    fixture must surface the table-driven Quick Fix without any
-    payload-specific code path.
-11. **Carry-forward contract for Phases 3–6.** From this point on,
-    every new surface (form panels, walkthrough steps, AI tree
-    context-menu commands per [HLR-053](HLRs.md), AI intents,
-    merge intents, status bar) consults the hint registry rather
-    than naming payload elements directly. Bespoke widgets and
-    domain-specific lint rules remain the only payload-aware code
-    paths, as required by [PVD §6 #11](PVD.md).
+2.  All Phase 2.5c fixes use `WorkspaceEdit` text edits; structural
+    rewrites that need an XSD-validated round-trip route through
+    `apply_edit` once Phase 3 lands. AI-suggest Quick Fix variants
+    remain Phase 5.
+3.  Acceptance: triggering each `Finding.code` value on the
+    `<plan>` fixture surfaces the correct Quick Fix without any
+    payload-specific code path; applying the fix produces a clean
+    re-lint.
 
 **AI prompt:**
-> Retrofit the Phase 1–2 surfaces of `tools/vscode-project-xml/`
-> to be schema-driven, per [PVD §6 #11](PVD.md) and the
-> "Schema-driven extensibility" success metric. First, extend
-> `tools/project.xsd` with an `xs:appinfo` UI-hint vocabulary
-> (`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`) under a
-> dedicated namespace, document it in
-> `Schema_Reference.md`, and bump `schema_version`. Extend
-> `tools/project_io.py`'s `parse_to_json` to emit a generic
-> `ParsedNode` tree plus a `ui_hints_index` distilled from the
-> XSD, and add a `list_documents` method enumerating
-> `<metadata><document>` entries. On the TypeScript side, replace
-> the hand-typed `ParsedSdd`/`ParsedHlr`/etc. interfaces with one
-> generic `ParsedNode`; rewrite `ProjectSpecProvider`, the lens
-> provider, and `util/locator.ts` to walk the hint registry
-> instead of calling per-payload builders; and replace the
-> hard-coded render command list with one `Render <Doc>` command
-> per discovered document, registered dynamically at activation.
-> On the linter side, derive `STANDARD_DOCS` from the templates
-> under `tools/templates/` rather than a hard-coded set. Add
-> lint-derived status badges (`⚠` for coverage gaps, `❌` for
-> broken refs / ID errors) to each payload node in the tree,
-> honouring `projectXml.showCoverageBadges`. Implement a
-> payload-agnostic `CodeActionProvider` whose Quick Fix table is
-> keyed on `Finding.code` (`broken-trace`, `id-format`,
-> `missing-document`, `no-test`), using VS Code `WorkspaceEdit`
-> text edits so the Phase 3 `apply_edit` write path is not yet
-> required. Prove the retrofit by adding a synthetic `<plan>`
-> payload, a `tools/templates/Plan.md.j2` template, and a
-> `<metadata><document id="Plan">` entry to a fixture
-> `Project.xml`, and showing that the extension picks up a `Plan`
-> tree node, a `Render Plan` command, a Markdown preview, the
-> table-driven Quick Fixes on a synthetic `broken-trace` finding,
-> and clean lint output with **zero** TypeScript changes after
-> the retrofit lands. Carry the schema-driven contract forward
-> into Phases 3–6: no new surface (including the AI tree context
-> menu in [HLR-053](HLRs.md)) may name a payload element directly.
+> Implement a payload-agnostic `CodeActionProvider` for the
+> `Project.xml` `tools/vscode-project-xml/` extension whose
+> Quick Fix table is keyed on the `Finding.code` values shipped
+> in Phase 2.5 (`broken-trace`, `id-format`, `missing-template`,
+> `no-test`) — never on payload element name. All fixes use VS
+> Code `WorkspaceEdit` text edits so the Phase 3 `apply_edit`
+> write path is not yet required. Prove correctness by triggering
+> each finding code on the `<plan>` fixture and showing that the
+> Quick Fix appears, applies, and produces a clean re-lint
+> without any `<plan>`-specific code path.
 
 ### Phase 3 — Form webview for HLRs and LLRs
 1.  Single-item form panel with RJSF whose JSON Schema is derived at
     runtime from the relevant XSD subtree plus the `ui:form` field
-    hints from the Phase 2.5 hint registry (per [HLR-026](HLRs.md));
+    hints from the Phase 2.5b hint registry (per [HLR-026](HLRs.md));
     no per-payload form code.
 2.  `apply_edit(json_patch)` sidecar method (per [HLR-019](HLRs.md))
     that applies each JSON Patch on a working copy, runs XSD + lint,
@@ -587,7 +699,7 @@ hard-coded payload assumptions.
 4.  Dirty-buffer collision: if `doc/Project.xml` is open with
     unsaved changes when a form submits, prompt the user to save or
     discard before applying the patch.
-5.  Extend the Phase 2.5 Quick Fix table so any fix that needs a
+5.  Extend the Phase 2.5c Quick Fix table so any fix that needs a
     structural rewrite (rather than a flat text replacement) routes
     through the new `apply_edit` path; the existing `WorkspaceEdit`
     fixes continue to work unchanged. AI-suggest Quick Fix variants
@@ -603,7 +715,7 @@ hard-coded payload assumptions.
 > panel that edits a single `<hlr>` or `<llr>` using
 > [react-jsonschema-form](https://rjsf-team.github.io/react-jsonschema-form/)
 > driven by a JSON Schema derived at runtime from the relevant XSD
-> subtree plus the `ui:form` field hints in the Phase 2.5
+> subtree plus the `ui:form` field hints in the Phase 2.5b
 > `ui_hints_index` — do not write per-payload form code. Add an
 > `apply_edit(json_patch, expect_clean=true)` method to
 > `tools/project_io.py` that applies each JSON Patch on a working
@@ -617,7 +729,7 @@ hard-coded payload assumptions.
 > handles the dirty-buffer case by prompting the user before
 > applying. Add `projectXml.addHlr` and `projectXml.addLlr`
 > commands that open a blank form and allocate the next free
-> `HLR-NNN` / `LLR-XXX-NN` (HLR-005). Extend the Phase 2.5 Quick
+> `HLR-NNN` / `LLR-XXX-NN` (HLR-005). Extend the Phase 2.5c Quick
 > Fix table so that fixes needing a structural rewrite route
 > through `apply_edit` while flat text rewrites stay on
 > `WorkspaceEdit`; AI-suggest Quick Fix variants stay Phase 5.
@@ -698,14 +810,14 @@ hard-coded payload assumptions.
     `/draft-module`, `/draft-pvd`, `/expand`, `/review`,
     `/suggest-traces`, `/gap-fill`.
 6.  **Schema-driven AI tree menu** (per [HLR-053](HLRs.md), carry-
-    forward contract from Phase 2.5). Right-click context-menu
+    forward contract from Phase 2.5b). Right-click context-menu
     entries on every Project Spec tree node — `Draft …`,
     `Expand …`, `Review with AI`, `Suggest traces with AI`,
     `Fix gap with AI` — are derived from the `ui_hints_index`
     (a per-element-kind `aiActions` projection), **not** hard-coded
     per element name. A new payload kind that adds a `ui:treeNode`
     hint inherits the applicable AI surface for free.
-7.  AI-suggest Quick Fix variants on the Phase 2.5 Quick Fix table
+7.  AI-suggest Quick Fix variants on the Phase 2.5c Quick Fix table
     (e.g. "AI: suggest correct ref" on `broken-trace`).
 8.  Diff-preview-and-apply flow with backup + provenance log
     (`.edit_doc/ai_history.jsonl`) per [HLR-032](HLRs.md) and

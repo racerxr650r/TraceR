@@ -8,7 +8,7 @@ Vibe coding with AI doesn't have to be haphazard or even dangerous.
 Is your software fielded in safety/certified environments requiring certification audits? Or, do you simply want to improve and demonstrate the quality of your software? Then you will benefit from a software project traceability tool. TraceR turns a single Project.xml file source-of-truth into a fully linked stack of specification documents (SDD, HLRs, LLRs, STP, Traceability Matrix) and provides editor-native authoring with AI assistance to create and maintain them.
 
 See [`doc/PVD.md`](doc/PVD.md) for the Product Vision Document and
-[`doc/SPD.md`](doc/SPD.md) for the Software Plan Document (the
+[`doc/SDP.md`](doc/SDP.md) for the Software Development Plan (the
 phased VS Code extension roadmap).
 
 ## Status
@@ -17,7 +17,10 @@ phased VS Code extension roadmap).
 | ----- | ----------- | ------ |
 | 0     | Sidecar foundations: importable `render_doc.py` / `lint_project.py`, JSON-RPC `tools/project_io.py`, test suite. | ✅ Complete |
 | 1     | Read-only VS Code extension: tree view, lint diagnostics, Reveal in XML. | ✅ Complete |
-| 2     | Code Lenses + Render & Preview. | ⏳ Not started |
+| 2     | Code Lenses + Render & Preview. | ✅ Complete |
+| 2.5   | Schema-driven retrofit: `list_documents` discovery, dynamic `Render <Doc>` commands, `Finding.code` linter contract, `ui:*` per-element hints, coverage status badges, `<plan>` acceptance proof. | ✅ Complete |
+| 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | ⏳ Not started |
+| 2.5c  | Payload-agnostic Quick Fix table keyed on `Finding.code`. | ⏳ Not started |
 | 3     | Form webviews for HLRs / LLRs. | ⏳ Not started |
 | 4     | SDD/STP/Test forms + Walkthrough. | ⏳ Not started |
 | 5     | Inline AI assistance (`@projectspec` chat participant). | ⏳ Not started |
@@ -46,24 +49,40 @@ echo '{"method":"lint"}' | python3 tools/project_io.py
 python3 -m unittest discover -s test -v
 ```
 
-## VS Code extension (Phase 1)
+## VS Code extension
 
-The Phase 1 extension lives in
-[`tools/vscode-project-xml/`](tools/vscode-project-xml/) and provides:
+The extension lives in
+[`tools/vscode-project-xml/`](tools/vscode-project-xml/) and currently
+ships Phases 1, 2, and 2.5:
 
 * A **Project Spec** activity-bar view with five top-level nodes
   (HLRs, LLRs, Tests, SDD, STP), each showing live counts and
-  expanding to children.
+  expanding to children. Leaves carry per-element decoration
+  (`ui:icon` / `ui:color`) sourced from the XSD's reserved
+  `urn:tracer:ui:v1` namespace, plus coverage status badges
+  (❌ for errors, ⚠ for warnings) keyed on `Finding.code`.
 * **Lint diagnostics** in the Problems panel, mirrored from
-  `tools/project_io.py lint`. Errors are anchored to the offending
-  HLR/LLR id range in `doc/Project.xml` where possible.
+  `tools/project_io.py lint`. Findings carry a stable `code`
+  (`broken-trace` / `id-format` / `missing-template` / `no-test`)
+  alongside the human-readable message; errors are anchored to the
+  offending HLR/LLR id range in `doc/Project.xml` where possible.
+* **Code Lenses** over `<hlr>`, `<llr>`, and `<test>` elements with
+  coverage / traces-count summaries and click-through to related
+  elements.
+* **Render & Preview** via `Project Spec: Render and Preview` and
+  `Project Spec: Render All`, plus a **dynamic `Render <Doc>` command
+  per `<metadata><document>` entry** discovered at activation time —
+  adding a new document row (with template/output) makes a new
+  `Render <id>` command appear with zero TypeScript changes. Preview
+  is served from an in-memory `tracer-preview:` virtual document and
+  never writes a file under `doc/`.
 * **Project Spec: Reveal in Project.xml** on every tree node — opens
   `doc/Project.xml` and selects the matching element.
-* Auto-refresh of the tree and re-lint when `doc/Project.xml` is
-  saved.
+* Auto-refresh of the tree, re-lint, and badge update when
+  `doc/Project.xml` is saved.
 
 The extension is **strictly read-only** in this phase; no command
-mutates `Project.xml`.
+mutates `Project.xml`. (Write surfaces land in Phases 2.5c / 3.)
 
 ### Building the extension
 
@@ -107,36 +126,45 @@ ln -s /path/to/TraceR /tmp/tracer-edh
 | `projectXml.toolsDir`        | `tools`             | Directory containing `project_io.py`. |
 | `projectXml.pythonPath`      | _(empty)_           | Override the Python interpreter (defaults to `python3` / `python`). |
 | `projectXml.autoLintOnChange`| `true`              | Re-lint on save. |
+| `projectXml.previewOnSave`   | `true`              | Refresh the Markdown preview when `Project.xml` is saved. |
+| `projectXml.showCoverageBadges` | `true`           | Show ❌ / ⚠ status badges on HLR/LLR tree leaves. |
 
-### Acceptance checks (Phase 1)
+### Acceptance checks
 
 In the Extension Development Host window:
 
 1. **Tree view** — `HLRs (n)`, `LLRs (n)`, `Tests (n, k files)`,
    `SDD (k modules)`, `STP` are visible and counts match Project.xml.
+   Leaves with errors show ❌, warnings show ⚠.
 2. **Linter** — Ctrl+Shift+P → **Project Spec: Run Linter** shows a
    toast and populates the Problems panel.
 3. **Reveal in XML** — right-click any tree leaf →
    **Project Spec: Reveal in Project.xml** jumps to the element in
    `doc/Project.xml`.
+4. **Code Lenses** — open `doc/Project.xml`; lenses appear above
+   `<hlr>`, `<llr>`, and `<test>` elements with coverage summaries.
+5. **Render & Preview** — Ctrl+Shift+P → **Project Spec: Render
+   and Preview** opens the rendered Markdown in a side pane. The
+   palette also lists one `Project Spec: Render <Doc>` command per
+   `<metadata><document>` entry.
 
 ## Repository layout
 
 ```
 doc/
   PVD.md             # Product Vision Document (hand-authored)
-  SPD.md             # Software Plan Document (phased extension roadmap)
+  SDP.md             # Software Development Plan (phased extension roadmap)
   Project.xml        # single source of truth (XSD-validated)
   SDD.md, HLRs.md, LLRs.md, STP.md, Traceability.md   # generated
   Schema_Reference.md  # human-facing schema reference
 tools/
   render_doc.py      # Project.xml → Markdown via Jinja2
-  lint_project.py    # XSD + semantic linter
+  lint_project.py    # XSD + semantic linter (emits Finding.code)
   project_io.py      # JSON-RPC 2.0 server over stdio
-  project.xsd        # canonical schema
+  project.xsd        # canonical schema (reserves urn:tracer:ui:v1)
   PLAN_web_form.md
   templates/         # Jinja2 templates for each spec doc
-  vscode-project-xml/  # VS Code extension (Phase 1)
+  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5)
 test/                # unittest suite for the Python tooling
 ```
 
