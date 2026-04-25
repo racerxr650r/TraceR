@@ -212,6 +212,54 @@ class ServeStreamTests(unittest.TestCase):
         resp = json.loads(stdout.getvalue().strip())
         self.assertEqual(resp["error"]["code"], project_io.PARSE_ERROR)
 
+    def test_blank_lines_ignored_and_eof_returns_zero(self) -> None:
+        # LLR-SRV-02: blank lines do not produce responses, and EOF
+        # without any request returns a clean exit.
+        stdin = io.StringIO("\n  \n\n")
+        stdout = io.StringIO()
+        rc = serve(stdin=stdin, stdout=stdout)
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.getvalue(), "")
+
+
+class MethodsRegistryTests(unittest.TestCase):
+    """LLR-SRV-06: the dispatcher walks a registry table; method
+    handlers are not implemented as if/elif branches in handle_request."""
+
+    def test_methods_registry_contains_documented_methods(self) -> None:
+        self.assertEqual(
+            set(project_io.METHODS.keys()),
+            {"lint", "render", "parse_to_json", "init_project"},
+        )
+        for name, handler in project_io.METHODS.items():
+            self.assertTrue(callable(handler), msg=f"{name!r} not callable")
+
+    def test_dispatch_routes_through_methods_table(self) -> None:
+        # Registering a stub handler at runtime exercises the
+        # dispatcher and proves it consults METHODS rather than a
+        # hard-coded if/elif chain.
+        sentinel = {"echoed": True}
+        project_io.METHODS["__test_echo__"] = lambda params: {"params": params, **sentinel}
+        try:
+            resp = handle_request({
+                "id": 99, "method": "__test_echo__",
+                "params": {"x": 1},
+            })
+            self.assertEqual(resp["id"], 99)
+            self.assertEqual(resp["result"], {"params": {"x": 1}, "echoed": True})
+        finally:
+            project_io.METHODS.pop("__test_echo__", None)
+
+    def test_unknown_method_after_unregister_returns_method_not_found(self) -> None:
+        # Removing a method from the registry makes it unreachable
+        # without any code change in handle_request.
+        original = project_io.METHODS.pop("lint")
+        try:
+            resp = handle_request({"id": 1, "method": "lint", "params": {}})
+            self.assertEqual(resp["error"]["code"], project_io.METHOD_NOT_FOUND)
+        finally:
+            project_io.METHODS["lint"] = original
+
 
 class SubprocessTests(unittest.TestCase):
     """Drive the actual `python3 tools/project_io.py` process — the

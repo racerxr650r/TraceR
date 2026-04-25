@@ -390,11 +390,22 @@ important.
 > commands that mutate `Project.xml`.
 
 ### Phase 2 — Code Lenses + Render
-1.  CodeLensProvider over `Project.xml`.
-2.  `Render & Preview` command with markdown preview pane.
-3.  `Render All` command.
+1.  `CodeLensProvider` over `Project.xml`. The Phase-2 lens provider
+    targets `<hlr>`, `<llr>`, and `<test>` with hard-coded selectors;
+    Phase 2.5 replaces the selectors with the `ui_hints_index.lenses`
+    walk so the same provider picks up any new payload kind.
+2.  `projectXml.renderAndPreview` command that opens the rendered
+    Markdown in a side-by-side preview pane backed by an in-memory
+    virtual document (`tracer-preview:/<doc-id>.md`) — the preview
+    surface **never writes a file** to disk, per [HLR-027](HLRs.md).
+    Honours `projectXml.previewOnSave`.
+3.  `projectXml.renderAll` command. Phase 2 enumerates a hard-coded
+    list (`SDD|HLRs|LLRs|STP|Traceability`); Phase 2.5 swaps that for
+    a `list_documents` call so new templates are picked up
+    automatically.
 4.  Acceptance: clicking a Code Lens link jumps to the correct LLR;
-    saving the file (with `previewOnSave: true`) updates the preview.
+    saving the file (with `previewOnSave: true`) updates the preview
+    without producing any new files under `doc/`.
 
 **AI prompt:**
 > Add a `CodeLensProvider` to the extension that decorates every
@@ -403,8 +414,14 @@ important.
 > commands that jump to each related element. Add a
 > `projectXml.renderAndPreview` command that calls the sidecar's
 > `render` method for the affected document and opens the result in a
-> side-by-side Markdown preview, and a `projectXml.renderAll` command
-> that regenerates every spec under `doc/`. Honour the
+> side-by-side Markdown preview backed by an in-memory virtual
+> document (`tracer-preview:/<doc-id>.md`) served by a
+> `TextDocumentContentProvider` — the preview must never write a file
+> under `doc/`. Add a `projectXml.renderAll` command that regenerates
+> every spec under `doc/` using the hard-coded baseline document list
+> (`SDD|HLRs|LLRs|STP|Traceability`); the list will be replaced by a
+> `list_documents` sidecar call in Phase 2.5, so keep the document
+> set in a single named constant that Phase 2.5 can swap. Honour the
 > `projectXml.previewOnSave` setting. Keep all rendering in the
 > sidecar — do not reimplement template logic in TypeScript.
 
@@ -476,7 +493,26 @@ hard-coded payload assumptions.
     matching `<metadata><document>`". Templates discovered under
     `tools/templates/` define the required set; the hard-coded
     five-doc set is removed.
-8.  **Acceptance.** Add a synthetic `<plan>` payload to a fixture
+8.  **Status badges in the tree.** Annotate every payload node with
+    a count badge (already present) plus a lint-derived status
+    badge (`⚠` for coverage gaps, `❌` for broken trace refs / ID
+    errors), driven by the `Finding.code` set returned by `lint`
+    against the node's xpath. Per [HLR-022](HLRs.md) and SDD §12.
+    Honours `projectXml.showCoverageBadges`.
+9.  **Payload-agnostic Quick Fix table.** Implement
+    `CodeActionProvider` Quick Fixes keyed on `Finding.code`
+    rather than payload element name (per [HLR-012](HLRs.md),
+    [HLR-025](HLRs.md), SDD §13):
+    *   `broken-trace` — "Replace ref with…" picker populated from
+        the parsed tree (HLRs / LLRs / module paths in scope).
+    *   `id-format` — "Renumber as next free `HLR-NNN` /
+        `LLR-XXX-NN`".
+    *   `missing-document` — "Insert standard `<document>` row".
+    *   `no-test` — "Create stub `<test>` entry".
+    Phase 2.5 fixes use VS Code `WorkspaceEdit` text edits so they
+    do not require the Phase 3 `apply_edit` write path; the
+    AI-suggest variant of each fix lands in Phase 5.
+10. **Acceptance.** Add a synthetic `<plan>` payload to a fixture
     `Project.xml` plus a `tools/templates/Plan.md.j2` template and
     a `<metadata><document id="Plan">` entry. With **zero**
     TypeScript changes, the extension must:
@@ -487,8 +523,12 @@ hard-coded payload assumptions.
         element" findings.
     *   Reveal-in-XML must work for the new tree nodes via the
         generic locator.
-9.  **Carry-forward contract for Phases 3–6.** From this point on,
-    every new surface (form panels, walkthrough steps, AI intents,
+    Additionally: triggering a `broken-trace` finding on the
+    fixture must surface the table-driven Quick Fix without any
+    payload-specific code path.
+11. **Carry-forward contract for Phases 3–6.** From this point on,
+    every new surface (form panels, walkthrough steps, AI tree
+    context-menu commands per [HLR-053](HLRs.md), AI intents,
     merge intents, status bar) consults the hint registry rather
     than naming payload elements directly. Bespoke widgets and
     domain-specific lint rules remain the only payload-aware code
@@ -513,36 +553,74 @@ hard-coded payload assumptions.
 > hard-coded render command list with one `Render <Doc>` command
 > per discovered document, registered dynamically at activation.
 > On the linter side, derive `STANDARD_DOCS` from the templates
-> under `tools/templates/` rather than a hard-coded set. Prove the
-> retrofit by adding a synthetic `<plan>` payload, a
-> `tools/templates/Plan.md.j2` template, and a
+> under `tools/templates/` rather than a hard-coded set. Add
+> lint-derived status badges (`⚠` for coverage gaps, `❌` for
+> broken refs / ID errors) to each payload node in the tree,
+> honouring `projectXml.showCoverageBadges`. Implement a
+> payload-agnostic `CodeActionProvider` whose Quick Fix table is
+> keyed on `Finding.code` (`broken-trace`, `id-format`,
+> `missing-document`, `no-test`), using VS Code `WorkspaceEdit`
+> text edits so the Phase 3 `apply_edit` write path is not yet
+> required. Prove the retrofit by adding a synthetic `<plan>`
+> payload, a `tools/templates/Plan.md.j2` template, and a
 > `<metadata><document id="Plan">` entry to a fixture
 > `Project.xml`, and showing that the extension picks up a `Plan`
-> tree node, a `Render Plan` command, a Markdown preview, and
-> clean lint output with **zero** TypeScript changes after the
-> retrofit lands. Carry the schema-driven contract forward into
-> Phases 3–6: no new surface may name a payload element directly.
+> tree node, a `Render Plan` command, a Markdown preview, the
+> table-driven Quick Fixes on a synthetic `broken-trace` finding,
+> and clean lint output with **zero** TypeScript changes after
+> the retrofit lands. Carry the schema-driven contract forward
+> into Phases 3–6: no new surface (including the AI tree context
+> menu in [HLR-053](HLRs.md)) may name a payload element directly.
 
 ### Phase 3 — Form webview for HLRs and LLRs
-1.  Single-item form panel with RJSF.
-2.  JSON Patch round-trip via sidecar.
-3.  Add-new commands for HLR and LLR.
-4.  Quick fixes for "broken trace" and "id format" diagnostics.
-5.  Acceptance: add a new HLR via the form, see it appear in the
-    XML, in the tree, and in the rendered HLRs.md preview.
+1.  Single-item form panel with RJSF whose JSON Schema is derived at
+    runtime from the relevant XSD subtree plus the `ui:form` field
+    hints from the Phase 2.5 hint registry (per [HLR-026](HLRs.md));
+    no per-payload form code.
+2.  `apply_edit(json_patch)` sidecar method (per [HLR-019](HLRs.md))
+    that applies each JSON Patch on a working copy, runs XSD + lint,
+    and **only on a clean result** persists back to `Project.xml`.
+    Writes go through `lxml` so comments, CDATA, attribute order,
+    and whitespace are preserved (per [HLR-018](HLRs.md)).
+3.  Add-new commands for HLR and LLR; new IDs always allocate the
+    next free number (per [HLR-005](HLRs.md)).
+4.  Dirty-buffer collision: if `doc/Project.xml` is open with
+    unsaved changes when a form submits, prompt the user to save or
+    discard before applying the patch.
+5.  Extend the Phase 2.5 Quick Fix table so any fix that needs a
+    structural rewrite (rather than a flat text replacement) routes
+    through the new `apply_edit` path; the existing `WorkspaceEdit`
+    fixes continue to work unchanged. AI-suggest Quick Fix variants
+    remain Phase 5.
+6.  Acceptance: add a new HLR via the form, see it appear in the
+    XML with formatting and comments preserved, in the tree, and in
+    the rendered HLRs.md preview; an `apply_edit` that fails XSD or
+    lint must leave `doc/Project.xml` byte-identical to its
+    pre-call state and return the findings to the caller.
 
 **AI prompt:**
 > Implement the first interactive surface: a Webview-based form
 > panel that edits a single `<hlr>` or `<llr>` using
 > [react-jsonschema-form](https://rjsf-team.github.io/react-jsonschema-form/)
-> driven by a JSON Schema derived from `tools/project.xsd`. The form
-> sends a JSON Patch through the sidecar, which writes back to
-> `Project.xml` while preserving formatting and comments. Add
-> `projectXml.addHlr` and `projectXml.addLlr` commands that open a
-> blank form. Implement `CodeActionProvider` quick fixes for the
-> "broken trace ref" and "id format" diagnostics from `lint_project`.
-> Handle the case where the underlying XML is dirty in a text editor
-> by prompting the user before applying the patch.
+> driven by a JSON Schema derived at runtime from the relevant XSD
+> subtree plus the `ui:form` field hints in the Phase 2.5
+> `ui_hints_index` — do not write per-payload form code. Add an
+> `apply_edit(json_patch, expect_clean=true)` method to
+> `tools/project_io.py` that applies each JSON Patch on a working
+> copy of the parsed tree, runs XSD + `lint_project.lint`, and
+> **only on a clean result** writes the merged tree back to
+> `doc/Project.xml` via `lxml` so comments, CDATA, attribute
+> order, and whitespace are preserved (HLR-018, HLR-019). On
+> validation failure the on-disk file must be byte-identical to
+> its pre-call state and the findings returned to the caller. The
+> form sends a JSON Patch through the sidecar; the extension
+> handles the dirty-buffer case by prompting the user before
+> applying. Add `projectXml.addHlr` and `projectXml.addLlr`
+> commands that open a blank form and allocate the next free
+> `HLR-NNN` / `LLR-XXX-NN` (HLR-005). Extend the Phase 2.5 Quick
+> Fix table so that fixes needing a structural rewrite route
+> through `apply_edit` while flat text rewrites stay on
+> `WorkspaceEdit`; AI-suggest Quick Fix variants stay Phase 5.
 
 ### Phase 4 — SDD/STP/Test forms + Walkthrough
 1.  Module/test/fixture form variants.
@@ -566,53 +644,158 @@ hard-coded payload assumptions.
 > The flow must work in an empty workspace.
 
 ### Phase 5 — Inline AI assistance
-1.  Build `tools/ai/context.py` (grounding bundle assembler) and
-    `tools/ai/pipeline.py` (validate → retry loop). Re-uses
+1.  Build `tools/ai/context.py` (grounding bundle assembler, per
+    [HLR-029](HLRs.md)) and `tools/ai/pipeline.py` (validate → retry
+    loop, per [HLR-030](HLRs.md)–[HLR-031](HLRs.md)). Re-uses
     `lint_project.lint` and the XSD already in tree.
 2.  Author per-intent prompt files in `tools/ai/intents/` and JSON
-    Schemas in `tools/ai/schemas/`.
-3.  Extend `project_io.py` with `ai_request(intent, context, target)`
-    plus deterministic translators for each intent's response →
-    JSON Patch.
-4.  TypeScript side: `ai/participant.ts` registers the `@projectspec`
-    chat participant via `vscode.chat.createChatParticipant`. Wire the
-    `/draft-hlr`, `/expand`, `/review`, `/gap-fill` slash commands.
-5.  Right-click "Draft / Expand / Review with AI" entries on tree
-    nodes and code lenses. Quick Fix "Suggest correct ref with AI"
-    on broken-trace diagnostics.
-6.  Diff-preview-and-apply flow with backup + provenance log
-    (`.edit_doc/ai_history.jsonl`).
-7.  Settings UI for the `projectXml.ai.*` block; graceful disablement
-    when no language model is available.
-8.  Acceptance:
-    *   `@projectspec /draft-hlr support reading from stdin` produces a
-        schema-valid `<hlr>` with non-empty `<text>` and at least one
-        plausible SDD trace; user accepts via diff and the entry
-        appears in the tree, the rendered HLRs.md, and the lint passes.
-    *   `/gap-fill --apply` walks every existing warning and proposes
-        per-finding fixes that are validated before being offered.
+    Schemas in `tools/ai/schemas/` covering **every** payload kind
+    in the SDD → HLR → LLR → Test stack plus the hand-authored PVD
+    (per [HLR-048](HLRs.md), [HLR-049](HLRs.md),
+    [HLR-050](HLRs.md), [HLR-051](HLRs.md), [HLR-052](HLRs.md)):
+
+    | Intent | Purpose | HLR |
+    | ------ | ------- | --- |
+    | `draft.module` | Draft a new SDD module/component from a natural-language target. | HLR-048 |
+    | `draft.hlr` | Draft a new HLR with at least one plausible SDD trace. | HLR-048 |
+    | `draft.llr` | Draft a new LLR with HLR traces pre-populated. | HLR-048 |
+    | `draft.test` | Draft a new `<test>` purpose with LLR/HLR traces pre-populated. | HLR-048 |
+    | `draft.pvd` | Ghostwrite a section of `doc/PVD.md` (see below). | HLR-052 |
+    | `expand.hlr_to_llrs` | Draft a candidate set of LLRs for a selected HLR. | HLR-049 |
+    | `expand.llr_to_tests` | Draft test purposes for a selected LLR. | HLR-049 |
+    | `review.item` | Advisory review of an HLR/LLR/test/SDD module against its upstream item. | HLR-050 |
+    | `suggest.traces` | Propose plausible upstream `<trace>` targets for any payload element. | HLR-051 |
+    | `gap.fix` | Draft the missing LLR or test that would close a coverage-gap warning. | HLR-051 |
+
+    Every authoring intent (apart from `draft.pvd`, whose target is
+    Markdown) returns a **typed JSON object validated against its
+    intent schema** (per [HLR-030](HLRs.md)) — raw XML responses are
+    rejected; pre-fills use stable IDs allocated from the parsed
+    tree (per [HLR-051](HLRs.md), [HLR-005](HLRs.md)).
+3.  **PVD ghostwriting flow** (per [HLR-052](HLRs.md), SDD §10.1).
+    `draft.pvd` differs from the other intents in that the target is
+    `doc/PVD.md`, not a `Project.xml` payload. The intent shall:
+    *   Identify thin/missing PVD sections by structure
+        (placeholders, single-sentence sections expected to be
+        paragraphs, single-item lists where multiple are expected).
+    *   Surface targeted clarifying questions to the user before
+        drafting any prose; never invent vision, scope, success
+        metrics, or roadmap themes.
+    *   Draft prose matching the existing voice, heading depth, and
+        table style of the document.
+    *   Route every accepted PVD edit through the same diff-preview
+        gate ([HLR-032](HLRs.md)) and provenance log
+        ([HLR-033](HLRs.md)) as Project.xml edits.
+4.  Extend `project_io.py` with `ai_request(intent, context, target)`
+    plus deterministic translators for each authoring intent's
+    response → JSON Patch (re-using the Phase 3 `apply_edit` write
+    path for `Project.xml` edits and a separate diff applier for
+    PVD edits).
+5.  TypeScript side: `ai/participant.ts` registers the
+    `@projectspec` chat participant via
+    `vscode.chat.createChatParticipant`. Slash commands cover the
+    full intent matrix: `/draft-hlr`, `/draft-llr`, `/draft-test`,
+    `/draft-module`, `/draft-pvd`, `/expand`, `/review`,
+    `/suggest-traces`, `/gap-fill`.
+6.  **Schema-driven AI tree menu** (per [HLR-053](HLRs.md), carry-
+    forward contract from Phase 2.5). Right-click context-menu
+    entries on every Project Spec tree node — `Draft …`,
+    `Expand …`, `Review with AI`, `Suggest traces with AI`,
+    `Fix gap with AI` — are derived from the `ui_hints_index`
+    (a per-element-kind `aiActions` projection), **not** hard-coded
+    per element name. A new payload kind that adds a `ui:treeNode`
+    hint inherits the applicable AI surface for free.
+7.  AI-suggest Quick Fix variants on the Phase 2.5 Quick Fix table
+    (e.g. "AI: suggest correct ref" on `broken-trace`).
+8.  Diff-preview-and-apply flow with backup + provenance log
+    (`.edit_doc/ai_history.jsonl`) per [HLR-032](HLRs.md) and
+    [HLR-033](HLRs.md). `projectXml.ai.autoApplyValidated`
+    defaults to `false` and is honoured even for fully-validated
+    suggestions.
+9.  Settings UI for the `projectXml.ai.*` block.
+10. **Graceful degradation and trust gating** (per
+    [HLR-044](HLRs.md), [HLR-045](HLRs.md)):
+    *   When `vscode.lm.selectChatModels()` returns no models, the
+        chat participant is unregistered, the AI tree context-menu
+        entries and slash commands are hidden, the AI-suggest
+        Quick Fix variants are suppressed, and every deterministic
+        surface (tree, diagnostics, code lenses, form panels,
+        render, Stage A merge from Phase 5.5) continues to
+        function unchanged.
+    *   In an untrusted workspace
+        (`untrustedWorkspaces.supported = "limited"`), AI activation
+        is blocked entirely with a one-shot warning notification;
+        deterministic surfaces remain available.
+    *   Disabling `projectXml.ai.enabled` removes every AI surface
+        cleanly without unloading the extension.
+11. Acceptance:
+    *   `@projectspec /draft-hlr support reading from stdin` produces
+        a schema-valid `<hlr>` with non-empty `<text>` and at least
+        one plausible SDD trace; user accepts via diff and the entry
+        appears in the tree, the rendered HLRs.md, and the lint
+        passes.
+    *   `/expand` on a selected HLR produces a candidate set of LLRs
+        with HLR traces pre-populated; each candidate passes XSD +
+        lint before being shown.
+    *   `/draft-pvd` on a thin PVD section first asks at least one
+        targeted clarifying question; only after the user answers
+        does the AI draft prose, and the result is shown in a diff
+        before any write.
+    *   `/gap-fill --apply` walks every existing coverage warning
+        and proposes per-finding fixes (LLR or test) that are
+        validated before being offered.
+    *   `/review` on any HLR/LLR/test/module returns advisory
+        findings without ever producing a JSON Patch.
+    *   With no language model selectable, every AI surface is
+        invisible and Phase 1–3 functionality is unaffected.
+    *   In an untrusted workspace, no AI surface activates and the
+        deterministic surfaces still work.
     *   Disabling `projectXml.ai.enabled` removes every AI surface
         cleanly.
 
 **AI prompt:**
-> Build the inline AI layer described in §5.8. On the Python side,
-> add `tools/ai/context.py` (assembles a grounding bundle from the
-> PVD, SDD, upstream payloads, and XSD), `tools/ai/pipeline.py` (the
+> Build the inline AI layer described in §5.8 and HLR-029–033,
+> HLR-044–045, and HLR-048–053. On the Python side, add
+> `tools/ai/context.py` (assembles a grounding bundle from the
+> PVD, SDD, upstream payloads, and XSD; deterministic packer that
+> never drops the schema or user intent), `tools/ai/pipeline.py`
+> (the
 > validate→retry loop using `lint_project.lint` and the XSD), prompt
 > files under `tools/ai/intents/`, and JSON Schemas under
-> `tools/ai/schemas/`. Extend `project_io.py` with an `ai_request`
-> method plus per-intent translators that turn AI responses into
-> JSON Patches. On the TypeScript side, register a `@projectspec`
+> `tools/ai/schemas/` covering the full authoring matrix:
+> `draft.module`, `draft.hlr`, `draft.llr`, `draft.test`,
+> `draft.pvd`, `expand.hlr_to_llrs`, `expand.llr_to_tests`,
+> `review.item`, `suggest.traces`, `gap.fix`. Every intent except
+> `draft.pvd` returns a typed JSON object that the deterministic
+> per-intent translator turns into a JSON Patch routed through the
+> Phase 3 `apply_edit` path; `draft.pvd` produces a Markdown diff
+> instead. The `draft.pvd` flow shall identify thin/missing PVD
+> sections by structure, surface targeted clarifying questions
+> before drafting prose, never invent vision/scope/metrics/roadmap,
+> and route accepted edits through the same diff-preview gate and
+> provenance log as Project.xml edits (HLR-052). Extend
+> `project_io.py` with an `ai_request` method plus per-intent
+> translators. On the TypeScript side, register a `@projectspec`
 > chat participant via `vscode.chat.createChatParticipant` with the
-> `/draft-hlr`, `/expand`, `/review`, and `/gap-fill` slash commands;
-> add right-click "Draft / Expand / Review with AI" entries on tree
-> nodes and Code Lenses; add a "Suggest correct ref with AI" quick
-> fix on broken-trace diagnostics. Every applied edit must go through
-> a diff-preview-and-apply flow that writes a backup and appends a
-> provenance entry to `.edit_doc/ai_history.jsonl`. Honour the
-> `projectXml.ai.*` settings, and hide every AI surface cleanly when
-> `vscode.lm.selectChatModels` returns no models or
-> `projectXml.ai.enabled` is `false`.
+> slash commands `/draft-hlr`, `/draft-llr`, `/draft-test`,
+> `/draft-module`, `/draft-pvd`, `/expand`, `/review`,
+> `/suggest-traces`, `/gap-fill`. Add right-click
+> "Draft / Expand / Review / Suggest traces / Fix gap with AI"
+> entries on every Project Spec tree node, with the per-node
+> command set derived from the `ui_hints_index` `aiActions`
+> projection — **not** hard-coded per element kind (HLR-053);
+> a new payload kind with a `ui:treeNode` hint must inherit the
+> applicable AI surface for free. Add a "Suggest correct ref with
+> AI" Quick Fix variant on `broken-trace` diagnostics. Every
+> applied edit must go through a diff-preview-and-apply flow that
+> writes a backup and appends a provenance entry to
+> `.edit_doc/ai_history.jsonl`. Honour the `projectXml.ai.*`
+> settings, and enforce graceful degradation per HLR-044/HLR-045:
+> when `vscode.lm.selectChatModels` returns no models, when the
+> workspace is untrusted, or when `projectXml.ai.enabled` is
+> `false`, hide every AI surface cleanly while keeping every
+> deterministic surface (tree, diagnostics, lenses, form panels,
+> render, Stage A merge) fully functional.
 
 ### Phase 5.5 — AI-assisted merge conflict resolution
 1.  Implement `tools/project_merge.py`: a deterministic three-way
@@ -652,6 +835,12 @@ hard-coded payload assumptions.
         network calls, no AI surfaces.
     *   The post-merge `Project.xml` lints with no *new* errors
         compared to the union of pre-merge errors on either parent.
+    *   When the Git merge base is unavailable
+        (rebase-in-progress, octopus merge, cherry-pick without a
+        base), Stage A **refuses** with an explicit notification
+        rather than silently picking one side or falling through to
+        Stage B (per [HLR-034](HLRs.md), SDD §9.1, and the
+        graceful-degradation design goal).
 
 **AI prompt:**
 > Implement the AI-assisted merge conflict resolver for
@@ -684,24 +873,35 @@ hard-coded payload assumptions.
 > automatically — the merge editor is the only commit surface.
 
 ### Phase 6 — Polish
-1.  Settings UI, status bar item showing `n errors / m warnings`.
-2.  Marketplace listing assets (icon, screenshots, animated GIF).
-3.  CI to publish `.vsix` on tag.
+1.  Settings UI surfacing every `projectXml.*` setting through
+    `contributes.configuration` (the authoritative list lives in
+    SDD §21 “Compile-time constants”).
+2.  Status bar item showing `n errors / m warnings`, clickable to
+    open the Problems panel filtered to `Project.xml`. The item
+    displays warnings verbatim and never downgrades them —
+    `projectXml.warningsAsErrors` only escalates severity, it never
+    suppresses (per [HLR-042](HLRs.md)).
+3.  Marketplace listing assets (icon, screenshots, animated GIF).
+4.  CI to publish `.vsix` on tag.
 
 **AI prompt:**
 > Finish the extension for public release. Surface every
 > `projectXml.*` setting through `contributes.configuration` with
-> clear titles, descriptions, and sensible defaults. Add a status bar
-> item that subscribes to lint results and displays `n errors / m
+> clear titles, descriptions, and the defaults documented in SDD
+> §21 “Compile-time constants”. Add a status bar item that
+> subscribes to lint results and displays `n errors / m
 > warnings`, clickable to open the Problems panel filtered to
-> `Project.xml`. Produce Marketplace assets under
-> `tools/vscode-project-xml/media/`: a 128×128 icon, at least three
-> screenshots covering the tree view, a form panel, and the
-> render/preview flow, plus an animated GIF of the Walkthrough end to
-> end. Add a GitHub Actions workflow that builds and publishes the
-> `.vsix` on tag pushes matching `vscode-v*`, using `vsce package` and
-> (optionally) `vsce publish` gated on a repository secret. Do not
-> publish to the Marketplace from this prompt — only wire the CI.
+> `Project.xml`; warnings must be displayed verbatim and never
+> hidden, per [HLR-042](HLRs.md) — `projectXml.warningsAsErrors`
+> may escalate severity but must not suppress. Produce Marketplace
+> assets under `tools/vscode-project-xml/media/`: a 128×128 icon,
+> at least three screenshots covering the tree view, a form panel,
+> and the render/preview flow, plus an animated GIF of the
+> Walkthrough end to end. Add a GitHub Actions workflow that
+> builds and publishes the `.vsix` on tag pushes matching
+> `vscode-v*`, using `vsce package` and (optionally) `vsce
+> publish` gated on a repository secret. Do not publish to the
+> Marketplace from this prompt — only wire the CI.
 
 ## 9. Risks & Open Questions
 

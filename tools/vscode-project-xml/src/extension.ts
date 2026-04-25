@@ -12,6 +12,16 @@ import { ProjectIoClient } from './sidecar';
 import { ProjectSpecProvider } from './treeView/ProjectSpecProvider';
 import { LintDiagnosticsProvider } from './diagnostics/LintDiagnosticsProvider';
 import { revealInXml } from './commands/revealInXml';
+import { renderAll, renderAndPreview } from './commands/render';
+import {
+    CoverageCodeLensProvider,
+    PICK_RELATED_COMMAND,
+    pickRelatedAndReveal,
+} from './codeLens/CoverageCodeLensProvider';
+import {
+    MarkdownPreviewProvider,
+    PREVIEW_SCHEME,
+} from './preview/MarkdownPreviewProvider';
 import { getConfig, getProjectXmlPath } from './util/paths';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -31,9 +41,29 @@ export function activate(context: vscode.ExtensionContext): void {
     const diagnostics = new LintDiagnosticsProvider(sidecar, output);
     context.subscriptions.push(diagnostics);
 
+    const previewProvider = new MarkdownPreviewProvider(sidecar, output);
+    context.subscriptions.push(previewProvider);
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(
+            PREVIEW_SCHEME,
+            previewProvider,
+        ),
+    );
+
+    const lensProvider = new CoverageCodeLensProvider(sidecar, output);
+    context.subscriptions.push(lensProvider);
+    context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider(
+            { language: 'xml', scheme: 'file' },
+            lensProvider,
+        ),
+    );
+
     context.subscriptions.push(
         vscode.commands.registerCommand('projectXml.refresh', async () => {
             treeProvider.refresh();
+            lensProvider.refresh();
+            previewProvider.markStale();
             await diagnostics.run();
         }),
         vscode.commands.registerCommand('projectXml.lint', async () => {
@@ -47,6 +77,15 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         }),
         vscode.commands.registerCommand('projectXml.revealInXml', revealInXml),
+        vscode.commands.registerCommand(
+            'projectXml.renderAndPreview',
+            (arg?: string | { docId?: string }) =>
+                renderAndPreview(previewProvider, arg),
+        ),
+        vscode.commands.registerCommand('projectXml.renderAll', () =>
+            renderAll(sidecar, previewProvider, output),
+        ),
+        vscode.commands.registerCommand(PICK_RELATED_COMMAND, pickRelatedAndReveal),
     );
 
     // Re-lint and refresh the tree whenever Project.xml is saved.
@@ -57,8 +96,15 @@ export function activate(context: vscode.ExtensionContext): void {
                 return;
             }
             treeProvider.refresh();
+            lensProvider.refresh();
             if (getConfig().get<boolean>('autoLintOnChange', true)) {
                 void diagnostics.run();
+            }
+            if (getConfig().get<boolean>('previewOnSave', true)) {
+                // Drop cached renders for every tracked preview so any
+                // open Markdown preview pane reflects the new XML
+                // state. The preview never writes to disk.
+                previewProvider.markStale();
             }
         }),
     );
