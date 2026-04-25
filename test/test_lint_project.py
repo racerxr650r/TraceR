@@ -380,5 +380,20 @@ class CheckSemanticsTests(unittest.TestCase):
         self.assertTrue(any('duplicate <document id="SDD">' in e for e in f.errors))
 
 
+class SchemaUiNamespaceTests(unittest.TestCase):
+    """Phase 2.5 namespace reservation."""
+
+    def test_xsd_reserves_ui_namespace_prefix(self) -> None:
+        # LLR-MET-05 / HLR-056: tools/project.xsd shall reserve the
+        # urn:tracer:ui:v1 namespace under the `ui` prefix so a
+        # future hint registry can attach UI-only attributes
+        # without breaking existing files.
+        from pathlib import Path
+        xsd_text = Path(__file__).resolve().parent.parent.joinpath(
+            "tools", "project.xsd"
+        ).read_text(encoding="utf-8")
+        self.assertIn('xmlns:ui="urn:tracer:ui:v1"', xsd_text)
+
+
 if __name__ == "__main__":
     unittest.main()

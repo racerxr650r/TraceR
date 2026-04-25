@@ -276,5 +276,51 @@ class RenderDataSurfaceTests(unittest.TestCase):
         self.assertEqual(render_doc._gh_slug("Section 3.2.1"), "section-321")
 
 
+class ListDocumentsTests(unittest.TestCase):
+    """Phase 2.5 schema-driven discovery surface."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_list_documents_returns_one_entry_per_metadata_document(self) -> None:
+        # LLR-MET-02: list_documents enumerates every <metadata>
+        # <document> entry verbatim and resolves the conventional
+        # template/output paths when the optional attrs are absent.
+        xml_path = self.tmp / "Project.xml"
+        init_project(name="LD", short_name="ld", xml_path=xml_path,
+                     pvd_path=self.tmp / "PVD.md")
+        docs = render_doc.list_documents(xml_path)
+        ids = [d["id"] for d in docs]
+        self.assertEqual(
+            ids, ["SDD", "HLRs", "LLRs", "STP", "Traceability"],
+            msg=f"unexpected ids: {ids}",
+        )
+        sdd = next(d for d in docs if d["id"] == "SDD")
+        self.assertEqual(sdd["template"], "tools/templates/SDD.md.j2")
+        self.assertEqual(sdd["output"], "doc/SDD.md")
+
+    def test_list_documents_honours_explicit_template_and_output(self) -> None:
+        # LLR-MET-01: the optional template= and output= attributes
+        # on <metadata><document> override the conventional paths;
+        # list_documents returns whatever the file declares.
+        xml_path = self.tmp / "Project.xml"
+        xml_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<project name="X" short_name="x" schema_version="1.2">'
+            '<metadata>'
+            '<document id="Plan" title="P" source="doc/Plan.md"'
+            '          version="0.1" date="2026-04-25" author="A"'
+            '          template="custom/Plan.j2" output="out/Plan.md"/>'
+            '</metadata>'
+            '</project>'
+        )
+        docs = render_doc.list_documents(xml_path)
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["template"], "custom/Plan.j2")
+        self.assertEqual(docs[0]["output"], "out/Plan.md")
+
+
 if __name__ == "__main__":
     unittest.main()
