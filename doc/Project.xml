@@ -7,7 +7,7 @@
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="TraceR" short_name="TR" schema_version="1.2"
+<project name="TraceR" short_name="TR" schema_version="1.3"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../tools/project.xsd">
   <metadata>
@@ -2296,6 +2296,27 @@ without losing the underlying lint output.]]></text>
           <trace target="SDD" ref="6"/>
         </traces>
       </hlr>
+
+      <hlr id="HLR-058" name="UI Hint Registry">
+        <text><![CDATA[The schema shall accept optional `ui:icon`,
+`ui:color`, and `ui:group` attributes (namespace
+`urn:tracer:ui:v1`) on payload-bearing leaf elements
+(`<hlr>`, `<llr>`, `<test>`, `<module>`) without
+requiring any update to the renderer or linter. The
+Python renderer shall surface the recognised hint
+subset on each parsed payload as a `ui` field
+(serialising as `null` when absent), and the VS Code
+tree provider shall consume `ui:icon` as the node's
+icon, optionally tinted with the VS Code `ThemeColor`
+named in `ui:color`. The `ui:group` attribute is
+reserved for a future grouping pass and shall be
+accepted-and-ignored today, so files that adopt it
+remain consumable by toolchains pinned to this
+contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
+        <traces>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
     </section>
 
   </hlrs>
@@ -3088,12 +3109,50 @@ without losing the underlying lint output.]]></text>
       </llr>
     </function>
 
+    <function number="20"
+              title="UI hint registry ([tools/render_doc.py](../tools/render_doc.py), [tools/vscode-project-xml/src/util/hints.ts](../tools/vscode-project-xml/src/util/hints.ts))"
+              name="ui_hints"
+              source="tools/render_doc.py">
+      <intro><![CDATA[Phase 2.5b activates the reserved `urn:tracer:ui:v1` namespace as a payload-side decoration channel. The XSD accepts arbitrary `ui:*` attributes via `<xs:anyAttribute>` on `<hlr>`, `<llr>`, `<test>`, and `<module>`; the Python renderer projects the recognised subset onto a flat dict surfaced as `.ui` on each parsed node; the VS Code extension consumes that field to decorate tree leaves with VS Code icons and `ThemeColor` tints.]]></intro>
+
+      <llr id="LLR-HNT-01">
+        <text><![CDATA[`tools/project.xsd` shall declare `<xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>` on the `Hlr`, `Llr`, `Test`, and `SddModule` complex types so any number of `ui:*` attributes is accepted on those payload elements without the schema needing to enumerate them, and unknown ui:* attributes pass validation rather than rejecting the file.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+          <trace target="HLR" ref="HLR-049" name="XSD Schema for Project XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-HNT-02">
+        <text><![CDATA[`render_doc._ui_hints(elem)` shall extract the recognised hint keys (`icon`, `color`, `group`) from `urn:tracer:ui:v1` attributes via ElementTree's Clark-notation key form (`{urn:tracer:ui:v1}icon`), return a flat dict containing only the keys whose values are non-empty strings, and return `None` when no recognised hint is present so the JSON output distinguishes "no hints" from "an empty hints object" without ambiguity.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-HNT-03">
+        <text><![CDATA[`build_hlr`, `build_llr`, `build_test`, and `build_module` shall attach the `_ui_hints(elem)` result as a `ui` field on the `SimpleNamespace` they return, and the flat-list builders inside `load_project` (`flat_hlrs`, `flat_llrs`, `flat_tests`) shall propagate it forward via `getattr(node, "ui", None)` so `parse_project_to_dict` exposes the hints on the same JSON path the VS Code tree provider reads from.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-HNT-04">
+        <text><![CDATA[`util/hints.applyHintsToNode(node, hints)` shall be a no-op (returning `false`) when hints is `null`, `undefined`, or carries no non-empty `icon`; otherwise it shall set `node.iconPath = new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined)` (after trimming whitespace from both fields) and return `true`. The reserved `group` key shall be accepted-and-ignored. `ProjectSpecProvider.buildHlrsNode`, `buildLlrsNode`, `buildTestsNode`, and `buildSddNode` shall invoke this helper on every leaf so hint-decorated nodes look identical regardless of the underlying tag.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
   <tests>
 
-    <file path="test/test_render_doc.py" role="unit" count="18">
+    <file path="test/test_render_doc.py" role="unit" count="21">
       <header><![CDATA[Tests for the importable surface of tools/render_doc.py: init_project (project bootstrap), load_project / parse_project_to_dict (the renderer's data surface), and render_document (the rendering primitive that the CLI, the JSON-RPC sidecar, and the extension's preview pane all consume).]]></header>
 
       <test name="test_creates_xml_and_pvd">
@@ -3230,6 +3289,29 @@ without losing the underlying lint output.]]></text>
         <purpose><![CDATA[Pins LLR-MET-01: a hand-rolled `Project.xml` whose `<document>` carries explicit `template=` and `output=` attributes is enumerated by `list_documents` with those values returned verbatim, proving the schema accepts the optional attrs and the resolver honours them.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-MET-01"/>
+        </traces>
+      </test>
+
+      <test name="test_ui_hints_surface_on_parsed_hlr">
+        <purpose><![CDATA[Pins LLR-HNT-02 and LLR-HNT-03: a hand-rolled `Project.xml` with `xmlns:ui="urn:tracer:ui:v1"` and `ui:icon`/`ui:color` attributes on an `<hlr>` is parsed by `parse_project_to_dict` so the decorated HLR's `ui` field carries `{"icon": ..., "color": ...}` while a sibling without hints carries `None`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-02"/>
+          <trace target="LLR" ref="LLR-HNT-03"/>
+        </traces>
+      </test>
+
+      <test name="test_ui_hints_surface_on_parsed_llr_and_test">
+        <purpose><![CDATA[Pins LLR-HNT-02 and LLR-HNT-03 for the LLR and Test payload paths: `ui:icon` on `<llr>` and `ui:icon`/`ui:group` on `<test>` survive through `parse_project_to_dict` and appear under `flat_llrs[*].ui` and `flat_tests[*].ui` with the recognised keys preserved (including `group`, which the consumer ignores but the data contract carries).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-02"/>
+          <trace target="LLR" ref="LLR-HNT-03"/>
+        </traces>
+      </test>
+
+      <test name="test_xsd_accepts_ui_namespace_attributes_on_payload_elements">
+        <purpose><![CDATA[Pins LLR-HNT-01: a hand-rolled `Project.xml` with `xmlns:ui="urn:tracer:ui:v1"` and `ui:icon`/`ui:color`/`ui:group` attributes on `<hlr>`, `<llr>`, and `<test>` elements validates clean against `tools/project.xsd` via lxml's `XMLSchema.assertValid`, proving the `<xs:anyAttribute>` declarations on the payload complex types accept arbitrary `ui:*` attributes without rejecting the file.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-01"/>
         </traces>
       </test>
     </file>
@@ -3734,6 +3816,74 @@ without losing the underlying lint output.]]></text>
         <purpose><![CDATA[Verifies LLR-BDG-02: `BadgeIndex.severityFor(tag, id)` returns the underlying severity (`'error'` / `'warning'` / `undefined`) so future consumers (status-bar item, AI surfaces) can branch on the raw severity without parsing the emoji badge.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/hints.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Tier-1 unit tests for the UI hint registry consumer in tools/vscode-project-xml/src/util/hints.ts. Drives `applyHintsToNode` against a minimal `vscode.TreeItem` mock so the icon / color decoration path is pinned without spawning a VS Code host.]]></header>
+
+      <test name="returns false and leaves iconPath untouched for null / undefined hints">
+        <purpose><![CDATA[Verifies LLR-HNT-04: `applyHintsToNode` is a no-op when the upstream parsed payload had no `ui` field at all (`null` or `undefined`), so the tree provider can invoke it unconditionally on every leaf.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="returns false when no recognised key is present">
+        <purpose><![CDATA[Verifies the recognised-key gating in LLR-HNT-04: a hint payload that carries only the reserved `group` key (no `icon`) must produce no decoration today, since `group` is accepted-and-ignored.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="returns false when icon is the empty / whitespace string">
+        <purpose><![CDATA[Verifies LLR-HNT-04 and the matching guard in LLR-HNT-02: `icon=""` or `icon="   "` is treated as absent, so a malformed payload cannot install a blank `ThemeIcon` on the tree node.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+          <trace target="LLR" ref="LLR-HNT-02"/>
+        </traces>
+      </test>
+
+      <test name="sets a ThemeIcon when icon is provided">
+        <purpose><![CDATA[Verifies the happy path of LLR-HNT-04: with a recognised `icon` value, `applyHintsToNode` installs `node.iconPath = new ThemeIcon(icon)` and returns `true`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="tints the ThemeIcon with a ThemeColor when color is provided">
+        <purpose><![CDATA[Verifies the color-tint leg of LLR-HNT-04: when both `icon` and `color` are present, the constructed `ThemeIcon` carries a `ThemeColor` whose id matches the supplied string.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="trims surrounding whitespace from icon and color">
+        <purpose><![CDATA[Verifies the whitespace-trim guarantee of LLR-HNT-04: leading / trailing spaces on `icon` and `color` are stripped before constructing the `ThemeIcon` / `ThemeColor`, so authoring noise does not produce an invalid icon name.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="treats whitespace-only color as absent (icon only, no tint)">
+        <purpose><![CDATA[Verifies LLR-HNT-04: a payload with a real `icon` but a whitespace-only `color` produces an untinted `ThemeIcon`, never a `ThemeColor` constructed from an empty string.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="ignores `group` while still honouring icon when both are set">
+        <purpose><![CDATA[Pins the reserved-key contract from HLR-058 and LLR-HNT-04: an extra `group` key on the payload does not block the `icon` decoration, so files can carry `ui:group` for a future grouping pass without losing today's icon support.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="replaces a pre-existing iconPath when hints fire">
+        <purpose><![CDATA[Verifies the override path of LLR-HNT-04: when the tree provider has already assigned a default `iconPath` and a hint payload then fires, the hint icon replaces the default rather than being silently dropped.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
         </traces>
       </test>
     </file>

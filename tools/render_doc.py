@@ -39,6 +39,35 @@ def _attrs(elem: ET.Element) -> dict[str, str]:
     return dict(elem.attrib)
 
 
+# ---------------------------------------------------------------------------
+# UI hint vocabulary (urn:tracer:ui:v1)
+#
+# Phase 2.5b lets payload-bearing elements (HLRs, LLRs, tests, SDD modules)
+# carry optional `ui:icon`, `ui:color`, `ui:group` attributes. The XSD
+# declares them via `<xs:anyAttribute namespace="urn:tracer:ui:v1"
+# processContents="skip"/>` so unknown ui:* attributes are ignored rather
+# than rejected. ElementTree exposes namespaced attribute names as
+# Clark-notation ("{ns}local") keys; we project the recognised subset
+# onto a flat dict and surface it as `.ui` on the SimpleNamespace nodes
+# so both the Jinja templates (which currently ignore it) and the
+# JSON-RPC `parse_to_json` consumers (the VS Code tree) see the same
+# shape. Returns None when no recognised ui:* attribute is present, so
+# absent hints serialise as null rather than empty objects.
+# ---------------------------------------------------------------------------
+
+UI_NAMESPACE = "urn:tracer:ui:v1"
+_UI_HINT_KEYS = ("icon", "color", "group")
+
+
+def _ui_hints(elem: ET.Element) -> dict[str, str] | None:
+    hints: dict[str, str] = {}
+    for key in _UI_HINT_KEYS:
+        value = elem.get(f"{{{UI_NAMESPACE}}}{key}")
+        if value is not None and value != "":
+            hints[key] = value
+    return hints or None
+
+
 def _text(elem: ET.Element | None) -> str:
     if elem is None or elem.text is None:
         return ""
@@ -139,6 +168,7 @@ def build_module(elem: ET.Element) -> SimpleNamespace:
             _text(d) for d in (elem.find("dependencies") or [])
         ] if elem.find("dependencies") is not None else [],
         error_handling=build_named_body_list(elem.find("error_handling"), "case"),
+        ui=_ui_hints(elem),
     )
 
 
@@ -260,6 +290,7 @@ def build_hlr(elem: ET.Element) -> SimpleNamespace:
         name=elem.get("name", ""),
         text=_text(elem.find("text")),
         traces=build_traces(elem.find("traces")),
+        ui=_ui_hints(elem),
     )
 
 
@@ -277,6 +308,7 @@ def build_llr(elem: ET.Element) -> SimpleNamespace:
         id=elem.get("id", ""),
         text=_text(elem.find("text")),
         traces=build_traces(elem.find("traces")),
+        ui=_ui_hints(elem),
     )
 
 
@@ -297,6 +329,7 @@ def build_test(elem: ET.Element) -> SimpleNamespace:
         name=elem.get("name", ""),
         purpose=_text(elem.find("purpose")),
         traces=build_traces(elem.find("traces")),
+        ui=_ui_hints(elem),
     )
 
 
@@ -475,6 +508,7 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
                 id=llr.id,
                 text=llr.text,
                 traces=llr.traces,
+                ui=getattr(llr, "ui", None),
                 function_name=grp.name or grp.title,
                 function_number=grp.number,
             ))
@@ -489,6 +523,7 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
                 name=hlr.name,
                 text=hlr.text,
                 traces=hlr.traces,
+                ui=getattr(hlr, "ui", None),
                 section_number=sec.number,
                 section_title=sec.title,
             ))
@@ -525,6 +560,7 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
                 name=t.name,
                 purpose=t.purpose,
                 traces=t.traces,
+                ui=getattr(t, "ui", None),
                 file=tf.path,
             ))
     flat_tests.sort(key=lambda t: (t.file, t.name))
@@ -749,7 +785,7 @@ SKELETON_PROJECT_XML = """\
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="{name}" short_name="{short_name}" schema_version="1.2"
+<project name="{name}" short_name="{short_name}" schema_version="1.3"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="{schema_location}">
   <metadata>

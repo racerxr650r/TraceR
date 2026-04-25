@@ -259,6 +259,7 @@
     </xs:sequence>
     <xs:attribute name="path"  type="xs:string" use="optional"/>
     <xs:attribute name="title" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="SddModules">
@@ -458,6 +459,9 @@
     </xs:sequence>
     <xs:attribute name="id"   type="HlrId"          use="required"/>
     <xs:attribute name="name" type="NonEmptyString" use="required"/>
+    <!-- Phase 2.5b: optional `ui:icon` / `ui:color` / `ui:group` hints   -->
+    <!-- (urn:tracer:ui:v1) consumed by the VS Code tree provider.        -->
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="HlrSection">
@@ -485,6 +489,7 @@
       <xs:element name="traces" type="Traces" minOccurs="0"/>
     </xs:sequence>
     <xs:attribute name="id" type="LlrId" use="required"/>
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="LlrFunction">
@@ -514,6 +519,7 @@
       <xs:element name="traces"  type="Traces" minOccurs="0"/>
     </xs:sequence>
     <xs:attribute name="name" type="NonEmptyString" use="required"/>
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="TestFile">

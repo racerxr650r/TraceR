@@ -247,11 +247,36 @@ export interface ParsedSection {
     hlrs?: ParsedHlr[];
 }
 
+/**
+ * Phase 2.5b UI hint registry (urn:tracer:ui:v1).
+ *
+ * Payload-bearing elements (HLRs, LLRs, tests, SDD modules) may carry
+ * optional `ui:icon`, `ui:color`, `ui:group` attributes. The XSD
+ * accepts them via `xs:anyAttribute` and the Python renderer surfaces
+ * them under `.ui` on each parsed node so the tree provider can
+ * decorate items without knowing the underlying tag.
+ *
+ * - `icon`  - codicon name (e.g. "star", "warning"). Renders as the
+ *             tree node's iconPath.
+ * - `color` - VS Code ThemeColor id (e.g. "charts.blue"). Tints the
+ *             icon when both are set.
+ * - `group` - reserved; future tree-grouping hint (currently ignored).
+ *
+ * Absent on elements with no recognised hint, so consumers must guard
+ * with optional chaining.
+ */
+export interface UiHints {
+    icon?: string;
+    color?: string;
+    group?: string;
+}
+
 export interface ParsedHlr {
     id: string;
     name?: string;
     text?: string;
     traces?: ParsedTrace[];
+    ui?: UiHints | null;
 }
 
 export interface ParsedLlrGroup {
@@ -265,6 +290,7 @@ export interface ParsedLlr {
     id: string;
     text?: string;
     traces?: ParsedTrace[];
+    ui?: UiHints | null;
 }
 
 export interface ParsedTestFile {
@@ -276,6 +302,7 @@ export interface ParsedTest {
     name: string;
     purpose?: string;
     traces?: ParsedTrace[];
+    ui?: UiHints | null;
 }
 
 export interface ParsedTrace {
@@ -288,6 +315,7 @@ export interface ParsedTrace {
 export interface ParsedSddModule {
     path?: string;
     title?: string;
+    ui?: UiHints | null;
 }
 
 export interface ParsedSdd {

@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 import { ProjectIoClient, ParsedProject } from '../sidecar';
 import { BadgeIndex } from '../util/badges';
+import { applyHintsToNode } from '../util/hints';
 import { getConfig, getProjectXmlPath } from '../util/paths';
 
 export interface RevealLocator {
@@ -146,8 +147,8 @@ function buildHlrsNode(
                     ? vscode.TreeItemCollapsibleState.Collapsed
                     : vscode.TreeItemCollapsibleState.None,
                 hlrs.map(
-                    (h) =>
-                        new ProjectSpecNode(
+                    (h) => {
+                        const leaf = new ProjectSpecNode(
                             decorate(
                                 `${h.id}${h.name ? ` ${h.name}` : ''}`,
                                 badges?.badgeFor('hlr', h.id),
@@ -155,7 +156,10 @@ function buildHlrsNode(
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
                             { tag: 'hlr', value: h.id },
-                        ),
+                        );
+                        applyHintsToNode(leaf, h.ui);
+                        return leaf;
+                    },
                 ),
             );
         }),
@@ -185,13 +189,16 @@ function buildLlrsNode(
                     ? vscode.TreeItemCollapsibleState.Collapsed
                     : vscode.TreeItemCollapsibleState.None,
                 llrs.map(
-                    (l) =>
-                        new ProjectSpecNode(
+                    (l) => {
+                        const leaf = new ProjectSpecNode(
                             decorate(l.id, badges?.badgeFor('llr', l.id)),
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
                             { tag: 'llr', value: l.id },
-                        ),
+                        );
+                        applyHintsToNode(leaf, l.ui);
+                        return leaf;
+                    },
                 ),
             );
         }),
@@ -217,13 +224,16 @@ function buildTestsNode(project: ParsedProject): ProjectSpecNode {
                     ? vscode.TreeItemCollapsibleState.Collapsed
                     : vscode.TreeItemCollapsibleState.None,
                 tests.map(
-                    (t) =>
-                        new ProjectSpecNode(
+                    (t) => {
+                        const leaf = new ProjectSpecNode(
                             t.name,
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
                             { tag: 'test', attr: 'name', value: t.name },
-                        ),
+                        );
+                        applyHintsToNode(leaf, t.ui);
+                        return leaf;
+                    },
                 ),
                 { tag: 'file', attr: 'path', value: f.path },
             );
@@ -241,15 +251,18 @@ function buildSddNode(project: ParsedProject): ProjectSpecNode {
             ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None,
         modules.map(
-            (m) =>
-                new ProjectSpecNode(
+            (m) => {
+                const leaf = new ProjectSpecNode(
                     m.path ?? m.title ?? '(unnamed module)',
                     vscode.TreeItemCollapsibleState.None,
                     undefined,
                     m.path
                         ? { tag: 'module', attr: 'path', value: m.path }
                         : undefined,
-                ),
+                );
+                applyHintsToNode(leaf, m.ui);
+                return leaf;
+            },
         ),
     );
     node.iconPath = new vscode.ThemeIcon('book');
