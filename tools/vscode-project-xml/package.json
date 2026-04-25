@@ -17,9 +17,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:doc/Project.xml",
-    "onCommand:projectXml.renderAndPreview",
-    "onCommand:projectXml.renderAll"
+    "workspaceContains:doc/Project.xml"
   ],
   "capabilities": {
     "untrustedWorkspaces": {

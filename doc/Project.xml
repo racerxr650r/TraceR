@@ -834,9 +834,14 @@ surfaces are off until the workspace is trusted; the
 deterministic surfaces (tree, diagnostics, lenses, forms,
 render, Stage A merge) keep working in untrusted mode.]]></responsibility>
         <interfaces title_suffix="(activation)">
-          <interface title="Activation events"><![CDATA[`workspaceContains:doc/Project.xml`,
-`onLanguage:xml` (filtered to `Project.xml`), and the
-`onCommand:projectXml.*` family.]]></interface>
+          <interface title="Activation events"><![CDATA[`workspaceContains:doc/Project.xml` is the sole activation
+event. The extension is dormant in workspaces that do not
+contain a `doc/Project.xml`; once activated it stays
+running for the session, so neither the static commands
+(`projectXml.refresh`, `projectXml.lint`,
+`projectXml.renderAndPreview`, `projectXml.renderAll`,
+…) nor the dynamic per-document `projectXml.render.<id>`
+commands need their own `onCommand:` entries.]]></interface>
           <interface title="Stack"><![CDATA[TypeScript, `@vscode/extension` API, esbuild for bundling,
 mocha + `@vscode/test-electron` for tests. Webviews use
 React + react-jsonschema-form for form panels; the bundle
