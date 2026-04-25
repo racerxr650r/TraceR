@@ -50,7 +50,7 @@ class HandleRequestTests(unittest.TestCase):
         self.assertIn("result", resp)
         result = resp["result"]
         self.assertEqual(set(result.keys()),
-                         {"errors", "warnings", "notes", "ok"})
+                         {"errors", "warnings", "notes", "items", "ok"})
         self.assertTrue(result["ok"])
 
     def test_lint_matches_cli_findings(self) -> None:
@@ -229,7 +229,8 @@ class MethodsRegistryTests(unittest.TestCase):
     def test_methods_registry_contains_documented_methods(self) -> None:
         self.assertEqual(
             set(project_io.METHODS.keys()),
-            {"lint", "render", "parse_to_json", "init_project"},
+            {"lint", "render", "parse_to_json",
+             "list_documents", "init_project"},
         )
         for name, handler in project_io.METHODS.items():
             self.assertTrue(callable(handler), msg=f"{name!r} not callable")

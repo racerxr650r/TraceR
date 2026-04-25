@@ -36,7 +36,9 @@ class LintLibraryTests(unittest.TestCase):
 
         findings = lint(self.xml_path, _paths.PROJECT_XSD)
         d = findings.to_dict()
-        self.assertEqual(set(d.keys()), {"errors", "warnings", "notes"})
+        self.assertEqual(
+            set(d.keys()), {"errors", "warnings", "notes", "items"}
+        )
         for v in d.values():
             self.assertIsInstance(v, list)
         json.dumps(d)
@@ -330,23 +332,34 @@ class CheckSemanticsTests(unittest.TestCase):
         )
 
     def test_missing_metadata_document_is_a_warning(self) -> None:
-        # LLR-SEM-06: a missing standard <document id="..."> entry
-        # produces a warning naming the missing id.
+        # LLR-SEM-06 (Phase 2.5): a <metadata><document> declaration
+        # whose template file is absent on disk produces a warning
+        # naming the missing template path. The previous form of
+        # this check warned on a fixed allow-list of "standard"
+        # document ids; the schema-driven retrofit moved that
+        # responsibility to the templates directory itself.
         bare = (
             '<project name="X" short_name="x" schema_version="1.1">'
             '<metadata>'
             '<document id="SDD" title="" source="SDD.md"/>'
+            '<document id="NoSuchDoc" title="" source="NoSuchDoc.md"/>'
             '</metadata>'
             '</project>'
         )
         tree = _parse_xml(bare)
         f = Findings()
         check_semantics(tree, f)
-        for missing in ("HLRs", "LLRs", "STP", "Traceability"):
-            self.assertTrue(
-                any(f'id="{missing}"' in w for w in f.warnings),
-                msg=f"expected warning for missing <document id={missing!r}>",
-            )
+        # SDD's conventional template exists in tools/templates/SDD.md.j2
+        # so it should NOT trigger the warning; NoSuchDoc's does not
+        # exist, so it should.
+        self.assertFalse(
+            any('id="SDD"' in w and 'missing template' in w for w in f.warnings),
+            msg=f"unexpected missing-template warning for SDD: {f.warnings}",
+        )
+        self.assertTrue(
+            any('id="NoSuchDoc"' in w and 'missing template' in w for w in f.warnings),
+            msg=f"expected missing-template warning for NoSuchDoc: {f.warnings}",
+        )
 
     def test_duplicate_metadata_document_is_an_error(self) -> None:
         # LLR-SEM-06: duplicate <document id="..."> entries are errors.
@@ -365,6 +378,21 @@ class CheckSemanticsTests(unittest.TestCase):
         f = Findings()
         check_semantics(tree, f)
         self.assertTrue(any('duplicate <document id="SDD">' in e for e in f.errors))
+
+
+class SchemaUiNamespaceTests(unittest.TestCase):
+    """Phase 2.5 namespace reservation."""
+
+    def test_xsd_reserves_ui_namespace_prefix(self) -> None:
+        # LLR-MET-05 / HLR-056: tools/project.xsd shall reserve the
+        # urn:tracer:ui:v1 namespace under the `ui` prefix so a
+        # future hint registry can attach UI-only attributes
+        # without breaking existing files.
+        from pathlib import Path
+        xsd_text = Path(__file__).resolve().parent.parent.joinpath(
+            "tools", "project.xsd"
+        ).read_text(encoding="utf-8")
+        self.assertIn('xmlns:ui="urn:tracer:ui:v1"', xsd_text)
 
 
 if __name__ == "__main__":

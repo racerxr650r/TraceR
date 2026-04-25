@@ -8,19 +8,19 @@
 // invalidated by `markStale(docId)`, which fires onDidChange and
 // causes VS Code to re-request content.
 //
-// The Phase 2.5 retrofit will replace the `BASELINE_DOCUMENTS`
-// lookup with a `list_documents` sidecar call; the rest of this
-// provider stays the same because the doc-id-keyed surface is
-// already generic.
+// Phase 2.5: the document set is discovered via the sidecar's
+// `list_documents` method (see util/documents.ts) so a new
+// generated document picks up a working preview pane on next
+// refresh, with no TypeScript edits required.
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ProjectIoClient, SidecarError } from '../sidecar';
-import { getProjectXmlPath, getToolsDir } from '../util/paths';
+import { getProjectFolder, getProjectXmlPath } from '../util/paths';
 import {
-    BASELINE_DOCUMENTS,
     BaselineDocument,
     findBaselineDocument,
+    loadDocuments,
     templatePath,
 } from '../util/documents';
 
@@ -74,9 +74,19 @@ export class MarkdownPreviewProvider
         if (cached !== undefined) {
             return cached;
         }
-        const doc = findBaselineDocument(docId);
+        let docs: readonly BaselineDocument[];
+        try {
+            docs = await loadDocuments(this.client);
+        } catch (err) {
+            const message = formatError(err);
+            this.outputChannel.appendLine(
+                `[preview] list_documents failed: ${message}`,
+            );
+            return `# Project Spec preview — discovery failed\n\n${message}\n`;
+        }
+        const doc = findBaselineDocument(docs, docId);
         if (!doc) {
-            return `# Project Spec preview\n\nUnknown document id \`${docId}\`. Known ids: ${BASELINE_DOCUMENTS.map((d) => d.id).join(', ')}.\n`;
+            return `# Project Spec preview\n\nUnknown document id \`${docId}\`. Known ids: ${docs.map((d) => d.id).join(', ')}.\n`;
         }
         try {
             const rendered = await this.renderToString(doc);
@@ -116,15 +126,15 @@ export class MarkdownPreviewProvider
     }
 
     private async renderToString(doc: BaselineDocument): Promise<string> {
-        const tools = getToolsDir();
+        const folder = getProjectFolder();
         const xmlPath = getProjectXmlPath();
-        if (!tools || !xmlPath) {
+        if (!folder || !xmlPath) {
             throw new Error(
-                'Project Spec: workspace is not configured (toolsDir or xmlPath missing).',
+                'Project Spec: workspace is not configured (workspace folder or xmlPath missing).',
             );
         }
         const result = await this.client.render({
-            template: templatePath(tools, doc),
+            template: templatePath(folder.uri.fsPath, doc),
             metadata_id: doc.id,
             xml_path: xmlPath,
         });

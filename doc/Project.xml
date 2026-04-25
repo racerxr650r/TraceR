@@ -7,15 +7,20 @@
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="TraceR" short_name="TR" schema_version="1.1"
+<project name="TraceR" short_name="TR" schema_version="1.3"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../tools/project.xsd">
   <metadata>
-    <document id="SDD"          title="Software Design Document"     source="doc/SDD.md"          version="0.1" date="2026-04-23" author="John Anderson"/>
-    <document id="HLRs"         title="High-Level Requirements"      source="doc/HLRs.md"         version="0.1" date="2026-04-23" author="John Anderson"/>
-    <document id="LLRs"         title="Low-Level Requirements"       source="doc/LLRs.md"         version="0.1" date="2026-04-23" author="John Anderson"/>
-    <document id="STP"          title="Software Test Plan"           source="doc/STP.md"          version="0.1" date="2026-04-23" author="John Anderson"/>
-    <document id="Traceability" title="Traceability Matrix"          source="doc/Traceability.md" version="0.1" date="2026-04-23" author="John Anderson"/>
+    <document id="SDD"          title="Software Design Document"     source="doc/SDD.md"          version="0.1" date="2026-04-23" author="John Anderson"
+              template="tools/templates/SDD.md.j2"          output="doc/SDD.md"/>
+    <document id="HLRs"         title="High-Level Requirements"      source="doc/HLRs.md"         version="0.1" date="2026-04-23" author="John Anderson"
+              template="tools/templates/HLRs.md.j2"         output="doc/HLRs.md"/>
+    <document id="LLRs"         title="Low-Level Requirements"       source="doc/LLRs.md"         version="0.1" date="2026-04-23" author="John Anderson"
+              template="tools/templates/LLRs.md.j2"         output="doc/LLRs.md"/>
+    <document id="STP"          title="Software Test Plan"           source="doc/STP.md"          version="0.1" date="2026-04-23" author="John Anderson"
+              template="tools/templates/STP.md.j2"          output="doc/STP.md"/>
+    <document id="Traceability" title="Traceability Matrix"          source="doc/Traceability.md" version="0.1" date="2026-04-23" author="John Anderson"
+              template="tools/templates/Traceability.md.j2" output="doc/Traceability.md"/>
     <counts>
       <count name="hlrs"       value="0"/>
       <count name="llrs"       value="0"/>
@@ -829,9 +834,14 @@ surfaces are off until the workspace is trusted; the
 deterministic surfaces (tree, diagnostics, lenses, forms,
 render, Stage A merge) keep working in untrusted mode.]]></responsibility>
         <interfaces title_suffix="(activation)">
-          <interface title="Activation events"><![CDATA[`workspaceContains:doc/Project.xml`,
-`onLanguage:xml` (filtered to `Project.xml`), and the
-`onCommand:projectXml.*` family.]]></interface>
+          <interface title="Activation events"><![CDATA[`workspaceContains:doc/Project.xml` is the sole activation
+event. The extension is dormant in workspaces that do not
+contain a `doc/Project.xml`; once activated it stays
+running for the session, so neither the static commands
+(`projectXml.refresh`, `projectXml.lint`,
+`projectXml.renderAndPreview`, `projectXml.renderAll`,
+…) nor the dynamic per-document `projectXml.render.<id>`
+commands need their own `onCommand:` entries.]]></interface>
           <interface title="Stack"><![CDATA[TypeScript, `@vscode/extension` API, esbuild for bundling,
 mocha + `@vscode/test-electron` for tests. Webviews use
 React + react-jsonschema-form for form panels; the bundle
@@ -2225,6 +2235,98 @@ document is out of date with respect to the source XML.]]></text>
           <trace target="SDD" ref="7"/>
         </traces>
       </hlr>
+
+      <hlr id="HLR-054" name="Schema-Driven Document Set">
+        <text><![CDATA[Adding, removing, or relocating a generated specification
+document shall be a `Project.xml` + template-only change.
+Specifically, declaring `<metadata><document id="…"
+template="…" output="…"/>` (with template/output defaulting
+by convention to `tools/templates/<id>.md.j2` and the
+`source` attribute respectively) and dropping a Jinja2
+template at the resolved path shall be sufficient for the
+renderer, the linter, the JSON-RPC sidecar, and every
+extension surface (tree, render commands, Markdown preview)
+to recognise the new document — with no Python or
+TypeScript edits required. The only "standard" set of
+documents is whatever `<metadata>` declares; the toolchain
+shall not carry a hard-coded allow-list.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="3"/>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-055" name="Cross-Surface Document Discovery">
+        <text><![CDATA[The set of generated documents and their resolved
+template/output paths shall be available to every consumer
+through a single discovery surface (the JSON-RPC
+`list_documents` method backed by
+`tools/render_doc.list_documents`). The VS Code extension
+(per-document render commands, Markdown preview content
+provider, render-all loop) shall consult this surface at
+runtime rather than enumerating ids inline; the renderer,
+the linter, and the sidecar shall agree on the document set
+because they all derive it from the same parser pass.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-056" name="UI Hint Namespace Reservation">
+        <text><![CDATA[The XSD shall reserve the namespace `urn:tracer:ui:v1`
+under the conventional prefix `ui` so a future hint
+registry (icon, group, color, default form widget) can be
+attached to payload elements via `ui:*` attributes without
+breaking existing files or requiring another schema-version
+bump. The core renderer and linter shall ignore unknown
+`ui:*` attributes so projects that adopt the registry
+remain forward-compatible with toolchains that do not
+implement it.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-057" name="Coverage Status Badges in the Tree">
+        <text><![CDATA[The Project Spec tree view shall decorate every HLR and
+LLR leaf node whose id is cited by a current lint finding
+with a status badge: ❌ when any error finding cites it
+(e.g. broken trace, malformed id) and ⚠ when only warnings
+do (e.g. coverage gaps). The badge set shall be derived
+from the structured `Findings.items` returned by the
+linter (matched on the finding's internal `code`), so a
+single source — the linter — drives both the Problems
+panel and the tree decoration. The decoration shall be
+gated on the `projectXml.showCoverageBadges` setting so
+users who prefer an undecorated tree can turn it off
+without losing the underlying lint output.]]></text>
+        <traces>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-058" name="UI Hint Registry">
+        <text><![CDATA[The schema shall accept optional `ui:icon`,
+`ui:color`, and `ui:group` attributes (namespace
+`urn:tracer:ui:v1`) on payload-bearing leaf elements
+(`<hlr>`, `<llr>`, `<test>`, `<module>`) without
+requiring any update to the renderer or linter. The
+Python renderer shall surface the recognised hint
+subset on each parsed payload as a `ui` field
+(serialising as `null` when absent), and the VS Code
+tree provider shall consume `ui:icon` as the node's
+icon, optionally tinted with the VS Code `ThemeColor`
+named in `ui:color`. The `ui:group` attribute is
+reserved for a future grouping pass and shall be
+accepted-and-ignored today, so files that adopt it
+remain consumable by toolchains pinned to this
+contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
+        <traces>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
     </section>
 
   </hlrs>
@@ -2768,9 +2870,11 @@ document is out of date with respect to the source XML.]]></text>
       <intro><![CDATA[The Phase 2 side-by-side Markdown preview surface: a `tracer-preview:/<doc-id>.md` content provider plus the command that opens it via `markdown.showPreviewToSide`.]]></intro>
 
       <llr id="LLR-RAP-01">
-        <text><![CDATA[`renderAndPreview` shall accept an optional `docId` (string or `{docId}` object) argument, prompt the user with a QuickPick over `BASELINE_DOCUMENTS` when none is supplied, and refuse with a warning toast when the supplied id is not in `BASELINE_DOCUMENTS` — never falling through to a partial render.]]></text>
+        <text><![CDATA[`renderAndPreview` shall accept an optional `docId` (string or `{docId}` object) argument, prompt the user with a QuickPick over the runtime-discovered document set returned by `loadDocuments(client)` (which calls the sidecar's `list_documents` method) when none is supplied, and refuse with a warning toast when the supplied id is not in the discovered set — never falling through to a partial render and never carrying a hard-coded list of document ids.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
+          <trace target="HLR" ref="HLR-055" name="Cross-Surface Document Discovery"/>
         </traces>
       </llr>
 
@@ -2782,10 +2886,11 @@ document is out of date with respect to the source XML.]]></text>
       </llr>
 
       <llr id="LLR-MPP-01">
-        <text><![CDATA[`MarkdownPreviewProvider` shall register the `tracer-preview` URI scheme via `vscode.workspace.registerTextDocumentContentProvider` and shall serve content for `tracer-preview:/<doc-id>.md` URIs by calling `ProjectIoClient.render` — so no preview path ever writes a Markdown file under `doc/`.]]></text>
+        <text><![CDATA[`MarkdownPreviewProvider` shall register the `tracer-preview` URI scheme via `vscode.workspace.registerTextDocumentContentProvider` and shall serve content for `tracer-preview:/<doc-id>.md` URIs by calling `ProjectIoClient.render` against the template path resolved from the runtime-discovered document set (via `loadDocuments(client)`) — so no preview path ever writes a Markdown file under `doc/` and a brand-new `<metadata><document>` entry yields a working preview pane on next refresh with no source-code edit.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
           <trace target="HLR" ref="HLR-001" name="Single Source of Truth"/>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
         </traces>
       </llr>
 
@@ -2813,10 +2918,12 @@ document is out of date with respect to the source XML.]]></text>
       <intro><![CDATA[The Phase 2 batch-regeneration command, plus the single named constant Phase 2.5 will swap for a `list_documents` sidecar call.]]></intro>
 
       <llr id="LLR-RAL-01">
-        <text><![CDATA[`renderAll` shall iterate `BASELINE_DOCUMENTS` and shall call `ProjectIoClient.render` for each entry with the `out` parameter set to the corresponding workspace-relative `source` path so each generated Markdown is written by the sidecar (never assembled in TypeScript).]]></text>
+        <text><![CDATA[`renderAll` shall iterate the runtime-discovered document set returned by `loadDocuments(client)` (sourced from the sidecar's `list_documents` method) and shall call `ProjectIoClient.render` for each entry with the `out` parameter set to the resolved `output` path so each generated Markdown is written by the sidecar (never assembled in TypeScript) and so a new `<metadata><document>` entry is rendered automatically on the next `Render All` invocation with no source-code edit.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
           <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
+          <trace target="HLR" ref="HLR-055" name="Cross-Surface Document Discovery"/>
         </traces>
       </llr>
 
@@ -2835,9 +2942,11 @@ document is out of date with respect to the source XML.]]></text>
       </llr>
 
       <llr id="LLR-BLD-01">
-        <text><![CDATA[`BASELINE_DOCUMENTS` shall be the single named source of truth for the Phase 2 hard-coded document set (`SDD`, `HLRs`, `LLRs`, `STP`, `Traceability`); every consumer (the `renderAll` loop, the `renderAndPreview` QuickPick, the `MarkdownPreviewProvider` doc-id lookup) shall import this constant rather than enumerating ids inline so the Phase 2.5 swap to a `list_documents` sidecar call is a single-file edit.]]></text>
+        <text><![CDATA[The runtime document set in [util/documents.ts](../tools/vscode-project-xml/src/util/documents.ts) shall be sourced exclusively from the sidecar's `list_documents` method via `loadDocuments(client)` (with a per-client cache invalidated on `refresh` and on `Project.xml` save). No TypeScript module shall carry an inline list of document ids; every consumer (the dynamic per-document render commands registered in `activate`, the `renderAll` loop, the `renderAndPreview` QuickPick, the `MarkdownPreviewProvider` lookup) shall import this discovery surface so a new `<metadata><document>` entry yields a working command, preview, and tree node with no source-code edit.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
+          <trace target="HLR" ref="HLR-055" name="Cross-Surface Document Discovery"/>
         </traces>
       </llr>
     </function>
@@ -2922,12 +3031,138 @@ document is out of date with respect to the source XML.]]></text>
       </llr>
     </function>
 
+    <function number="18"
+              title="`list_documents` and the document-metadata contract ([tools/render_doc.py](../tools/render_doc.py), [tools/project_io.py](../tools/project_io.py), [tools/project.xsd](../tools/project.xsd), [tools/lint_project.py](../tools/lint_project.py))"
+              name="list_documents"
+              source="tools/render_doc.py">
+      <intro><![CDATA[The Phase 2.5 schema-driven discovery surface. `<metadata><document>` is the single declaration site for every generated document; `render_doc.list_documents` exposes the resolved set; `project_io.list_documents` ships it over JSON-RPC; the linter and the XSD enforce the contract.]]></intro>
+
+      <llr id="LLR-MET-01">
+        <text><![CDATA[`tools/project.xsd` shall accept (but not require) `template` and `output` attributes on `<metadata><document>`. When omitted, the conventional defaults `tools/templates/<id>.md.j2` (template) and the value of the `source` attribute (output) shall apply, so existing files require no edit; when present, they shall override the conventional paths verbatim, so a project can ship a generated document whose template lives outside `tools/templates/` or whose rendered output writes to a path other than `source`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
+          <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MET-02">
+        <text><![CDATA[`render_doc.list_documents(xml_path)` shall parse `Project.xml` and return one dict per `<metadata><document>` containing at minimum `id`, `title`, `source`, `version`, `date`, `author`, `template`, and `output`, with `template` and `output` resolved against the conventional defaults when the XML omits them — so the JSON-RPC sidecar, the VS Code extension, and any future automation see the same document set without re-implementing the resolution logic.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-055" name="Cross-Surface Document Discovery"/>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MET-03">
+        <text><![CDATA[`project_io.py` shall expose `list_documents` as a JSON-RPC method routed through the `METHODS` registry that returns `{"documents": [...]}` whose entries are exactly the dicts produced by `render_doc.list_documents`, so a TypeScript or external client can discover the document set without spawning a separate Python process.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+          <trace target="HLR" ref="HLR-055" name="Cross-Surface Document Discovery"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MET-04">
+        <text><![CDATA[`tools/lint_project.py` shall derive the set of expected documents from the linted file's own `<metadata><document>` declarations rather than from a hard-coded allow-list. For every declared document whose resolved template (explicit `template=` attribute or the conventional `tools/templates/<id>.md.j2` path) is absent from disk, the linter shall emit a warning with internal code `missing-template` naming both the document id and the missing template path, so an authoring mistake is caught at lint time rather than at first render.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-015" name="Metadata Completeness"/>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MET-05">
+        <text><![CDATA[`tools/project.xsd` shall declare `xmlns:ui="urn:tracer:ui:v1"` on its schema root and reserve the `ui:*` attribute space for a future hint registry. The renderer (`render_doc.py`) and the linter (`lint_project.py`) shall not consume `ui:*` attributes, so files that adopt the registry remain renderable and lintable by toolchains that pre-date the hint feature.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-056" name="UI Hint Namespace Reservation"/>
+          <trace target="HLR" ref="HLR-046" name="Minimal Core Dependencies"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="19"
+              title="`BadgeIndex` ([tools/vscode-project-xml/src/util/badges.ts](../tools/vscode-project-xml/src/util/badges.ts))"
+              name="BadgeIndex"
+              source="tools/vscode-project-xml/src/util/badges.ts">
+      <intro><![CDATA[Phase 2.5 Slice E: a small projection of the linter's structured `Findings.items[]` output onto the HLR / LLR ids each finding mentions, so the tree provider can decorate the matching leaf nodes with a coverage status badge. The linter remains the single source of truth — the badge set is built each time `lint` runs and replaces any prior set.]]></intro>
+
+      <llr id="LLR-BDG-01">
+        <text><![CDATA[`buildBadgeIndex(items)` shall iterate the structured lint findings (`severity`, `message`, `code`) returned in `Findings.to_dict()["items"]` and shall record every `HLR-NNN` and `LLR-XXX-NN` id mentioned in each error or warning message under the corresponding tag (`'hlr'`, `'llr'`); notes shall not contribute to the badge set so informational findings do not clutter the tree.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BDG-02">
+        <text><![CDATA[`BadgeIndex.badgeFor(tag, id)` shall return `'❌'` when any error finding cites the id, `'⚠'` when only warnings do, and `undefined` otherwise; an id cited by both an error and a warning shall always badge as `'❌'` so the most severe state surfaces regardless of finding order.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BDG-03">
+        <text><![CDATA[`ProjectSpecProvider.setBadges(idx)` shall accept the index produced by `buildBadgeIndex` (or `undefined` to clear), shall drop the cached tree, and shall fire `onDidChangeTreeData` so VS Code re-requests the leaf labels with the new decorations applied; the extension's activate path shall call this method after every `LintDiagnosticsProvider.run()` so the Problems panel and the tree decorations stay in lock-step.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BDG-04">
+        <text><![CDATA[The tree decoration shall be gated on the `projectXml.showCoverageBadges` setting (boolean, default true). When disabled, `buildTopLevel` shall ignore the stored badge index and emit undecorated labels so a user who prefers an unannotated tree can opt out without losing the underlying Problems-panel output.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="20"
+              title="UI hint registry ([tools/render_doc.py](../tools/render_doc.py), [tools/vscode-project-xml/src/util/hints.ts](../tools/vscode-project-xml/src/util/hints.ts))"
+              name="ui_hints"
+              source="tools/render_doc.py">
+      <intro><![CDATA[Phase 2.5b activates the reserved `urn:tracer:ui:v1` namespace as a payload-side decoration channel. The XSD accepts arbitrary `ui:*` attributes via `<xs:anyAttribute>` on `<hlr>`, `<llr>`, `<test>`, and `<module>`; the Python renderer projects the recognised subset onto a flat dict surfaced as `.ui` on each parsed node; the VS Code extension consumes that field to decorate tree leaves with VS Code icons and `ThemeColor` tints.]]></intro>
+
+      <llr id="LLR-HNT-01">
+        <text><![CDATA[`tools/project.xsd` shall declare `<xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>` on the `Hlr`, `Llr`, `Test`, and `SddModule` complex types so any number of `ui:*` attributes is accepted on those payload elements without the schema needing to enumerate them, and unknown ui:* attributes pass validation rather than rejecting the file.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+          <trace target="HLR" ref="HLR-049" name="XSD Schema for Project XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-HNT-02">
+        <text><![CDATA[`render_doc._ui_hints(elem)` shall extract the recognised hint keys (`icon`, `color`, `group`) from `urn:tracer:ui:v1` attributes via ElementTree's Clark-notation key form (`{urn:tracer:ui:v1}icon`), return a flat dict containing only the keys whose values are non-empty strings, and return `None` when no recognised hint is present so the JSON output distinguishes "no hints" from "an empty hints object" without ambiguity.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-HNT-03">
+        <text><![CDATA[`build_hlr`, `build_llr`, `build_test`, and `build_module` shall attach the `_ui_hints(elem)` result as a `ui` field on the `SimpleNamespace` they return, and the flat-list builders inside `load_project` (`flat_hlrs`, `flat_llrs`, `flat_tests`) shall propagate it forward via `getattr(node, "ui", None)` so `parse_project_to_dict` exposes the hints on the same JSON path the VS Code tree provider reads from.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-HNT-04">
+        <text><![CDATA[`util/hints.applyHintsToNode(node, hints)` shall be a no-op (returning `false`) when hints is `null`, `undefined`, or carries no non-empty `icon`; otherwise it shall set `node.iconPath = new vscode.ThemeIcon(icon, color ? new vscode.ThemeColor(color) : undefined)` (after trimming whitespace from both fields) and return `true`. The reserved `group` key shall be accepted-and-ignored. `ProjectSpecProvider.buildHlrsNode`, `buildLlrsNode`, `buildTestsNode`, and `buildSddNode` shall invoke this helper on every leaf so hint-decorated nodes look identical regardless of the underlying tag.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-058" name="UI Hint Registry"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
   <tests>
 
-    <file path="test/test_render_doc.py" role="unit" count="16">
+    <file path="test/test_render_doc.py" role="unit" count="21">
       <header><![CDATA[Tests for the importable surface of tools/render_doc.py: init_project (project bootstrap), load_project / parse_project_to_dict (the renderer's data surface), and render_document (the rendering primitive that the CLI, the JSON-RPC sidecar, and the extension's preview pane all consume).]]></header>
 
       <test name="test_creates_xml_and_pvd">
@@ -3052,9 +3287,46 @@ document is out of date with respect to the source XML.]]></text>
           <trace target="LLR" ref="LLR-RND-04"/>
         </traces>
       </test>
+
+      <test name="test_list_documents_returns_one_entry_per_metadata_document">
+        <purpose><![CDATA[Pins LLR-MET-02: bootstraps a fresh project with `init_project`, calls `render_doc.list_documents`, and verifies that every `<metadata><document>` becomes one dict in the returned list with the conventional template / output paths resolved when the optional attrs are absent.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MET-02"/>
+        </traces>
+      </test>
+
+      <test name="test_list_documents_honours_explicit_template_and_output">
+        <purpose><![CDATA[Pins LLR-MET-01: a hand-rolled `Project.xml` whose `<document>` carries explicit `template=` and `output=` attributes is enumerated by `list_documents` with those values returned verbatim, proving the schema accepts the optional attrs and the resolver honours them.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MET-01"/>
+        </traces>
+      </test>
+
+      <test name="test_ui_hints_surface_on_parsed_hlr">
+        <purpose><![CDATA[Pins LLR-HNT-02 and LLR-HNT-03: a hand-rolled `Project.xml` with `xmlns:ui="urn:tracer:ui:v1"` and `ui:icon`/`ui:color` attributes on an `<hlr>` is parsed by `parse_project_to_dict` so the decorated HLR's `ui` field carries `{"icon": ..., "color": ...}` while a sibling without hints carries `None`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-02"/>
+          <trace target="LLR" ref="LLR-HNT-03"/>
+        </traces>
+      </test>
+
+      <test name="test_ui_hints_surface_on_parsed_llr_and_test">
+        <purpose><![CDATA[Pins LLR-HNT-02 and LLR-HNT-03 for the LLR and Test payload paths: `ui:icon` on `<llr>` and `ui:icon`/`ui:group` on `<test>` survive through `parse_project_to_dict` and appear under `flat_llrs[*].ui` and `flat_tests[*].ui` with the recognised keys preserved (including `group`, which the consumer ignores but the data contract carries).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-02"/>
+          <trace target="LLR" ref="LLR-HNT-03"/>
+        </traces>
+      </test>
+
+      <test name="test_xsd_accepts_ui_namespace_attributes_on_payload_elements">
+        <purpose><![CDATA[Pins LLR-HNT-01: a hand-rolled `Project.xml` with `xmlns:ui="urn:tracer:ui:v1"` and `ui:icon`/`ui:color`/`ui:group` attributes on `<hlr>`, `<llr>`, and `<test>` elements validates clean against `tools/project.xsd` via lxml's `XMLSchema.assertValid`, proving the `<xs:anyAttribute>` declarations on the payload complex types accept arbitrary `ui:*` attributes without rejecting the file.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-01"/>
+        </traces>
+      </test>
     </file>
 
-    <file path="test/test_lint_project.py" role="unit" count="21">
+    <file path="test/test_lint_project.py" role="unit" count="22">
       <header><![CDATA[Tests for the importable surface of tools/lint_project.py: the `lint` entry point, the `Findings` dataclass, and the human-readable `Findings.report` formatter consumed by both the CLI and the JSON-RPC sidecar.]]></header>
 
       <test name="test_lint_returns_findings_object">
@@ -3220,9 +3492,10 @@ document is out of date with respect to the source XML.]]></text>
       </test>
 
       <test name="test_missing_metadata_document_is_a_warning">
-        <purpose><![CDATA[Verifies LLR-SEM-06: a `<metadata>` block missing one of the standard `<document id="..."/>` rows produces a warning per missing id naming the absent document.]]></purpose>
+        <purpose><![CDATA[Verifies LLR-SEM-06 and LLR-MET-04: a `<metadata>` block whose `<document>` declares an id whose conventional template (`tools/templates/<id>.md.j2`) is absent from disk produces a `missing-template` warning naming both the document id and the absent path; documents whose template does exist do not.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-SEM-06"/>
+          <trace target="LLR" ref="LLR-MET-04"/>
         </traces>
       </test>
 
@@ -3230,6 +3503,14 @@ document is out of date with respect to the source XML.]]></text>
         <purpose><![CDATA[Verifies LLR-SEM-06: duplicate `<document id="..."/>` entries within `<metadata>` are reported as errors naming the duplicated id.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-SEM-06"/>
+        </traces>
+      </test>
+
+      <test name="test_xsd_reserves_ui_namespace_prefix">
+        <purpose><![CDATA[Pins LLR-MET-05 and HLR-056: the shipped `tools/project.xsd` declares `xmlns:ui="urn:tracer:ui:v1"` on its schema root, reserving the namespace prefix for the future UI hint registry without requiring any further toolchain change.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MET-05"/>
+          <trace target="HLR" ref="HLR-056" name="UI Hint Namespace Reservation"/>
         </traces>
       </test>
     </file>
@@ -3351,10 +3632,11 @@ document is out of date with respect to the source XML.]]></text>
       </test>
 
       <test name="test_methods_registry_contains_documented_methods">
-        <purpose><![CDATA[Verifies LLR-SRV-06 and LLR-SRV-07: the `METHODS` registry table holds exactly the documented method names (`lint`, `render`, `parse_to_json`, `init_project`) and every value is callable.]]></purpose>
+        <purpose><![CDATA[Verifies LLR-SRV-06, LLR-SRV-07, and LLR-MET-03: the `METHODS` registry table holds exactly the documented method names (`lint`, `render`, `parse_to_json`, `list_documents`, `init_project`) and every value is callable.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-SRV-06"/>
           <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="LLR" ref="LLR-MET-03"/>
         </traces>
       </test>
 
@@ -3390,34 +3672,43 @@ document is out of date with respect to the source XML.]]></text>
       </test>
     </file>
 
-    <file path="tools/vscode-project-xml/test/unit/documents.test.ts" role="unit-ts" count="6">
-      <header><![CDATA[Tier-1 (Mocha + ts-node, no VS Code host) unit tests for the BASELINE_DOCUMENTS catalogue and its helpers in tools/vscode-project-xml/src/util/documents.ts.]]></header>
+    <file path="tools/vscode-project-xml/test/unit/documents.test.ts" role="unit-ts" count="11">
+      <header><![CDATA[Tier-1 (Mocha + ts-node, no VS Code host) unit tests for the schema-driven document discovery surface in tools/vscode-project-xml/src/util/documents.ts. Uses a fake `ProjectIoClient` whose `listDocuments` returns a fixed set so cache, lookup, and path-resolution can be exercised without spawning the Python sidecar.]]></header>
 
-      <test name="lists exactly the five Phase-2 baseline ids in the documented order">
-        <purpose><![CDATA[Verifies LLR-BLD-01: `BASELINE_DOCUMENTS` is the single named source of truth for the Phase 2 hard-coded document set, in the documented `SDD`, `HLRs`, `LLRs`, `STP`, `Traceability` order.]]></purpose>
+      <test name="returns the document list from the sidecar verbatim">
+        <purpose><![CDATA[Verifies LLR-BLD-01 and LLR-MET-02: `loadDocuments(client)` returns the document set produced by the sidecar's `list_documents` method in the same order, with no in-TypeScript filtering.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BLD-01"/>
+          <trace target="LLR" ref="LLR-MET-02"/>
+        </traces>
+      </test>
+
+      <test name="caches the result per client and reuses it">
+        <purpose><![CDATA[Verifies LLR-BLD-01: `loadDocuments` caches the discovered set per client (the second call returns the same array reference and the sidecar is invoked once), so per-keystroke consumers do not fan out into N parallel sidecar calls.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BLD-01"/>
         </traces>
       </test>
 
-      <test name="every entry names a *.j2 template under tools/templates/">
-        <purpose><![CDATA[Verifies LLR-BLD-01 / LLR-RAL-01: every catalogue entry points at a Jinja2 template under `tools/templates/`, so the `renderAll` loop has a valid template path for every id without further validation.]]></purpose>
+      <test name="invalidateDocumentsCache forces a re-fetch">
+        <purpose><![CDATA[Verifies LLR-BLD-01: `invalidateDocumentsCache(client)` drops the cached set so the next `loadDocuments(client)` call re-queries the sidecar — the contract used by the on-save and on-refresh handlers in `activate`.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BLD-01"/>
-          <trace target="LLR" ref="LLR-RAL-01"/>
         </traces>
       </test>
 
-      <test name="every entry writes to a doc/*.md path matching its id">
-        <purpose><![CDATA[Verifies LLR-BLD-01 / LLR-RAL-01: every catalogue entry writes to a `doc/*.md` path, matching the renderer's contract that the spec stack lives under `doc/`.]]></purpose>
+      <test name="picks up a new schema-driven document with no source edit">
+        <purpose><![CDATA[Pins HLR-054 and HLR-055 directly: a fake sidecar configured to return one extra `Plan` entry causes `loadDocuments` to surface it in the runtime set with its `template` and `output` paths intact, proving that adding a `<metadata><document>` entry is sufficient for the extension to recognise a new generated document with no TypeScript change.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BLD-01"/>
-          <trace target="LLR" ref="LLR-RAL-01"/>
+          <trace target="LLR" ref="LLR-MET-02"/>
+          <trace target="HLR" ref="HLR-054" name="Schema-Driven Document Set"/>
+          <trace target="HLR" ref="HLR-055" name="Cross-Surface Document Discovery"/>
         </traces>
       </test>
 
       <test name="returns the entry with a matching id">
-        <purpose><![CDATA[Verifies the lookup contract used by `renderAndPreview` and the preview content provider: `findBaselineDocument` returns the entry whose id matches.]]></purpose>
+        <purpose><![CDATA[Verifies the lookup contract used by `renderAndPreview` and the preview content provider: `findBaselineDocument(docs, id)` returns the entry whose id matches.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BLD-01"/>
           <trace target="LLR" ref="LLR-RAP-01"/>
@@ -3431,10 +3722,178 @@ document is out of date with respect to the source XML.]]></text>
         </traces>
       </test>
 
-      <test name="templatePath joins toolsDir with templates/&lt;file&gt;">
-        <purpose><![CDATA[Verifies the path-join contract behind LLR-RAL-01: `templatePath(toolsDir, doc)` resolves to `<toolsDir>/templates/<doc.template>` so the sidecar render call sees a usable absolute path.]]></purpose>
+      <test name="templatePath joins workspaceRoot with the doc-relative template">
+        <purpose><![CDATA[Verifies the path-join contract behind LLR-RAL-01 / LLR-MPP-01: `templatePath(workspaceRoot, doc)` resolves to `<workspaceRoot>/<doc.template>` so the sidecar render call sees a usable absolute path under the schema-driven workspace-relative template attribute.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-RAL-01"/>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+        </traces>
+      </test>
+
+      <test name="sourcePath joins workspaceRoot with the doc-relative output">
+        <purpose><![CDATA[Verifies the path-join contract behind LLR-RAL-01: `sourcePath(workspaceRoot, doc)` resolves the `output` attribute against the workspace root so `renderAll` writes to the expected on-disk path.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+
+      <test name="templatePath returns absolute paths verbatim">
+        <purpose><![CDATA[Verifies LLR-MET-01 and LLR-RAL-01: when the document declares an absolute `template=` attribute, `templatePath` returns it unchanged, proving the schema's optional override survives the path resolver and is not silently relocated under the workspace root.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MET-01"/>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+
+      <test name="sourcePath returns absolute output paths verbatim">
+        <purpose><![CDATA[Verifies LLR-MET-01 and LLR-RAL-01: when the document declares an absolute `output=` attribute, `sourcePath` returns it unchanged, so a project can render a document outside the workspace root without the resolver getting in the way.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MET-01"/>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/badges.test.ts" role="unit-ts" count="10">
+      <header><![CDATA[Tier-1 (Mocha + ts-node, no VS Code host) unit tests for the lint-driven badge index in tools/vscode-project-xml/src/util/badges.ts. Drives `buildBadgeIndex` with hand-rolled `LintFinding` arrays so the projection from finding messages onto HLR / LLR ids and the error-wins-over-warning rule are pinned without spawning the Python sidecar.]]></header>
+
+      <test name="marks HLR ids cited by warnings with ⚠">
+        <purpose><![CDATA[Verifies LLR-BDG-01 and LLR-BDG-02: a single warning finding citing `HLR-001` produces the `'⚠'` badge for that id under the `'hlr'` tag.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="marks LLR ids cited by warnings with ⚠">
+        <purpose><![CDATA[Verifies LLR-BDG-01 and LLR-BDG-02: a warning finding citing an `LLR-XXX-NN` id produces the `'⚠'` badge for that id under the `'llr'` tag.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="marks ids cited by errors with ❌">
+        <purpose><![CDATA[Verifies LLR-BDG-02: an error finding citing an HLR id produces the `'❌'` badge.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="errors win over warnings when both cite the same id">
+        <purpose><![CDATA[Pins the severity-ordering rule in LLR-BDG-02: when the same id appears in both a warning and an error finding (in either order), the badge is always `'❌'`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined for ids that no finding mentions">
+        <purpose><![CDATA[Verifies LLR-BDG-02: ids no current finding cites have no badge, so the tree provider emits an undecorated label.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="ignores notes (info-only findings carry no badge)">
+        <purpose><![CDATA[Verifies LLR-BDG-01: `note`-severity findings (informational, e.g. validator-path notes) do not contribute to the badge set, so the tree is not cluttered by ids that lint did not flag as a real problem.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+        </traces>
+      </test>
+
+      <test name="handles undefined items (no lint result yet)">
+        <purpose><![CDATA[Verifies LLR-BDG-03: `buildBadgeIndex(undefined)` returns an empty `BadgeIndex`, so the tree provider can call `setBadges` unconditionally during the initial load before the first lint run completes.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-03"/>
+        </traces>
+      </test>
+
+      <test name="does not return a badge for unrelated tags (test, file)">
+        <purpose><![CDATA[Verifies LLR-BDG-02: only `'hlr'` and `'llr'` tags carry a badge today; lookups for `'test'` or `'file'` always return `undefined` so future lint findings on those tags can be added without changing existing tree behaviour.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="extracts every id mentioned in a single message">
+        <purpose><![CDATA[Verifies LLR-BDG-01: a single finding message that mentions both an HLR id and an LLR id (e.g. a broken-trace error) badges both ids, matching the existing `rangeForFinding` extraction rules used by the diagnostics provider.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+        </traces>
+      </test>
+
+      <test name="exposes the raw severity for callers that need finer control">
+        <purpose><![CDATA[Verifies LLR-BDG-02: `BadgeIndex.severityFor(tag, id)` returns the underlying severity (`'error'` / `'warning'` / `undefined`) so future consumers (status-bar item, AI surfaces) can branch on the raw severity without parsing the emoji badge.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/hints.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Tier-1 unit tests for the UI hint registry consumer in tools/vscode-project-xml/src/util/hints.ts. Drives `applyHintsToNode` against a minimal `vscode.TreeItem` mock so the icon / color decoration path is pinned without spawning a VS Code host.]]></header>
+
+      <test name="returns false and leaves iconPath untouched for null / undefined hints">
+        <purpose><![CDATA[Verifies LLR-HNT-04: `applyHintsToNode` is a no-op when the upstream parsed payload had no `ui` field at all (`null` or `undefined`), so the tree provider can invoke it unconditionally on every leaf.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="returns false when no recognised key is present">
+        <purpose><![CDATA[Verifies the recognised-key gating in LLR-HNT-04: a hint payload that carries only the reserved `group` key (no `icon`) must produce no decoration today, since `group` is accepted-and-ignored.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="returns false when icon is the empty / whitespace string">
+        <purpose><![CDATA[Verifies LLR-HNT-04 and the matching guard in LLR-HNT-02: `icon=""` or `icon="   "` is treated as absent, so a malformed payload cannot install a blank `ThemeIcon` on the tree node.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+          <trace target="LLR" ref="LLR-HNT-02"/>
+        </traces>
+      </test>
+
+      <test name="sets a ThemeIcon when icon is provided">
+        <purpose><![CDATA[Verifies the happy path of LLR-HNT-04: with a recognised `icon` value, `applyHintsToNode` installs `node.iconPath = new ThemeIcon(icon)` and returns `true`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="tints the ThemeIcon with a ThemeColor when color is provided">
+        <purpose><![CDATA[Verifies the color-tint leg of LLR-HNT-04: when both `icon` and `color` are present, the constructed `ThemeIcon` carries a `ThemeColor` whose id matches the supplied string.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="trims surrounding whitespace from icon and color">
+        <purpose><![CDATA[Verifies the whitespace-trim guarantee of LLR-HNT-04: leading / trailing spaces on `icon` and `color` are stripped before constructing the `ThemeIcon` / `ThemeColor`, so authoring noise does not produce an invalid icon name.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="treats whitespace-only color as absent (icon only, no tint)">
+        <purpose><![CDATA[Verifies LLR-HNT-04: a payload with a real `icon` but a whitespace-only `color` produces an untinted `ThemeIcon`, never a `ThemeColor` constructed from an empty string.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="ignores `group` while still honouring icon when both are set">
+        <purpose><![CDATA[Pins the reserved-key contract from HLR-058 and LLR-HNT-04: an extra `group` key on the payload does not block the `icon` decoration, so files can carry `ui:group` for a future grouping pass without losing today's icon support.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
+        </traces>
+      </test>
+
+      <test name="replaces a pre-existing iconPath when hints fire">
+        <purpose><![CDATA[Verifies the override path of LLR-HNT-04: when the tree provider has already assigned a default `iconPath` and a hint payload then fires, the hint icon replaces the default rather than being silently dropped.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HNT-04"/>
         </traces>
       </test>
     </file>

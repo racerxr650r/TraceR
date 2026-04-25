@@ -17,9 +17,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:doc/Project.xml",
-    "onCommand:projectXml.renderAndPreview",
-    "onCommand:projectXml.renderAll"
+    "workspaceContains:doc/Project.xml"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -132,6 +130,11 @@
           "type": "boolean",
           "default": true,
           "description": "When Project.xml is saved, refresh any open Project Spec Markdown previews. The preview is served from an in-memory virtual document and never writes to doc/."
+        },
+        "projectXml.showCoverageBadges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show ⚠ (coverage gap) and ❌ (broken trace / id error) status badges on payload nodes in the Project Spec tree. Sourced from the latest lint findings; turn off to declutter the tree."
         }
       }
     }

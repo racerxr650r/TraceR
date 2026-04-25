@@ -39,6 +39,35 @@ def _attrs(elem: ET.Element) -> dict[str, str]:
     return dict(elem.attrib)
 
 
+# ---------------------------------------------------------------------------
+# UI hint vocabulary (urn:tracer:ui:v1)
+#
+# Phase 2.5b lets payload-bearing elements (HLRs, LLRs, tests, SDD modules)
+# carry optional `ui:icon`, `ui:color`, `ui:group` attributes. The XSD
+# declares them via `<xs:anyAttribute namespace="urn:tracer:ui:v1"
+# processContents="skip"/>` so unknown ui:* attributes are ignored rather
+# than rejected. ElementTree exposes namespaced attribute names as
+# Clark-notation ("{ns}local") keys; we project the recognised subset
+# onto a flat dict and surface it as `.ui` on the SimpleNamespace nodes
+# so both the Jinja templates (which currently ignore it) and the
+# JSON-RPC `parse_to_json` consumers (the VS Code tree) see the same
+# shape. Returns None when no recognised ui:* attribute is present, so
+# absent hints serialise as null rather than empty objects.
+# ---------------------------------------------------------------------------
+
+UI_NAMESPACE = "urn:tracer:ui:v1"
+_UI_HINT_KEYS = ("icon", "color", "group")
+
+
+def _ui_hints(elem: ET.Element) -> dict[str, str] | None:
+    hints: dict[str, str] = {}
+    for key in _UI_HINT_KEYS:
+        value = elem.get(f"{{{UI_NAMESPACE}}}{key}")
+        if value is not None and value != "":
+            hints[key] = value
+    return hints or None
+
+
 def _text(elem: ET.Element | None) -> str:
     if elem is None or elem.text is None:
         return ""
@@ -139,6 +168,7 @@ def build_module(elem: ET.Element) -> SimpleNamespace:
             _text(d) for d in (elem.find("dependencies") or [])
         ] if elem.find("dependencies") is not None else [],
         error_handling=build_named_body_list(elem.find("error_handling"), "case"),
+        ui=_ui_hints(elem),
     )
 
 
@@ -260,6 +290,7 @@ def build_hlr(elem: ET.Element) -> SimpleNamespace:
         name=elem.get("name", ""),
         text=_text(elem.find("text")),
         traces=build_traces(elem.find("traces")),
+        ui=_ui_hints(elem),
     )
 
 
@@ -277,6 +308,7 @@ def build_llr(elem: ET.Element) -> SimpleNamespace:
         id=elem.get("id", ""),
         text=_text(elem.find("text")),
         traces=build_traces(elem.find("traces")),
+        ui=_ui_hints(elem),
     )
 
 
@@ -297,6 +329,7 @@ def build_test(elem: ET.Element) -> SimpleNamespace:
         name=elem.get("name", ""),
         purpose=_text(elem.find("purpose")),
         traces=build_traces(elem.find("traces")),
+        ui=_ui_hints(elem),
     )
 
 
@@ -475,6 +508,7 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
                 id=llr.id,
                 text=llr.text,
                 traces=llr.traces,
+                ui=getattr(llr, "ui", None),
                 function_name=grp.name or grp.title,
                 function_number=grp.number,
             ))
@@ -489,6 +523,7 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
                 name=hlr.name,
                 text=hlr.text,
                 traces=hlr.traces,
+                ui=getattr(hlr, "ui", None),
                 section_number=sec.number,
                 section_title=sec.title,
             ))
@@ -525,6 +560,7 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
                 name=t.name,
                 purpose=t.purpose,
                 traces=t.traces,
+                ui=getattr(t, "ui", None),
                 file=tf.path,
             ))
     flat_tests.sort(key=lambda t: (t.file, t.name))
@@ -680,6 +716,65 @@ def render_document(
     return output.rstrip("\n") + "\n"
 
 
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+
+def list_documents(
+    xml_path: Path | str = PROJECT_XML,
+) -> list[dict[str, str]]:
+    """Library entry point: enumerate ``<metadata><document>`` entries
+    so the VS Code extension (and any other consumer) can register
+    one render command and one preview target per discovered document
+    without naming the spec stack in source.
+
+    Each returned dict carries ``id``, ``title``, ``source``,
+    ``version``, ``date``, ``author``, ``template``, and ``output``.
+    The ``template`` and ``output`` fields are filled in from the
+    optional XSD attributes when present; otherwise they fall back to
+    the project convention:
+
+      * ``template = tools/templates/<id>.md.j2`` (relative to the
+        repository root)
+      * ``output   = <source>``
+
+    Phase 2.5 of the schema-driven retrofit pins this method as the
+    single source of truth for the document set the extension
+    discovers; the extension and the linter no longer hard-code which
+    documents exist.
+    """
+    xml_path = Path(xml_path)
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError as exc:
+        raise ProjectXmlError(f"{xml_path}: malformed XML: {exc}") from exc
+    except FileNotFoundError as exc:
+        raise ProjectXmlError(f"{xml_path}: file not found") from exc
+    if root.tag != "project":
+        raise ProjectXmlError(
+            f"Root element is <{root.tag}>, expected <project>"
+        )
+
+    documents: list[dict[str, str]] = []
+    for d in root.findall("metadata/document"):
+        doc_id = d.get("id", "")
+        if not doc_id:
+            continue
+        source = d.get("source", "")
+        template = d.get("template") or f"tools/templates/{doc_id}.md.j2"
+        output = d.get("output") or source
+        documents.append({
+            "id": doc_id,
+            "title": d.get("title", ""),
+            "source": source,
+            "version": d.get("version", ""),
+            "date": d.get("date", ""),
+            "author": d.get("author", ""),
+            "template": template,
+            "output": output,
+        })
+    return documents
+
+
 SKELETON_PROJECT_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
@@ -690,7 +785,7 @@ SKELETON_PROJECT_XML = """\
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="{name}" short_name="{short_name}" schema_version="1.1"
+<project name="{name}" short_name="{short_name}" schema_version="1.3"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="{schema_location}">
   <metadata>

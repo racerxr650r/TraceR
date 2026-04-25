@@ -17,7 +17,22 @@
   autocomplete and inline validation.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:ui="urn:tracer:ui:v1"
            elementFormDefault="qualified">
+
+  <!-- ============================================================ -->
+  <!-- UI hint vocabulary (urn:tracer:ui:v1)                         -->
+  <!--                                                               -->
+  <!-- The `ui:` namespace is reserved for `<xs:appinfo>` annotations -->
+  <!-- on payload-bearing elements (e.g. ui:treeNode, ui:form,       -->
+  <!-- ui:lens, ui:document). Phase 2.5 reserves the namespace and   -->
+  <!-- the `<metadata><document>` discovery surface (template/output -->
+  <!-- attributes); Phase 2.5b will define and consume the per-      -->
+  <!-- payload `ui:*` element vocabulary so tree nodes, forms, and   -->
+  <!-- lenses are emitted from the schema with no TypeScript edits.  -->
+  <!--                                                               -->
+  <!-- See doc/Schema_Reference.md §"UI hints" for the contract.   -->
+  <!-- ============================================================ -->
 
   <!-- ============================================================ -->
   <!-- Reusable simple types                                         -->
@@ -65,12 +80,18 @@
   <!-- ============================================================ -->
 
   <xs:complexType name="Document">
-    <xs:attribute name="id"      type="NonEmptyString" use="required"/>
-    <xs:attribute name="title"   type="NonEmptyString" use="required"/>
-    <xs:attribute name="source"  type="NonEmptyString" use="required"/>
-    <xs:attribute name="version" type="xs:string"      use="required"/>
-    <xs:attribute name="date"    type="xs:string"      use="required"/>
-    <xs:attribute name="author"  type="xs:string"      use="required"/>
+    <xs:attribute name="id"       type="NonEmptyString" use="required"/>
+    <xs:attribute name="title"    type="NonEmptyString" use="required"/>
+    <xs:attribute name="source"   type="NonEmptyString" use="required"/>
+    <xs:attribute name="version"  type="xs:string"      use="required"/>
+    <xs:attribute name="date"     type="xs:string"      use="required"/>
+    <xs:attribute name="author"   type="xs:string"      use="required"/>
+    <!-- Optional schema-driven discovery (Phase 2.5).               -->
+    <!-- When omitted, list_documents fills in the convention:       -->
+    <!--   template = tools/templates/<id>.md.j2                     -->
+    <!--   output   = <source>                                       -->
+    <xs:attribute name="template" type="NonEmptyString" use="optional"/>
+    <xs:attribute name="output"   type="NonEmptyString" use="optional"/>
   </xs:complexType>
 
   <xs:complexType name="Counts">
@@ -238,6 +259,7 @@
     </xs:sequence>
     <xs:attribute name="path"  type="xs:string" use="optional"/>
     <xs:attribute name="title" type="xs:string" use="optional"/>
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="SddModules">
@@ -437,6 +459,9 @@
     </xs:sequence>
     <xs:attribute name="id"   type="HlrId"          use="required"/>
     <xs:attribute name="name" type="NonEmptyString" use="required"/>
+    <!-- Phase 2.5b: optional `ui:icon` / `ui:color` / `ui:group` hints   -->
+    <!-- (urn:tracer:ui:v1) consumed by the VS Code tree provider.        -->
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="HlrSection">
@@ -464,6 +489,7 @@
       <xs:element name="traces" type="Traces" minOccurs="0"/>
     </xs:sequence>
     <xs:attribute name="id" type="LlrId" use="required"/>
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="LlrFunction">
@@ -493,6 +519,7 @@
       <xs:element name="traces"  type="Traces" minOccurs="0"/>
     </xs:sequence>
     <xs:attribute name="name" type="NonEmptyString" use="required"/>
+    <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
 
   <xs:complexType name="TestFile">
@@ -513,6 +540,31 @@
   </xs:complexType>
 
   <!-- ============================================================ -->
+  <!-- <plan>                                                        -->
+  <!--                                                               -->
+  <!-- Phase 2.5 retrofit demo payload: a minimal hand-authored      -->
+  <!-- planning document. Carries an optional `version` attribute    -->
+  <!-- and free-form mixed content, so a project can ship one        -->
+  <!-- without committing to a fixed structure. Used by the          -->
+  <!-- schema-driven proof in test/doc/Project.xml + the matching    -->
+  <!-- tools/templates/Plan.md.j2 template; the VS Code extension    -->
+  <!-- discovers it via `<metadata><document id="Plan">` with no    -->
+  <!-- TypeScript edits.                                             -->
+  <!-- ============================================================ -->
+
+  <xs:complexType name="Plan" mixed="true">
+    <xs:sequence>
+      <xs:element name="item" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType mixed="true">
+          <xs:attribute name="id"     type="NonEmptyString" use="optional"/>
+          <xs:attribute name="status" type="NonEmptyString" use="optional"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+    <xs:attribute name="version" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- ============================================================ -->
   <!-- <project> root                                                -->
   <!-- ============================================================ -->
 
@@ -525,6 +577,7 @@
         <xs:element name="hlrs"     type="Hlrs"     minOccurs="0"/>
         <xs:element name="llrs"     type="Llrs"     minOccurs="0"/>
         <xs:element name="tests"    type="Tests"    minOccurs="0"/>
+        <xs:element name="plan"     type="Plan"     minOccurs="0"/>
       </xs:all>
       <xs:attribute name="name"           type="NonEmptyString" use="required"/>
       <xs:attribute name="short_name"     type="NonEmptyString" use="required"/>

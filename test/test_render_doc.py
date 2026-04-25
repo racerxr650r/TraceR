@@ -276,5 +276,140 @@ class RenderDataSurfaceTests(unittest.TestCase):
         self.assertEqual(render_doc._gh_slug("Section 3.2.1"), "section-321")
 
 
+class ListDocumentsTests(unittest.TestCase):
+    """Phase 2.5 schema-driven discovery surface."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_list_documents_returns_one_entry_per_metadata_document(self) -> None:
+        # LLR-MET-02: list_documents enumerates every <metadata>
+        # <document> entry verbatim and resolves the conventional
+        # template/output paths when the optional attrs are absent.
+        xml_path = self.tmp / "Project.xml"
+        init_project(name="LD", short_name="ld", xml_path=xml_path,
+                     pvd_path=self.tmp / "PVD.md")
+        docs = render_doc.list_documents(xml_path)
+        ids = [d["id"] for d in docs]
+        self.assertEqual(
+            ids, ["SDD", "HLRs", "LLRs", "STP", "Traceability"],
+            msg=f"unexpected ids: {ids}",
+        )
+        sdd = next(d for d in docs if d["id"] == "SDD")
+        self.assertEqual(sdd["template"], "tools/templates/SDD.md.j2")
+        self.assertEqual(sdd["output"], "doc/SDD.md")
+
+    def test_list_documents_honours_explicit_template_and_output(self) -> None:
+        # LLR-MET-01: the optional template= and output= attributes
+        # on <metadata><document> override the conventional paths;
+        # list_documents returns whatever the file declares.
+        xml_path = self.tmp / "Project.xml"
+        xml_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<project name="X" short_name="x" schema_version="1.2">'
+            '<metadata>'
+            '<document id="Plan" title="P" source="doc/Plan.md"'
+            '          version="0.1" date="2026-04-25" author="A"'
+            '          template="custom/Plan.j2" output="out/Plan.md"/>'
+            '</metadata>'
+            '</project>'
+        )
+        docs = render_doc.list_documents(xml_path)
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["template"], "custom/Plan.j2")
+        self.assertEqual(docs[0]["output"], "out/Plan.md")
+
+
+class UiHintsTests(unittest.TestCase):
+    """Phase 2.5b UI hint registry (urn:tracer:ui:v1).
+
+    Pins LLR-HNT-04: ui:icon / ui:color / ui:group attributes on
+    <hlr>, <llr>, <test>, and <module> elements survive parsing and
+    surface as a `ui` dict on every JSON-RPC parsed payload. Absent
+    hints serialise as None so consumers can discriminate cheaply.
+    """
+
+    def _write_project_with_hint(self, tmp: Path) -> Path:
+        xml_path = tmp / "Project.xml"
+        xml_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<project name="UH" short_name="uh" schema_version="1.3"'
+            '         xmlns:ui="urn:tracer:ui:v1">'
+            '<metadata>'
+            '<document id="HLRs" title="H" source="doc/HLRs.md"'
+            '          version="0.1" date="2026-04-25" author="A"/>'
+            '</metadata>'
+            '<hlrs>'
+            '<section number="1" title="Core">'
+            '<hlr id="HLR-001" name="Decorated"'
+            '     ui:icon="star" ui:color="charts.blue">'
+            '<text>x</text></hlr>'
+            '<hlr id="HLR-002" name="Plain"><text>y</text></hlr>'
+            '</section>'
+            '</hlrs>'
+            '<llrs>'
+            '<function number="1" title="F" name="f">'
+            '<llr id="LLR-FN-01" ui:icon="rocket"><text>z</text></llr>'
+            '</function>'
+            '</llrs>'
+            '<tests>'
+            '<file path="t/x.py">'
+            '<test name="test_x" ui:icon="beaker" ui:group="smoke"/>'
+            '</file>'
+            '</tests>'
+            '</project>'
+        )
+        return xml_path
+
+    def test_ui_hints_surface_on_parsed_hlr(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp))
+        xml_path = self._write_project_with_hint(tmp)
+        data = render_doc.parse_project_to_dict(xml_path, metadata_for="HLRs")
+        flat = data["flat_hlrs"]
+        decorated = next(h for h in flat if h["id"] == "HLR-001")
+        plain = next(h for h in flat if h["id"] == "HLR-002")
+        self.assertEqual(
+            decorated["ui"], {"icon": "star", "color": "charts.blue"}
+        )
+        self.assertIsNone(plain["ui"])
+
+    def test_ui_hints_surface_on_parsed_llr_and_test(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp))
+        xml_path = self._write_project_with_hint(tmp)
+        data = render_doc.parse_project_to_dict(xml_path, metadata_for="HLRs")
+        llr = data["flat_llrs"][0]
+        self.assertEqual(llr["id"], "LLR-FN-01")
+        self.assertEqual(llr["ui"], {"icon": "rocket"})
+        # Tests preserve the reserved `group` key verbatim — the TS
+        # consumer ignores it today but the data contract carries it.
+        test = data["flat_tests"][0]
+        self.assertEqual(test["name"], "test_x")
+        self.assertEqual(test["ui"], {"icon": "beaker", "group": "smoke"})
+
+    def test_xsd_accepts_ui_namespace_attributes_on_payload_elements(self) -> None:
+        # LLR-HNT-01: project.xsd declares xs:anyAttribute namespace=
+        # "urn:tracer:ui:v1" processContents="skip" on Hlr/Llr/Test/
+        # SddModule, so a project with ui:icon / ui:color / ui:group
+        # on those elements must validate clean against the XSD.
+        # We exercise the lxml validation path directly so the test
+        # passes regardless of whether xmllint is installed.
+        try:
+            import lxml.etree as LET  # type: ignore
+        except ImportError:  # pragma: no cover - environment guard
+            self.skipTest("lxml not available")
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp))
+        xml_path = self._write_project_with_hint(tmp)
+        xsd_path = Path(_paths.TOOLS_DIR) / "project.xsd"
+        schema = LET.XMLSchema(LET.parse(str(xsd_path)))
+        # assertValid raises DocumentInvalid on failure; reaching the
+        # next line means the file passed schema validation.
+        schema.assertValid(LET.parse(str(xml_path)))
+
+
 if __name__ == "__main__":
     unittest.main()

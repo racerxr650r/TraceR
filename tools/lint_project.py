@@ -43,35 +43,84 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_XML = REPO_ROOT / "doc" / "Project.xml"
 DEFAULT_XSD = REPO_ROOT / "tools" / "project.xsd"
 
-STANDARD_DOCS = {"SDD", "HLRs", "LLRs", "STP", "Traceability"}
+TEMPLATES_DIR = REPO_ROOT / "tools" / "templates"
+
+
+def _conventional_template(doc_id: str) -> str:
+    """Return the conventional repo-relative template path for a doc id.
+
+    Mirrors the convention used by ``render_doc.list_documents``: a
+    ``<metadata><document>`` without an explicit ``template=`` attr
+    is rendered from ``tools/templates/<id>.md.j2``.
+    """
+    return f"tools/templates/{doc_id}.md.j2"
 
 HLR_ID_RE = re.compile(r"^HLR-\d{3,}$")
 LLR_ID_RE = re.compile(r"^LLR-[A-Z0-9]+-\d{2,}$")
 SDD_REF_RE = re.compile(r"^[0-9]+(\.[0-9]+)*[a-zA-Z]?$")
 
 
+@dataclass
+class Finding:
+    """One structured lint finding.
+
+    Phase 2.5 introduces the optional ``code`` field so downstream
+    surfaces (the planned VS Code CodeActionProvider, the Phase 3
+    Quick-Fix layer) can dispatch on a stable identifier rather than
+    parsing the human-readable message text. The ``message`` field
+    remains the canonical user-facing string and is what the CLI
+    report prints — unchanged from earlier phases (HLR-043).
+    """
+
+    severity: str  # "error" | "warning" | "note"
+    message: str
+    code: str | None = None
+
+
 class Findings:
-    """Accumulator for lint output."""
+    """Accumulator for lint output.
+
+    Internally stores ``Finding`` records with optional ``code``
+    values; exposes the legacy ``.errors`` / ``.warnings`` /
+    ``.notes`` attributes as message-only string lists so existing
+    callers (the CLI report, the cross-surface equivalence tests
+    pinning HLR-043) see byte-identical output.
+    """
 
     def __init__(self) -> None:
-        self.errors: list[str] = []
-        self.warnings: list[str] = []
-        self.notes: list[str] = []
+        self._items: list[Finding] = []
 
-    def error(self, msg: str) -> None:
-        self.errors.append(msg)
+    @property
+    def errors(self) -> list[str]:
+        return [f.message for f in self._items if f.severity == "error"]
 
-    def warn(self, msg: str) -> None:
-        self.warnings.append(msg)
+    @property
+    def warnings(self) -> list[str]:
+        return [f.message for f in self._items if f.severity == "warning"]
 
-    def note(self, msg: str) -> None:
-        self.notes.append(msg)
+    @property
+    def notes(self) -> list[str]:
+        return [f.message for f in self._items if f.severity == "note"]
+
+    @property
+    def items(self) -> list[Finding]:
+        return list(self._items)
+
+    def error(self, msg: str, *, code: str | None = None) -> None:
+        self._items.append(Finding("error", msg, code))
+
+    def warn(self, msg: str, *, code: str | None = None) -> None:
+        self._items.append(Finding("warning", msg, code))
+
+    def note(self, msg: str, *, code: str | None = None) -> None:
+        self._items.append(Finding("note", msg, code))
 
     def report(self, *, show_warnings: bool, stream=sys.stderr) -> None:
         for n in self.notes:
@@ -84,16 +133,25 @@ class Findings:
         n_e, n_w = len(self.errors), len(self.warnings) if show_warnings else 0
         stream.write(f"\nlint_project: {n_e} error(s), {n_w} warning(s)\n")
 
-    def to_dict(self) -> dict[str, list[str]]:
-        """Return findings as a JSON-serialisable dict. Used by the
-        importable lint() entry point and the project_io.py JSON-RPC
-        surface so callers can consume findings without parsing the
-        free-form CLI report.
+    def to_dict(self) -> dict[str, list]:
+        """Return findings as a JSON-serialisable dict.
+
+        The ``errors`` / ``warnings`` / ``notes`` keys remain flat
+        lists of message strings so output stays byte-identical
+        between the CLI, the in-process library, and the JSON-RPC
+        subprocess (HLR-043). The new ``items`` key carries the
+        structured records (severity / message / code) so the VS Code
+        extension's Phase 3 Quick-Fix layer can key on ``code``
+        without re-parsing the message text.
         """
         return {
-            "errors": list(self.errors),
-            "warnings": list(self.warnings),
-            "notes": list(self.notes),
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "notes": self.notes,
+            "items": [
+                {"severity": f.severity, "message": f.message, "code": f.code}
+                for f in self._items
+            ],
         }
 
 
@@ -179,16 +237,28 @@ def check_semantics(tree: ET.ElementTree, findings: Findings) -> None:
     if metadata is None:
         findings.error("<project> is missing required <metadata>")
     else:
-        doc_ids = [d.get("id", "") for d in metadata.findall("document")]
+        documents = metadata.findall("document")
+        doc_ids = [d.get("id", "") for d in documents]
         dup = [i for i, n in Counter(doc_ids).items() if n > 1]
         for i in dup:
             findings.error(f"<metadata> has duplicate <document id=\"{i}\">")
-        missing = STANDARD_DOCS - set(doc_ids)
-        for m in sorted(missing):
-            findings.warn(
-                f"<metadata> has no <document id=\"{m}\"> "
-                f"(render_doc.py will not find metadata for that document)"
-            )
+        # Phase 2.5 schema-driven check: each declared <document>
+        # must point at a template file that actually exists on
+        # disk. The set of "standard" docs is no longer hard-coded
+        # — it is whatever <metadata> declares.
+        for d in documents:
+            doc_id = d.get("id", "")
+            if not doc_id:
+                continue
+            tmpl_attr = d.get("template") or _conventional_template(doc_id)
+            tmpl_path = (REPO_ROOT / tmpl_attr).resolve()
+            if not tmpl_path.is_file():
+                findings.warn(
+                    f"<metadata><document id=\"{doc_id}\"> references "
+                    f"missing template `{tmpl_attr}` (render_doc.py "
+                    f"will fail to render this document)",
+                    code="missing-template",
+                )
 
     # --- HLRs ---------------------------------------------------------
     hlr_ids: dict[str, ET.Element] = {}
@@ -196,10 +266,11 @@ def check_semantics(tree: ET.ElementTree, findings: Findings) -> None:
         hid = hlr.get("id", "")
         if not HLR_ID_RE.match(hid):
             findings.error(
-                f"<hlr id=\"{hid}\"> does not match HLR-NNN"
+                f"<hlr id=\"{hid}\"> does not match HLR-NNN",
+                code="id-format",
             )
         if hid in hlr_ids:
-            findings.error(f"duplicate HLR id: {hid}")
+            findings.error(f"duplicate HLR id: {hid}", code="id-format")
         hlr_ids[hid] = hlr
 
     # --- LLRs ---------------------------------------------------------
@@ -208,10 +279,11 @@ def check_semantics(tree: ET.ElementTree, findings: Findings) -> None:
         lid = llr.get("id", "")
         if not LLR_ID_RE.match(lid):
             findings.error(
-                f"<llr id=\"{lid}\"> does not match LLR-XXX-NN"
+                f"<llr id=\"{lid}\"> does not match LLR-XXX-NN",
+                code="id-format",
             )
         if lid in llr_ids:
-            findings.error(f"duplicate LLR id: {lid}")
+            findings.error(f"duplicate LLR id: {lid}", code="id-format")
         llr_ids[lid] = llr
 
     # --- Tests --------------------------------------------------------
@@ -286,14 +358,20 @@ def check_semantics(tree: ET.ElementTree, findings: Findings) -> None:
 
     for lid in llr_ids:
         if not tests_per_llr.get(lid):
-            findings.warn(f"LLR {lid} has no test verifying it")
+            findings.warn(
+                f"LLR {lid} has no test verifying it",
+                code="no-test",
+            )
 
     for hid in hlr_ids:
         # Covered if any test directly traces it OR any of its LLRs has a test.
         direct = bool(tests_per_hlr_direct.get(hid))
         via_llr = any(tests_per_llr.get(l) for l in llrs_per_hlr.get(hid, []))
         if not direct and not via_llr:
-            findings.warn(f"HLR {hid} has no test verifying it (directly or via any LLR)")
+            findings.warn(
+                f"HLR {hid} has no test verifying it (directly or via any LLR)",
+                code="no-test",
+            )
 
 
 def _check_trace(
@@ -327,10 +405,16 @@ def _check_trace(
             )
     elif target == "HLR":
         if ref not in hlr_ids:
-            findings.error(f"{owner}: <trace> references unknown HLR '{ref}'")
+            findings.error(
+                f"{owner}: <trace> references unknown HLR '{ref}'",
+                code="broken-trace",
+            )
     elif target == "LLR":
         if ref not in llr_ids:
-            findings.error(f"{owner}: <trace> references unknown LLR '{ref}'")
+            findings.error(
+                f"{owner}: <trace> references unknown LLR '{ref}'",
+                code="broken-trace",
+            )
 
 
 def lint(

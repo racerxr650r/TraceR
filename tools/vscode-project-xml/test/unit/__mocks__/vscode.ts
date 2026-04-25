@@ -140,3 +140,38 @@ export const __test = {
 export interface Disposable {
     dispose(): void;
 }
+
+// ---------------- TreeItem / ThemeIcon / ThemeColor ----------------
+//
+// Minimal shims so util/hints.ts (which mutates `iconPath` with a new
+// ThemeIcon possibly tinted by a ThemeColor) is exercisable from the
+// tier-1 tests without a real VS Code host. The mock TreeItem stores
+// label / collapsibleState verbatim and exposes an `iconPath` slot
+// that ThemeIcon instances can be assigned to.
+
+export class ThemeColor {
+    constructor(public readonly id: string) {}
+}
+
+export class ThemeIcon {
+    constructor(
+        public readonly id: string,
+        public readonly color?: ThemeColor,
+    ) {}
+}
+
+export enum TreeItemCollapsibleState {
+    None = 0,
+    Collapsed = 1,
+    Expanded = 2,
+}
+
+export class TreeItem {
+    public iconPath: ThemeIcon | undefined = undefined;
+    public contextValue: string | undefined = undefined;
+    constructor(
+        public label: string,
+        public collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
+    ) {}
+}
+
