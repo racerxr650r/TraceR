@@ -41,7 +41,7 @@ generated documents from a single edit point.
 ## 1. Root Element
 
 ```xml
-<project name="Valgrind Parser" short_name="vgp" schema_version="1.3">
+<project name="Valgrind Parser" short_name="vgp" schema_version="1.4">
   <metadata>...</metadata>
   <sdd>...</sdd>
   <stp>...</stp>
@@ -55,7 +55,7 @@ generated documents from a single edit point.
 | --------- | ----------- |
 | `name` | Full project name. |
 | `short_name` | Binary / package name. |
-| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.3`. |
+| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.4`. |
 
 The XSD root reserves the namespace prefix `ui` (`urn:tracer:ui:v1`)
 for optional UI-only hints (icon, group, color) that consumers such
@@ -606,6 +606,51 @@ Custom Jinja filters registered by the renderer:
 When extending the schema with a new payload root, add a corresponding
 `build_*` function in `render_doc.py` and expose it on the returned
 `SimpleNamespace` so templates can reach it by attribute access.
+
+### 9.1 UI Hints Index (Phase 2.5b)
+
+Out-of-band of the `project.*` namespace consumed by Jinja templates,
+[tools/render_doc.py](../tools/render_doc.py) also exposes the
+`<xs:appinfo>` UI vocabulary documented in [§16. UI Hint
+Vocabulary](#16-ui-hint-vocabulary) as a JSON-serialisable index:
+
+```python
+from render_doc import parse_ui_hints_index
+index = parse_ui_hints_index()  # reads tools/project.xsd by default
+```
+
+The index is keyed by complex-type name (e.g. `Hlr`, `Llr`, `Test`,
+`SddModule`, `Document`, `Plan`, `Plan/item`). Each entry has the
+shape:
+
+```json
+{
+  "tree_node": {"label": "@id — @name",
+                "id_attr": "id",
+                "group":   "hlrs"} | null,
+  "form":      [{"target": "id",
+                 "kind":   "attr|child",
+                 "field":  "text|textarea|enum|ref:HLR|ref:LLR|cdata",
+                 "required": true|false}, ...],
+  "lenses":    [{"kind": "coverage|tracesCount|..."}, ...],
+  "document":  true|false
+}
+```
+
+The same index is exposed over the JSON-RPC sidecar:
+
+* `ui_hints_index({xsd_path?})` — returns `{"ui_hints_index": {...}}`.
+* `parse_to_json({...})` — embeds the same dict under the
+  `_ui_hints_index` top-level key alongside the parsed project, so
+  the VS Code extension fetches the parsed tree and the hint
+  vocabulary in a single round trip.
+
+Templates do **not** consume this index — it is dedicated to
+non-Jinja consumers (the VS Code tree provider, lens provider,
+locator, and Phase 3 form panels). Adding a new `<ui:lens>` `kind=`
+or a new `<ui:field>` `kind=` requires a matching change in the
+consumer (and a §16 update); the index walker itself accepts any
+attribute set without further code changes.
 
 ## 10. Regeneration
 

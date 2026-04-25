@@ -68,6 +68,166 @@ def _ui_hints(elem: ET.Element) -> dict[str, str] | None:
     return hints or None
 
 
+# ---------------------------------------------------------------------------
+# UI hint vocabulary distilled from <xs:appinfo> in tools/project.xsd
+# (Phase 2.5b).
+#
+# Every renderable complex type in the XSD carries an
+# <xs:annotation><xs:appinfo> block declaring how the schema element
+# should be projected to a UI surface — `ui:treeNode`, `ui:form`,
+# `ui:lens`, `ui:document`. parse_ui_hints_index walks the XSD once
+# and returns a single dict keyed by complex-type name. Consumers
+# (the VS Code tree provider, lens provider, locator, and Phase 3
+# form panels) read this index instead of re-parsing the XSD or
+# special-casing per-payload element names.
+#
+# Shape:
+#
+#   {
+#     "Hlr": {
+#       "tree_node": {"label": "@id — @name",
+#                     "id_attr": "id",
+#                     "group":   "hlrs"},
+#       "form":      [{"target": "id",
+#                      "kind":   "attr",
+#                      "field":  "text",
+#                      "required": True}, ...],
+#       "lenses":    [{"kind": "coverage"}, {"kind": "tracesCount"}],
+#       "document":  False,
+#     },
+#     ...
+#   }
+#
+# Types without an <xs:appinfo> block are absent from the index;
+# missing sub-fields default to None (tree_node) or [] (form, lenses).
+# The index is JSON-serialisable.
+# ---------------------------------------------------------------------------
+
+_XS_NAMESPACE = "http://www.w3.org/2001/XMLSchema"
+
+
+def _local(tag: str) -> str:
+    return tag.split("}", 1)[1] if tag.startswith("{") else tag
+
+
+def _ui_local(tag: str) -> str | None:
+    if not tag.startswith("{"):
+        return None
+    ns, local = tag[1:].split("}", 1)
+    return local if ns == UI_NAMESPACE else None
+
+
+def _parse_ui_field(elem: ET.Element) -> dict[str, Any]:
+    attrs = elem.attrib
+    if "attr" in attrs:
+        target, kind = attrs["attr"], "attr"
+    elif "child" in attrs:
+        target, kind = attrs["child"], "child"
+    else:
+        target, kind = "", "attr"
+    return {
+        "target":   target,
+        "kind":     kind,
+        "field":    attrs.get("kind", "text"),
+        "required": attrs.get("required", "").lower() == "true",
+    }
+
+
+def _parse_appinfo(appinfo: ET.Element) -> dict[str, Any]:
+    tree_node: dict[str, str] | None = None
+    form: list[dict[str, Any]] = []
+    lenses: list[dict[str, str]] = []
+    document = False
+    for child in appinfo:
+        local = _ui_local(child.tag)
+        if local is None:
+            continue
+        if local == "treeNode":
+            tree_node = {
+                "label":   child.get("label", ""),
+                "id_attr": child.get("idAttr", ""),
+                "group":   child.get("group", ""),
+            }
+        elif local == "form":
+            for field_elem in child:
+                if _ui_local(field_elem.tag) == "field":
+                    form.append(_parse_ui_field(field_elem))
+        elif local == "lens":
+            lenses.append({"kind": child.get("kind", "")})
+        elif local == "document":
+            document = True
+    return {
+        "tree_node": tree_node,
+        "form":      form,
+        "lenses":    lenses,
+        "document":  document,
+    }
+
+
+def parse_ui_hints_index(
+    xsd_path: Path | str = PROJECT_XSD,
+) -> dict[str, dict[str, Any]]:
+    """Distil the per-complex-type UI hint vocabulary from
+    ``tools/project.xsd``.
+
+    Walks every ``xs:complexType`` in the schema, reads any
+    ``xs:annotation/xs:appinfo`` block under it, and projects the
+    ``ui:treeNode`` / ``ui:form`` / ``ui:lens`` / ``ui:document``
+    children into a JSON-serialisable index keyed by the type's
+    ``@name``. Anonymous inline complex types (those declared inside
+    an ``xs:element``) are walked too and keyed under the parent
+    element's local name (e.g. ``Plan/item``).
+
+    Pinned by Schema_Reference.md §16 and consumed by
+    [tools/project_io.py](project_io.py)'s ``ui_hints_index`` and
+    ``parse_to_json`` JSON-RPC methods (Phase 2.5b).
+    """
+    xsd_path = Path(xsd_path)
+    try:
+        root = ET.parse(xsd_path).getroot()
+    except ET.ParseError as exc:
+        raise ProjectXmlError(
+            f"{xsd_path}: malformed XSD: {exc}"
+        ) from exc
+    except FileNotFoundError as exc:
+        raise ProjectXmlError(f"{xsd_path}: file not found") from exc
+
+    appinfo_tag    = f"{{{_XS_NAMESPACE}}}appinfo"
+    annotation_tag = f"{{{_XS_NAMESPACE}}}annotation"
+    complextype_tag = f"{{{_XS_NAMESPACE}}}complexType"
+    element_tag    = f"{{{_XS_NAMESPACE}}}element"
+
+    index: dict[str, dict[str, Any]] = {}
+
+    def _walk_complextype(node: ET.Element, key: str) -> None:
+        annotation = node.find(annotation_tag)
+        if annotation is None:
+            return
+        appinfo = annotation.find(appinfo_tag)
+        if appinfo is None:
+            return
+        index[key] = _parse_appinfo(appinfo)
+
+    # Top-level named complex types.
+    for ct in root.findall(complextype_tag):
+        name = ct.get("name")
+        if not name:
+            continue
+        _walk_complextype(ct, name)
+        # Inline nested complex types under named elements (e.g. Plan/item).
+        for elem in ct.iter(element_tag):
+            inline = elem.find(complextype_tag)
+            if inline is None:
+                continue
+            local = elem.get("name")
+            if not local:
+                continue
+            _walk_complextype(inline, f"{name}/{local}")
+
+    return index
+
+
+
 def _text(elem: ET.Element | None) -> str:
     if elem is None or elem.text is None:
         return ""

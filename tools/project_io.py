@@ -17,6 +17,9 @@ lint_project.py as JSON-RPC methods:
         -> {"documents": [{"id", "title", "source", "version",
                            "date", "author", "template", "output"},
                           ...]}
+  * ui_hints_index(xsd_path?)
+        -> {"ui_hints_index": {<ComplexTypeName>: {tree_node, form,
+                               lenses, document}, ...}}
   * init_project(name, short_name, author?, xml_path?, pvd_path?,
                  pvd_template?, force?=False)
         -> {"xml_path": "...", "pvd_path": "...", "existing": [...]}
@@ -61,11 +64,13 @@ from typing import Any, Callable
 # Importable functions from the refactored CLI tools.
 from render_doc import (
     PROJECT_XML,
+    PROJECT_XSD,
     PVD_TEMPLATE,
     ProjectXmlError,
     init_project as _init_project,
     list_documents as _list_documents,
     parse_project_to_dict as _parse_project_to_dict,
+    parse_ui_hints_index as _parse_ui_hints_index,
     render_document as _render_document,
 )
 from lint_project import (
@@ -127,12 +132,32 @@ def _method_parse_to_json(params: dict[str, Any]) -> dict[str, Any]:
     metadata_for = params.get("metadata_for")
     if metadata_for is not None and not isinstance(metadata_for, str):
         raise ValueError("metadata_for must be a string or null")
-    return _parse_project_to_dict(xml_path, metadata_for)
+    project = _parse_project_to_dict(xml_path, metadata_for)
+    # Phase 2.5b: embed the UI hint index distilled from the XSD
+    # alongside the parsed tree so a single round trip gives the
+    # extension everything it needs to render schema-driven surfaces.
+    # Underscore-prefixed key keeps it out of band of the payload.
+    project["_ui_hints_index"] = _parse_ui_hints_index(PROJECT_XSD)
+    return project
 
 
 def _method_list_documents(params: dict[str, Any]) -> dict[str, Any]:
     xml_path = _as_path(params.get("xml_path"), PROJECT_XML)
     return {"documents": _list_documents(xml_path)}
+
+
+def _method_ui_hints_index(params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 2.5b JSON-RPC surface: distil the per-complex-type UI
+    hint vocabulary from ``tools/project.xsd`` (`<xs:appinfo>` blocks)
+    and return a JSON-serialisable index keyed by complex-type name.
+    Used by the VS Code extension's tree provider, lens provider,
+    locator, and Phase 3 form panels.
+
+    See doc/Schema_Reference.md §16 for the vocabulary contract and
+    §9 for the Renderer Data Surface field.
+    """
+    xsd_path = _as_path(params.get("xsd_path"), PROJECT_XSD)
+    return {"ui_hints_index": _parse_ui_hints_index(xsd_path)}
 
 
 def _method_init_project(params: dict[str, Any]) -> dict[str, Any]:
@@ -167,6 +192,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "render": _method_render,
     "parse_to_json": _method_parse_to_json,
     "list_documents": _method_list_documents,
+    "ui_hints_index": _method_ui_hints_index,
     "init_project": _method_init_project,
 }
 
