@@ -19,7 +19,7 @@ phased VS Code extension roadmap).
 | 1     | Read-only VS Code extension: tree view, lint diagnostics, Reveal in XML. | ✅ Complete |
 | 2     | Code Lenses + Render & Preview. | ✅ Complete |
 | 2.5   | Schema-driven retrofit: `list_documents` discovery, dynamic `Render <Doc>` commands, `Finding.code` linter contract, `ui:*` per-element hints, coverage status badges, `<plan>` acceptance proof. | ✅ Complete |
-| 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | 🚧 In progress (Python: `_ui_hints_index` + generic `_nodes` index emitted by `parse_to_json`; TS: typed `uiHintsIndex()` + `ParsedNode`; tree provider auto-projects any `<ui:treeNode/>`-annotated payload via `buildGenericPayloadNodes`; lens provider + locator rewrite still pending) |
+| 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | 🚧 In progress (Python: `_ui_hints_index` + generic `_nodes` index emitted by `parse_to_json`; TS: typed `uiHintsIndex()` + `ParsedNode`; tree provider auto-projects any `<ui:treeNode/>`-annotated payload via `buildGenericPayloadNodes`; lens provider drives its `(element, idAttr)` selectors from `ui:lens` hints) |
 | 2.5c  | Payload-agnostic Quick Fix table keyed on `Finding.code`. | ⏳ Not started |
 | 3     | Form webviews for HLRs / LLRs. | ⏳ Not started |
 | 4     | SDD/STP/Test forms + Walkthrough. | ⏳ Not started |
