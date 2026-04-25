@@ -680,6 +680,65 @@ def render_document(
     return output.rstrip("\n") + "\n"
 
 
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+
+def list_documents(
+    xml_path: Path | str = PROJECT_XML,
+) -> list[dict[str, str]]:
+    """Library entry point: enumerate ``<metadata><document>`` entries
+    so the VS Code extension (and any other consumer) can register
+    one render command and one preview target per discovered document
+    without naming the spec stack in source.
+
+    Each returned dict carries ``id``, ``title``, ``source``,
+    ``version``, ``date``, ``author``, ``template``, and ``output``.
+    The ``template`` and ``output`` fields are filled in from the
+    optional XSD attributes when present; otherwise they fall back to
+    the project convention:
+
+      * ``template = tools/templates/<id>.md.j2`` (relative to the
+        repository root)
+      * ``output   = <source>``
+
+    Phase 2.5 of the schema-driven retrofit pins this method as the
+    single source of truth for the document set the extension
+    discovers; the extension and the linter no longer hard-code which
+    documents exist.
+    """
+    xml_path = Path(xml_path)
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError as exc:
+        raise ProjectXmlError(f"{xml_path}: malformed XML: {exc}") from exc
+    except FileNotFoundError as exc:
+        raise ProjectXmlError(f"{xml_path}: file not found") from exc
+    if root.tag != "project":
+        raise ProjectXmlError(
+            f"Root element is <{root.tag}>, expected <project>"
+        )
+
+    documents: list[dict[str, str]] = []
+    for d in root.findall("metadata/document"):
+        doc_id = d.get("id", "")
+        if not doc_id:
+            continue
+        source = d.get("source", "")
+        template = d.get("template") or f"tools/templates/{doc_id}.md.j2"
+        output = d.get("output") or source
+        documents.append({
+            "id": doc_id,
+            "title": d.get("title", ""),
+            "source": source,
+            "version": d.get("version", ""),
+            "date": d.get("date", ""),
+            "author": d.get("author", ""),
+            "template": template,
+            "output": output,
+        })
+    return documents
+
+
 SKELETON_PROJECT_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
@@ -690,7 +749,7 @@ SKELETON_PROJECT_XML = """\
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="{name}" short_name="{short_name}" schema_version="1.1"
+<project name="{name}" short_name="{short_name}" schema_version="1.2"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="{schema_location}">
   <metadata>

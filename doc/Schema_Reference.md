@@ -41,7 +41,7 @@ generated documents from a single edit point.
 ## 1. Root Element
 
 ```xml
-<project name="Valgrind Parser" short_name="vgp" schema_version="1.1">
+<project name="Valgrind Parser" short_name="vgp" schema_version="1.2">
   <metadata>...</metadata>
   <sdd>...</sdd>
   <stp>...</stp>
@@ -55,7 +55,14 @@ generated documents from a single edit point.
 | --------- | ----------- |
 | `name` | Full project name. |
 | `short_name` | Binary / package name. |
-| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.1`. |
+| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.2`. |
+
+The XSD root reserves the namespace prefix `ui` (`urn:tracer:ui:v1`)
+for optional UI-only hints (icon, group, color) that consumers such
+as the VS Code extension may attach to payload elements via
+`ui:*` attributes. The core renderer ignores these attributes; they
+are reserved so that a future hint registry can be added without
+breaking existing files.
 
 Children may appear in any order; the renderer looks them up by tag.
 The XSD declares `<project>`'s children with `xs:all`, so an
@@ -92,6 +99,35 @@ The renderer selects which `<document>` block populates
 `project.metadata` based on its command-line `METADATA_ID` argument
 (`SDD`, `HLRs`, `LLRs`, `STP`, or `Traceability`). Every generated
 document must have a matching `<document id="...">` entry.
+
+### Optional `template` and `output` attributes (schema_version `1.2`+)
+
+A `<document>` may carry two optional attributes that decouple the
+document id from its rendering location:
+
+| Attribute | Default (by convention) | Purpose |
+| --------- | ----------------------- | ------- |
+| `template` | `tools/templates/<id>.md.j2` | Repo-relative path to the Jinja2 template that renders this document. |
+| `output`   | the `source` attribute       | Repo-relative path to the rendered Markdown file. |
+
+When both are omitted, the conventional paths above apply, so
+existing files do not need to be edited. When present, they let a
+project:
+
+*   Ship a generated document whose template lives outside
+    `tools/templates/` (for example, in a subfolder per audience).
+*   Render the same template to a different output path than the
+    `source` attribute (for example, a per-version snapshot).
+*   Add a brand-new generated document with **no Python or
+    TypeScript edits**: declare it in `<metadata>`, drop a template
+    at the path it points to, and the renderer, the linter, the
+    VS Code tree, the per-document render commands, and the
+    Markdown preview all pick it up automatically.
+
+The sidecar's `list_documents` JSON-RPC method (see
+[`tools/project_io.py`](../tools/project_io.py)) enumerates these
+entries with the resolved `template` and `output` paths so consumers
+can discover them at runtime.
 
 `<count>` values are derived (informational); the canonical counts come
 from counting the corresponding child elements at render time.
@@ -804,7 +840,7 @@ outcomes:
         name="project">` `xs:all` block (`minOccurs="0"`).
 2.  **Bump `schema_version`** on the `<project>` root in
     [doc/Project.xml](../doc/Project.xml) (current value is
-    `1.1`; bump to `1.2` for the next change).
+    `1.2`; bump to `1.3` for the next change).
 3.  **Edit [render_doc.py](../tools/render_doc.py):**
     *   Add a `build_<payload>(elem)` function returning a
         `SimpleNamespace` shaped exactly the way you want
@@ -887,11 +923,13 @@ automatically; you do not need to teach it about the new id.
 
 ### What you do *not* need to change
 
-*   Not [tools/lint_project.py](../tools/lint_project.py): from SPD Phase
-    2.5 onwards its required-document set is derived from the
-    templates under `tools/templates/`, not a hard-coded list.
-    Until that retrofit lands, you may need to add the new id to
-    its `STANDARD_DOCS` set.
+*   Not [tools/lint_project.py](../tools/lint_project.py): its
+    required-document set is derived from the
+    `<metadata><document>` declarations of the project being
+    linted (Phase 2.5). The linter warns when a declared
+    document's `template` (explicit attribute or the conventional
+    `tools/templates/<id>.md.j2` path) is missing from disk; it
+    no longer carries a hard-coded list of “standard” ids.
 *   Not the VS Code extension's TypeScript code: the schema-driven
     surfaces (`SPD` Phase 2.5) discover new documents and payloads
     via `<metadata><document>` and `xs:appinfo` UI hints in the

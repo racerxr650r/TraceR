@@ -43,6 +43,12 @@ export class ProjectIoClient implements vscode.Disposable {
         return this.request<ParsedProject>('parse_to_json', params);
     }
 
+    async listDocuments(
+        params: Record<string, unknown> = {},
+    ): Promise<ListDocumentsResult> {
+        return this.request<ListDocumentsResult>('list_documents', params);
+    }
+
     async render(params: RenderParams): Promise<RenderResult> {
         return this.request<RenderResult>('render', params as unknown as Record<string, unknown>);
     }
@@ -188,7 +194,38 @@ export interface LintResult {
     errors: string[];
     warnings: string[];
     notes: string[];
+    /** Phase 2.5 structured findings; one record per error/warning/note,
+     *  carrying the optional `code` field that downstream Quick Fixes
+     *  dispatch on. Absent on older sidecars. */
+    items?: LintFinding[];
     ok: boolean;
+}
+
+export interface LintFinding {
+    severity: 'error' | 'warning' | 'note';
+    message: string;
+    code: string | null;
+}
+
+export interface DocumentInfo {
+    id: string;
+    title: string;
+    source: string;
+    version: string;
+    date: string;
+    author: string;
+    /** Workspace-relative path to the Jinja2 template, sourced from the
+     *  optional `template=` attribute on `<metadata><document>` (or the
+     *  `tools/templates/<id>.md.j2` convention when the attribute is
+     *  omitted). */
+    template: string;
+    /** Workspace-relative output path, sourced from the optional
+     *  `output=` attribute (or `source` when omitted). */
+    output: string;
+}
+
+export interface ListDocumentsResult {
+    documents: DocumentInfo[];
 }
 
 export interface RenderParams {

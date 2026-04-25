@@ -8,11 +8,15 @@
 // Project.xml.
 
 import * as vscode from 'vscode';
-import { ProjectIoClient } from './sidecar';
+import { DocumentInfo, ProjectIoClient } from './sidecar';
 import { ProjectSpecProvider } from './treeView/ProjectSpecProvider';
 import { LintDiagnosticsProvider } from './diagnostics/LintDiagnosticsProvider';
 import { revealInXml } from './commands/revealInXml';
 import { renderAll, renderAndPreview } from './commands/render';
+import {
+    invalidateDocumentsCache,
+    loadDocuments,
+} from './util/documents';
 import {
     CoverageCodeLensProvider,
     PICK_RELATED_COMMAND,
@@ -59,12 +63,31 @@ export function activate(context: vscode.ExtensionContext): void {
         ),
     );
 
+    // Phase 2.5: register one `projectXml.render.<id>` command per
+    // discovered `<metadata><document>` entry. Adding a new document
+    // to Project.xml therefore exposes a new addressable render
+    // command (palette / menu / keybinding target) on next refresh,
+    // with no TypeScript edits required (PVD §6 #11).
+    const dynamicRenderCommands = new Map<string, vscode.Disposable>();
+    context.subscriptions.push({
+        dispose: () => {
+            for (const d of dynamicRenderCommands.values()) {
+                d.dispose();
+            }
+            dynamicRenderCommands.clear();
+        },
+    });
+
     context.subscriptions.push(
         vscode.commands.registerCommand('projectXml.refresh', async () => {
+            invalidateDocumentsCache(sidecar);
             treeProvider.refresh();
             lensProvider.refresh();
             previewProvider.markStale();
             await diagnostics.run();
+            await syncDynamicRenderCommands(
+                sidecar, previewProvider, dynamicRenderCommands, context, output,
+            );
         }),
         vscode.commands.registerCommand('projectXml.lint', async () => {
             const result = await diagnostics.run();
@@ -80,12 +103,16 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand(
             'projectXml.renderAndPreview',
             (arg?: string | { docId?: string }) =>
-                renderAndPreview(previewProvider, arg),
+                renderAndPreview(sidecar, previewProvider, arg),
         ),
         vscode.commands.registerCommand('projectXml.renderAll', () =>
             renderAll(sidecar, previewProvider, output),
         ),
         vscode.commands.registerCommand(PICK_RELATED_COMMAND, pickRelatedAndReveal),
+    );
+
+    void syncDynamicRenderCommands(
+        sidecar, previewProvider, dynamicRenderCommands, context, output,
     );
 
     // Re-lint and refresh the tree whenever Project.xml is saved.
@@ -95,6 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
             if (!xmlPath || doc.uri.fsPath !== xmlPath) {
                 return;
             }
+            invalidateDocumentsCache(sidecar);
             treeProvider.refresh();
             lensProvider.refresh();
             if (getConfig().get<boolean>('autoLintOnChange', true)) {
@@ -106,6 +134,9 @@ export function activate(context: vscode.ExtensionContext): void {
                 // state. The preview never writes to disk.
                 previewProvider.markStale();
             }
+            void syncDynamicRenderCommands(
+                sidecar, previewProvider, dynamicRenderCommands, context, output,
+            );
         }),
     );
 
@@ -115,4 +146,50 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
     // sidecar disposes itself via context.subscriptions.
+}
+
+/**
+ * Discover the current document set via the sidecar and ensure that
+ * a `projectXml.render.<id>` command is registered for each one.
+ * Commands for documents that have disappeared from Project.xml are
+ * disposed; new documents pick up a fresh registration. Safe to
+ * call repeatedly — the caller passes the same map across
+ * invocations so the bookkeeping is idempotent.
+ */
+async function syncDynamicRenderCommands(
+    sidecar: ProjectIoClient,
+    previewProvider: MarkdownPreviewProvider,
+    registered: Map<string, vscode.Disposable>,
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+): Promise<void> {
+    let docs: readonly DocumentInfo[];
+    try {
+        docs = await loadDocuments(sidecar);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        output.appendLine(`[render-commands] discovery failed: ${message}`);
+        return;
+    }
+    const seen = new Set<string>();
+    for (const doc of docs) {
+        seen.add(doc.id);
+        if (registered.has(doc.id)) {
+            continue;
+        }
+        const cmdId = `projectXml.render.${doc.id}`;
+        const disposable = vscode.commands.registerCommand(cmdId, () =>
+            renderAndPreview(sidecar, previewProvider, doc.id),
+        );
+        registered.set(doc.id, disposable);
+        context.subscriptions.push(disposable);
+        output.appendLine(`[render-commands] registered ${cmdId}`);
+    }
+    for (const [id, disposable] of registered) {
+        if (!seen.has(id)) {
+            disposable.dispose();
+            registered.delete(id);
+            output.appendLine(`[render-commands] disposed projectXml.render.${id}`);
+        }
+    }
 }

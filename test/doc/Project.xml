@@ -7,7 +7,7 @@
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="TraceR Integration Test Fixture" short_name="trft" schema_version="1.1"
+<project name="TraceR Integration Test Fixture" short_name="trft" schema_version="1.2"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../../tools/project.xsd">
   <metadata>
@@ -16,6 +16,11 @@
     <document id="LLRs"         title="Low-Level Requirements"       source="doc/LLRs.md"         version="0.1" date="2026-04-24" author="TraceR Tests"/>
     <document id="STP"          title="Software Test Plan"           source="doc/STP.md"          version="0.1" date="2026-04-24" author="TraceR Tests"/>
     <document id="Traceability" title="Traceability Matrix"          source="doc/Traceability.md" version="0.1" date="2026-04-24" author="TraceR Tests"/>
+    <!-- Phase 2.5 schema-driven retrofit proof: the Plan document is
+         picked up by the VS Code extension purely via list_documents +
+         this <metadata> entry, with no TypeScript edits. -->
+    <document id="Plan"         title="Project Plan"                 source="doc/Plan.md"         version="0.1" date="2026-04-25" author="TraceR Tests"
+              template="tools/templates/Plan.md.j2" output="doc/Plan.md"/>
     <counts>
       <count name="hlrs"       value="0"/>
       <count name="llrs"       value="0"/>
@@ -43,4 +48,11 @@
   <!-- Test sources (see doc/Schema_Reference.md §7). -->
   <tests>
   </tests>
+
+  <!-- Phase 2.5 schema-driven retrofit demo payload. -->
+  <plan version="0.1">
+    <item id="P-001" status="done">Wire list_documents through the sidecar.</item>
+    <item id="P-002" status="done">Discover documents at runtime in the VS Code extension.</item>
+    <item id="P-003" status="planned">Migrate doc/Project.xml to add template/output attrs explicitly.</item>
+  </plan>
 </project>

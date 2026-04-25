@@ -13,6 +13,10 @@ lint_project.py as JSON-RPC methods:
         -> {"output": "<rendered markdown>", "out_path": null|"..."}
   * parse_to_json(xml_path?, metadata_for?)
         -> {parsed Project.xml as a JSON-serialisable tree}
+  * list_documents(xml_path?)
+        -> {"documents": [{"id", "title", "source", "version",
+                           "date", "author", "template", "output"},
+                          ...]}
   * init_project(name, short_name, author?, xml_path?, pvd_path?,
                  pvd_template?, force?=False)
         -> {"xml_path": "...", "pvd_path": "...", "existing": [...]}
@@ -60,6 +64,7 @@ from render_doc import (
     PVD_TEMPLATE,
     ProjectXmlError,
     init_project as _init_project,
+    list_documents as _list_documents,
     parse_project_to_dict as _parse_project_to_dict,
     render_document as _render_document,
 )
@@ -125,6 +130,11 @@ def _method_parse_to_json(params: dict[str, Any]) -> dict[str, Any]:
     return _parse_project_to_dict(xml_path, metadata_for)
 
 
+def _method_list_documents(params: dict[str, Any]) -> dict[str, Any]:
+    xml_path = _as_path(params.get("xml_path"), PROJECT_XML)
+    return {"documents": _list_documents(xml_path)}
+
+
 def _method_init_project(params: dict[str, Any]) -> dict[str, Any]:
     if "name" not in params or "short_name" not in params:
         raise ValueError("init_project requires 'name' and 'short_name'")
@@ -156,6 +166,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "lint": _method_lint,
     "render": _method_render,
     "parse_to_json": _method_parse_to_json,
+    "list_documents": _method_list_documents,
     "init_project": _method_init_project,
 }
 

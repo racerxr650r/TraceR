@@ -7,7 +7,7 @@
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="TraceR" short_name="TR" schema_version="1.1"
+<project name="TraceR" short_name="TR" schema_version="1.2"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../tools/project.xsd">
   <metadata>
