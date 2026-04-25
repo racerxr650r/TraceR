@@ -1289,6 +1289,208 @@ interfaces declared per module above.]]></other>
 
   <!-- Software Test Plan payload (see Schema_Reference.md §4). -->
   <stp>
+
+    <introduction>
+      <purpose><![CDATA[This document is the Software Test Plan (STP) for **TraceR**. It
+describes how the Python core (the renderer, linter, and JSON-RPC
+sidecar) and the Phase 1-2 VS Code extension surfaces (sidecar
+client, tree view, lint diagnostics, reveal-in-XML, code lenses,
+render & preview) are verified, names the framework and tooling, and
+fixes the convention by which every test traces back to the LLRs and
+HLRs it covers.
+
+The STP itself is rendered from `<stp>` and `<tests>` payloads in
+[doc/Project.xml](Project.xml). The Test Catalogue (§3) and the LLR
+Coverage Matrix (§4) are computed by the template directly from
+`<tests>` and `<llrs>` and so always reflect the current source of
+truth.]]></purpose>
+      <scope><![CDATA[Verification scope tracks the SDP phases that have shipped:
+
+*   Phase 0 — JSON-RPC sidecar (`tools/project_io.py`).
+*   Phase 1 — read-only VS Code extension surfaces (sidecar client,
+    Project Spec tree view, lint diagnostics, reveal-in-XML).
+*   Phase 2 — coverage code lenses, virtual-document Markdown
+    preview, and the `renderAndPreview` / `renderAll` commands.
+
+Unshipped phases (form panels, walkthrough, AI authoring, structured
+merge) are deliberately out of scope; their HLRs surface as coverage
+gaps in [Traceability.md](Traceability.md) until the relevant SDP
+phase lands.]]></scope>
+      <related>
+        <doc><![CDATA[[PVD.md](PVD.md) — product vision and success metrics that the STP exists to make measurable.]]></doc>
+        <doc><![CDATA[[SDD.md](SDD.md) — module decomposition and design intent that the LLRs codify.]]></doc>
+        <doc><![CDATA[[HLRs.md](HLRs.md) — high-level requirements that every test ultimately traces back to.]]></doc>
+        <doc><![CDATA[[LLRs.md](LLRs.md) — function-level `shall` clauses that individual tests verify.]]></doc>
+        <doc><![CDATA[[Traceability.md](Traceability.md) — forward and reverse matrices computed from the same `<traces>` data this STP uses.]]></doc>
+        <doc><![CDATA[[Schema_Reference.md](Schema_Reference.md) — the contract between `Project.xml`, the renderer, and the templates.]]></doc>
+      </related>
+    </introduction>
+
+    <strategy>
+      <levels>
+        <level name="Unit"
+               source="[test/](../test/)"
+               driver="Python `unittest` (`python3 -m unittest discover -s test`)"
+               style="White-box, per-module; one `TestCase` class per surface, one method per `shall` clause."/>
+        <level name="Integration (subprocess)"
+               source="[test/test_project_io.py](../test/test_project_io.py) — `SubprocessTests`"
+               driver="Python `subprocess.run` spawning `python3 tools/project_io.py`"
+               style="Black-box; drives the real sidecar over stdin/stdout exactly as the VS Code extension does."/>
+        <level name="Cross-surface equivalence"
+               source="[test/test_project_io.py](../test/test_project_io.py) — `test_*_matches_*`"
+               driver="Python `unittest` comparing in-process and subprocess paths"
+               style="Pinning test asserting the CLI, the in-process library, and the JSON-RPC sidecar return byte-identical findings for the same input."/>
+        <level name="Unit (TypeScript, tier-1)"
+               source="[tools/vscode-project-xml/test/unit/](../tools/vscode-project-xml/test/unit/)"
+               driver="Mocha + ts-node (`npm run test:unit`) with a hand-rolled `vscode` API mock"
+               style="Pure-Node unit tests for the extension modules that do not require a VS Code host — path resolution, document locator regexes, the BASELINE_DOCUMENTS constant, and the JSON-RPC line-framing in ProjectIoClient. Stays inside the minimal-deps envelope (HLR-046); no @vscode/test-electron download."/>
+        <level name="Static"
+               source="[tools/lint_project.py](../tools/lint_project.py) (run on [doc/Project.xml](Project.xml))"
+               driver="`python3 tools/lint_project.py`"
+               style="Schema validation, ID format/uniqueness, trace resolution, coverage-gap reporting; treated as a verification step that runs in CI alongside the unit suite."/>
+      </levels>
+      <framework><![CDATA[The Python verification path uses the standard-library `unittest`
+package — no `pytest`, no third-party Python test runner, no
+plugins. The TypeScript tier-1 path uses `mocha` + `ts-node` with a
+hand-rolled `vscode` API mock so the extension's headless modules
+load in plain Node without a VS Code host. Both paths stay inside
+the same minimal-dependency envelope (HLR-046) that the production
+code respects: a fresh checkout can run the full Python suite with
+only `python3` plus `jinja2` installed, and the TypeScript suite
+with only `npm install` in `tools/vscode-project-xml/`.
+
+Tests are organised one `TestCase` (Python) or `describe` block
+(TypeScript) per public surface, and one method / `it` per `shall`
+clause; method names mirror the LLR mnemonic where practical (e.g.
+`test_render_hlrs_returns_markdown_with_single_trailing_newline`
+verifies LLR-RND-03). Temporary `Project.xml` skeletons are minted
+via `render_doc.init_project` so each test runs against a known-good
+baseline rather than the repo's evolving `doc/Project.xml`.]]></framework>
+      <build_execution>
+        <intro><![CDATA[The full suite is run from the repository root with the standard `unittest` discovery invocation:]]></intro>
+        <step><![CDATA[`python3 -m unittest discover -s test -v` — discovers every `test_*.py` module under [test/](../test/), instantiates each `TestCase` class, and runs every `test_*` method.]]></step>
+        <step><![CDATA[`python3 tools/lint_project.py --xml doc/Project.xml --xsd tools/project.xsd` — runs the static verification step on the repo's own `Project.xml`. CI treats a non-zero exit code (i.e. any *error* finding) as a build failure; warnings are surfaced but do not break the build (HLR-014, HLR-042).]]></step>
+        <step><![CDATA[`(cd tools/vscode-project-xml && npm run compile && npm run build)` — type-checks the VS Code extension with `tsc --noEmit` and bundles it with `esbuild`; failure of either step is a build failure.]]></step>
+        <step><![CDATA[`(cd tools/vscode-project-xml && npm run test:unit)` — runs the Mocha + ts-node tier-1 unit suite for the extension modules that do not require a VS Code host (path resolution, locator regexes, baseline-documents catalogue, JSON-RPC line-framing). Failure is a build failure.]]></step>
+        <outro><![CDATA[The unit suite must complete with zero failures and zero errors before a change is considered mergeable; the linter must complete with zero error findings (warnings tracked but not blocking); the extension build must complete with no TypeScript or esbuild errors.]]></outro>
+      </build_execution>
+      <pass_fail>
+        <criterion><![CDATA[**Unit suite.** `python3 -m unittest discover -s test` reports `OK` with zero failures and zero errors. A single failing assertion blocks the build.]]></criterion>
+        <criterion><![CDATA[**Lint.** `python3 tools/lint_project.py` exits 0 (zero *error* findings). Warnings — including coverage gaps for HLRs whose implementation has not yet shipped — are recorded in the Problems panel and the rendered Traceability Matrix but are not blocking.]]></criterion>
+        <criterion><![CDATA[**Cross-surface equivalence.** `test_lint_matches_cli_findings` and `test_subprocess_lint_matches_in_process_lint` must both pass; they pin HLR-043 (cross-surface output equivalence) by asserting that the CLI, the in-process library, and the JSON-RPC sidecar produce byte-identical findings for the same `Project.xml`.]]></criterion>
+        <criterion><![CDATA[**Extension build.** `npm run compile` (TypeScript strict-mode type-check) and `npm run build` (esbuild bundle) both exit 0 in [tools/vscode-project-xml/](../tools/vscode-project-xml/).]]></criterion>
+        <criterion><![CDATA[**Smoke against the real repo.** `test_real_repo_project_xml_lints` and the `_matches_*` pair both run against the live `doc/Project.xml`, so a regression in the linter, the renderer, or the sidecar that only manifests on the real corpus still trips the suite.]]></criterion>
+      </pass_fail>
+      <traceability_convention><![CDATA[Every `test_*` method has a matching `<test name="…">` entry under
+`<tests>/<file path="…">` in [doc/Project.xml](Project.xml). Each
+`<test>` carries one `<purpose>` paragraph (mirroring the docstring
+or inline comment that motivates the assertion) and one `<traces>`
+block with one `<trace target="LLR" ref="LLR-XXX-NN"/>` per LLR the
+test verifies, plus optional `<trace target="HLR" ref="HLR-NNN"/>`
+entries when the test pins a high-level requirement directly
+(typically the cross-surface equivalence and JSON-RPC contract
+tests).
+
+The linter resolves every `ref` against the union of LLR / HLR ids
+and reports unknown references as errors; coverage gaps (LLRs or
+HLRs with no test claiming them) are reported as warnings and
+rendered in [Traceability.md §6](Traceability.md). To add a new
+test: write the `test_*` method, add the matching `<test>` entry
+under the right `<file>`, then re-render `STP.md` and
+`Traceability.md`.]]></traceability_convention>
+    </strategy>
+
+    <integration_environment>
+      <intro><![CDATA[TraceR has no external runtime services to stand up — the renderer,
+the linter, and the sidecar are all pure-Python processes. The only
+integration surface that requires a real subprocess is the JSON-RPC
+sidecar itself, which the VS Code extension drives via stdin/stdout.
+The fixture below isolates that surface so the test suite covers the
+same wire path the extension uses.]]></intro>
+      <fixture name="`project_io_subprocess`"
+               source="[test/test_project_io.py](../test/test_project_io.py) — `SubprocessTests`">
+        <artefact key="sidecar_stdout"
+                  label="Sidecar stdout (one JSON response per line)"
+                  path="`subprocess.run(...).stdout`"/>
+        <artefact key="sidecar_stderr"
+                  label="Sidecar stderr (Python tracebacks, if any)"
+                  path="`subprocess.run(...).stderr`"/>
+        <artefact key="sidecar_exit_code"
+                  label="Sidecar exit code (0 = clean shutdown on stdin EOF)"
+                  path="`subprocess.run(...).returncode`"/>
+      </fixture>
+      <fixture name="`bootstrapped_project_xml`"
+               source="[test/test_project_io.py](../test/test_project_io.py) — `_bootstrap_project()`">
+        <artefact key="project_xml"
+                  label="Generated skeleton Project.xml"
+                  path="`tmp/Project.xml`"/>
+        <artefact key="pvd_md"
+                  label="Generated PVD.md skeleton"
+                  path="`tmp/PVD.md`"/>
+      </fixture>
+      <outro><![CDATA[The `bootstrapped_project_xml` fixture is reused by the renderer,
+linter, and sidecar tests so each suite runs against an isolated,
+known-good baseline rather than the repo's evolving
+`doc/Project.xml`. The handful of tests that *do* run against the
+live `doc/Project.xml` — `test_real_repo_project_xml_lints`,
+`test_lint_matches_cli_findings`, `test_subprocess_lint_matches_in_process_lint`
+— exist precisely to catch regressions that only surface on the
+real corpus.]]></outro>
+    </integration_environment>
+
+    <tooling>
+      <tool name="`python3` (3.10+)"
+            required_for="Running the renderer, linter, sidecar, and the unit suite"
+            notes="Standard library only on the verification path; no `pytest`, no `lxml` requirement."/>
+      <tool name="`jinja2`"
+            required_for="`render_doc.py` template rendering"
+            notes="Single third-party Python dependency (HLR-046). Pinned via the project's `requirements.txt` if present."/>
+      <tool name="`lxml` (optional)"
+            required_for="Strict in-process XSD validation by `lint_project.validate_structure`"
+            notes="When absent, `validate_structure` falls back to `xmllint`; when both are absent, it degrades to a well-formedness-only pass and emits an explicit note (LLR-VST-01..04)."/>
+      <tool name="`xmllint` (optional)"
+            required_for="Subprocess XSD validation fallback"
+            notes="Used when `lxml` is not importable. Available on most Linux distros via the `libxml2-utils` package; on macOS via Xcode CLT."/>
+      <tool name="`node` (18+) and `npm`"
+            required_for="Building the VS Code extension under [tools/vscode-project-xml/](../tools/vscode-project-xml/)"
+            notes="Required only to type-check and bundle the extension; the Python verification path does not depend on Node."/>
+      <tool name="`tsc` and `esbuild`"
+            required_for="Strict-mode TypeScript type-check and extension bundling"
+            notes="Invoked via `npm run compile` and `npm run build` respectively. Both must exit 0 for an extension change to be considered mergeable."/>
+      <tool name="`mocha` + `ts-node`"
+            required_for="Tier-1 TypeScript unit suite under [tools/vscode-project-xml/test/unit/](../tools/vscode-project-xml/test/unit/)"
+            notes="Invoked via `npm run test:unit`. Loads the extension source under a hand-rolled `vscode` API mock so no VS Code host is needed; the mock surface lives at [tools/vscode-project-xml/test/unit/__mocks__/vscode.ts](../tools/vscode-project-xml/test/unit/__mocks__/vscode.ts) and grows only as tier-1 coverage demands."/>
+      <tool name="VS Code 1.85+ with the `redhat.vscode-xml` extension"
+            required_for="Manual / acceptance verification of the Phase 1-2 extension surfaces (tree view, diagnostics, code lenses, virtual-doc preview)"
+            notes="Declared as `extensionDependencies` in the extension manifest (LLR-ACT-04). Tier-1 unit tests cover the headless logic (paths, locator, documents, JSON-RPC framing); UI behaviour (lens visibility, tree population, preview pane) remains a manual acceptance check until a Phase 5/6 `@vscode/test-electron` harness lands alongside the AI/merge surfaces."/>
+    </tooling>
+
+    <maintenance><![CDATA[The STP and the test suite evolve together. When a new SDP phase
+lands:
+
+1.  **Add LLRs** for any new function or surface in `<llrs>` so the
+    new code has a documented `shall` clause to verify against.
+2.  **Add tests** under [test/](../test/) — one `TestCase` per
+    surface, one `test_*` method per `shall` clause — and add the
+    matching `<test name="…">` entry under the appropriate `<file>`
+    in `<tests>`. Cite at least one LLR (and optionally an HLR) in
+    the `<traces>` block.
+3.  **Update `<stp>`** if the new phase introduces a new test level
+    (e.g. UI automation against the extension host), a new fixture
+    (e.g. a fake AI provider for Phase 5), or a new tool dependency.
+    The strategy, fixture, and tooling sections are the only parts
+    of the STP that need direct edits; the catalogue and matrix
+    regenerate automatically.
+4.  **Re-render** the documents:
+    `python3 tools/render_doc.py tools/templates/STP.md.j2 STP --out doc/STP.md`
+    and the matching `Traceability.md` invocation. Run
+    `python3 tools/lint_project.py` to confirm zero error findings.
+
+Unshipped HLRs deliberately surface as coverage gaps in
+[Traceability.md §6](Traceability.md) until the relevant phase
+delivers tests against them — the gap list is the project's
+verification backlog.]]></maintenance>
+
   </stp>
 
   <!-- High-Level Requirements (see Schema_Reference.md §5). -->
@@ -2027,11 +2229,1411 @@ document is out of date with respect to the source XML.]]></text>
 
   </hlrs>
 
-  <!-- Low-Level Requirements (see Schema_Reference.md §6). -->
+  <!-- Low-Level Requirements (see Schema_Reference.md §6).
+
+       Coverage scope. The LLRs below cover the code that has shipped
+       through SDP Phases 0-2: the Python core (render_doc.py,
+       lint_project.py, project_io.py) and the Phase 1-2 TypeScript
+       extension surfaces (sidecar client, tree view, lint
+       diagnostics, reveal-in-XML, code lenses, render & preview).
+       HLRs whose implementations land in later SDP phases (form
+       panels, walkthrough, AI authoring, structured merge,
+       Marketplace polish) deliberately have no LLR yet and will
+       appear as coverage gaps in the Traceability Matrix until the
+       relevant phase lands. -->
   <llrs>
+
+    <function number="2"
+              title="`parse_project_to_dict` ([tools/render_doc.py](../tools/render_doc.py))"
+              name="parse_project_to_dict"
+              source="tools/render_doc.py">
+      <intro><![CDATA[The library entry point that loads `Project.xml` and returns the parsed payload as a JSON-serialisable dict. The JSON-RPC sidecar's `parse_to_json` method, the form-panel JSON Schema deriver, and the structured merger all consume this surface; templates consume the equivalent `SimpleNamespace` form via `load_project`.]]></intro>
+
+      <llr id="LLR-PPD-01">
+        <text><![CDATA[`parse_project_to_dict` shall accept an `xml_path` argument that defaults to the canonical `doc/Project.xml` location so that callers operating on the repository's own spec stack do not need to know the path.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-001" name="Single Source of Truth"/>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PPD-02">
+        <text><![CDATA[`parse_project_to_dict` shall raise `ProjectXmlError` (never `SystemExit`) on a missing file or malformed XML so that library callers (`project_io.py`, the test suite, the Phase 5.5 merger) can handle the error without involving the CLI's process model.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PPD-03">
+        <text><![CDATA[When the caller does not supply `metadata_for`, `parse_project_to_dict` shall pick the first `<metadata><document id="…">` entry as the metadata target so that callers wanting only structural data do not need to know which document id to ask for.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PPD-04">
+        <text><![CDATA[`parse_project_to_dict` shall expose every parsed payload — `sdd`, `stp`, `hlrs`, `llrs`, `tests`, plus the precomputed flat lists (`flat_hlrs`, `flat_llrs`, `flat_tests`) and id-based lookups (`hlr_by_id`, `llr_by_id`, `file_of_test`) and cross-reference indexes (`llrs_by_hlr`, `tests_by_hlr`, `tests_by_llr`, `hlrs_by_sdd`) — verbatim through the `_ns_to_jsonable` projection so the JSON-RPC surface, the schema-driven extension surfaces, and the test suite see exactly what templates see.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-007" name="Template Data Surface"/>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Output Equivalence"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PPD-05">
+        <text><![CDATA[`parse_project_to_dict` shall depend only on `xml.etree.ElementTree` from the Python standard library for parsing — no `lxml`, no third-party XML dependency — so a fresh checkout can parse `Project.xml` without any extra installs beyond `pip install jinja2`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-046" name="Minimal Core Dependencies"/>
+          <trace target="HLR" ref="HLR-041" name="No Runtime Service Dependency"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="3"
+              title="`render_document` ([tools/render_doc.py](../tools/render_doc.py))"
+              name="render_document"
+              source="tools/render_doc.py">
+      <intro><![CDATA[The library entry point that renders one Markdown spec document from `Project.xml` plus a Jinja2 template. The CLI is a thin wrapper around it; the JSON-RPC sidecar's `render` method calls it directly.]]></intro>
+
+      <llr id="LLR-RND-01">
+        <text><![CDATA[`render_document` shall raise `ProjectXmlError` when the requested template path does not exist, and never silently fall through to an empty render.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+          <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RND-02">
+        <text><![CDATA[`render_document` shall select the metadata block by the `metadata_id` argument so each `<metadata><document id="…">` entry maps to exactly one rendered document; an unknown id shall raise `ProjectXmlError`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RND-03">
+        <text><![CDATA[`render_document` shall return Markdown normalised to exactly one trailing newline regardless of the template's whitespace so the CLI, the sidecar's `render` method, the in-memory preview pane, and the on-disk `--out` write produce byte-identical output for the same `(template, metadata_id, xml_path)` triple.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-008" name="Renderer Library API"/>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Output Equivalence"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RND-04">
+        <text><![CDATA[`render_document` shall expose the `gh_slug` filter and the `project.*` cross-reference indexes documented in [doc/Schema_Reference.md §9](Schema_Reference.md) on every render so templates can link to SDD section anchors and traverse the SDD → HLR → LLR → Test stack without recomputing relations in Jinja.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-007" name="Template Data Surface"/>
+          <trace target="HLR" ref="HLR-010" name="Template Anchor Convention"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RND-05">
+        <text><![CDATA[`render_document` shall depend only on the Python standard library plus Jinja2; no XSD validator, no `lxml`, no language-model client may be imported from the render hot path.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-046" name="Minimal Core Dependencies"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="4"
+              title="`init_project` ([tools/render_doc.py](../tools/render_doc.py))"
+              name="init_project"
+              source="tools/render_doc.py">
+      <intro><![CDATA[The bootstrap entry point that turns a fresh checkout into a populated `doc/Project.xml` plus `doc/PVD.md` skeleton.]]></intro>
+
+      <llr id="LLR-INI-01">
+        <text><![CDATA[`init_project` shall write a schema-1.1 skeleton `Project.xml` containing populated `<metadata>` (with one `<document>` row per baseline generated document) plus empty `<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`, and `<tests>` payloads so the resulting file lints cleanly and can be opened in the VS Code extension immediately.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
+          <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-INI-02">
+        <text><![CDATA[`init_project` shall substitute `tools/templates/PVD.md.template` into a new `doc/PVD.md` with the project name, short name, author, and date placeholders replaced; the resulting PVD shall contain the section skeleton enumerated in [.github/skills/project-xml/SKILL.md](../.github/skills/project-xml/SKILL.md) so the AI ghostwriting flow has a structural target.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-INI-03">
+        <text><![CDATA[`init_project` shall refuse to overwrite either target file when `force` is false and shall raise `ProjectXmlError` listing which file already exists, so a misconfigured invocation cannot silently destroy hand-authored content.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
+          <trace target="HLR" ref="HLR-001" name="Single Source of Truth"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-INI-04">
+        <text><![CDATA[`init_project` shall compute a relative `xsi:noNamespaceSchemaLocation` from the new `Project.xml`'s parent directory to `tools/project.xsd` when the caller does not supply `schema_location` so XSD-aware editors (Red Hat XML, the Phase 1 extension's host) resolve the schema with no further configuration.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
+          <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="5"
+              title="`lint` ([tools/lint_project.py](../tools/lint_project.py))"
+              name="lint"
+              source="tools/lint_project.py">
+      <intro><![CDATA[The library entry point of the linter; both the CLI and the JSON-RPC sidecar's `lint` method delegate to it.]]></intro>
+
+      <llr id="LLR-LNT-01">
+        <text><![CDATA[`lint` shall return a `Findings` object aggregating `errors`, `warnings`, and `notes` lists so callers can present each severity independently and compute `ok = (errors == [])` without re-walking the message list.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-LNT-02">
+        <text><![CDATA[`lint` shall run structural validation first and shall short-circuit semantic checks if the document fails to parse, so a malformed `Project.xml` does not produce a cascade of misleading "unknown id" errors that mask the real problem.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
+          <trace target="HLR" ref="HLR-011" name="XSD Validation Fallback Chain"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-LNT-03">
+        <text><![CDATA[`lint` shall surface every coverage gap (HLRs with no LLR or test, LLRs with no test) as a warning rather than an error so that an honest gap can ride in `Traceability.md` without blocking CI, while still being visible in the Problems panel and in the rendered Traceability Matrix.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-LNT-04">
+        <text><![CDATA[`lint` shall be a pure function over `(xml_path, xsd_path)` — no `print`, no `sys.exit`, no environmental I/O beyond reading the two paths — so the JSON-RPC sidecar, the test suite, and the future status-bar item can call it from a single process without spawning a subprocess.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Output Equivalence"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="6"
+              title="`validate_structure` ([tools/lint_project.py](../tools/lint_project.py))"
+              name="validate_structure"
+              source="tools/lint_project.py">
+      <intro><![CDATA[The XSD-validation wrapper that drives the lxml → xmllint → structural-only fallback chain.]]></intro>
+
+      <llr id="LLR-VST-01">
+        <text><![CDATA[`validate_structure` shall attempt validation using `lxml.etree.XMLSchema` first when the `lxml` import succeeds, so that strict, in-process XSD validation is the default path on machines that have it installed.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-011" name="XSD Validation Fallback Chain"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-VST-02">
+        <text><![CDATA[When `lxml` is unavailable, `validate_structure` shall fall back to invoking `xmllint --noout --schema <xsd> <xml>` via `subprocess.run` and shall translate its non-zero exit into one error finding per reported diagnostic line.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-011" name="XSD Validation Fallback Chain"/>
+          <trace target="HLR" ref="HLR-046" name="Minimal Core Dependencies"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-VST-03">
+        <text><![CDATA[When neither `lxml` nor `xmllint` is available, `validate_structure` shall degrade to a well-formedness-only pass and shall record an explicit note ("not XSD-validated; install lxml or xmllint for full validation") so the user is never silently told the document is valid when no validator ran.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-011" name="XSD Validation Fallback Chain"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-VST-04">
+        <text><![CDATA[`validate_structure` shall always emit a note naming which validator path actually ran (`lxml`, `xmllint`, or `structural-only`) so that a CI failure or a Problems-panel surprise can be traced back to the validator in use.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-011" name="XSD Validation Fallback Chain"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="7"
+              title="`check_semantics` ([tools/lint_project.py](../tools/lint_project.py))"
+              name="check_semantics"
+              source="tools/lint_project.py">
+      <intro><![CDATA[Semantic checks layered on top of structural validation: id format and uniqueness, trace reference resolution, metadata completeness, and coverage gaps.]]></intro>
+
+      <llr id="LLR-SEM-01">
+        <text><![CDATA[`check_semantics` shall reject any HLR id that does not match the `^HLR-\d{3,}$` pattern and any LLR id that does not match the `^LLR-[A-Z0-9]+-\d{2,}$` pattern as a hard error so that ID format breaks CI rather than degrading silently into a coverage gap.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-005" name="Stable Identifiers"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SEM-02">
+        <text><![CDATA[`check_semantics` shall report every duplicate `HLR-NNN` or `LLR-XXX-NN` id as an error naming both the duplicate id and (where available) the line of the offending element so the user can navigate directly to it.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-005" name="Stable Identifiers"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SEM-03">
+        <text><![CDATA[`check_semantics` shall resolve every `<trace target="HLR" ref="…"/>` against the set of HLR ids and every `<trace target="LLR" ref="…"/>` against the set of LLR ids; an unresolved reference shall produce an error finding that quotes the missing id and the citing element so the user can fix it without searching the file.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-013" name="Trace Reference Resolution"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SEM-04">
+        <text><![CDATA[`check_semantics` shall classify `<trace target="SDD" ref="…"/>` references as warnings (rather than errors) when the `ref` does not look like a dotted SDD section id (`^\d+(\.\d+)*$`), reflecting that SDD sections are weakly resolvable until the renderer's section catalogue is reached.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-013" name="Trace Reference Resolution"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SEM-05">
+        <text><![CDATA[`check_semantics` shall compute coverage gaps from the parsed tree — HLRs with no LLR or test linking to them, LLRs with no test linking to them — and shall emit one warning per gap so that the rendered Traceability Matrix and the Problems panel see the same set.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SEM-06">
+        <text><![CDATA[`check_semantics` shall verify that every document id referenced by a Jinja2 template under `tools/templates/` has a matching `<metadata><document id="…">` entry; missing entries shall be reported as errors and duplicate document ids shall be reported as errors.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-015" name="Metadata Completeness"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="8"
+              title="`serve` and `handle_request` ([tools/project_io.py](../tools/project_io.py))"
+              name="serve"
+              source="tools/project_io.py">
+      <intro><![CDATA[The JSON-RPC 2.0 dispatch loop and the per-method handler dispatcher that together implement the long-running sidecar.]]></intro>
+
+      <llr id="LLR-SRV-01">
+        <text><![CDATA[`serve` shall read line-delimited JSON requests from stdin and write line-delimited JSON responses to stdout, flushing after each response, so a client that opens stdin/stdout pipes and writes one request per line gets exactly one response per line in the same order.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SRV-02">
+        <text><![CDATA[`serve` shall ignore blank input lines and shall exit cleanly with status 0 on EOF so the client can shut the sidecar down by closing stdin without needing a dedicated `shutdown` method.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SRV-03">
+        <text><![CDATA[`handle_request` shall return a JSON-RPC error with code `-32700` (parse error) for any input that is not valid JSON, with code `-32600` (invalid request) when `method` is missing or non-string, and with code `-32601` (method not found) when the method name is unknown — exactly matching the JSON-RPC 2.0 specification.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SRV-04">
+        <text><![CDATA[`handle_request` shall return code `-32602` (invalid params) for `ValueError` raised by a handler, code `-32000` (application error) for `ProjectXmlError`, and code `-32603` (internal error) for any other uncaught exception so that user-fixable errors are distinguishable from sidecar bugs by the client.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SRV-05">
+        <text><![CDATA[`handle_request` shall correlate every response with its request by echoing the request's `id` field verbatim (including `null`), and shall suppress the response entirely when the request is a JSON-RPC notification (`jsonrpc=="2.0"` and no `id` key).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SRV-06">
+        <text><![CDATA[`handle_request` shall dispatch every method through the `METHODS` registry rather than via per-method `if`/`elif` branches so adding a new method is a single registry-table edit and the JSON-RPC error machinery applies uniformly.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-SRV-07">
+        <text><![CDATA[The `METHODS` registry shall map `lint`, `render`, `parse_to_json`, and `init_project` to thin wrappers around the corresponding `tools/render_doc.py` / `tools/lint_project.py` library functions; no method handler shall reimplement parsing, rendering, or linting logic in `project_io.py`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Output Equivalence"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="9"
+              title="`activate` ([tools/vscode-project-xml/src/extension.ts](../tools/vscode-project-xml/src/extension.ts))"
+              name="activate"
+              source="tools/vscode-project-xml/src/extension.ts">
+      <intro><![CDATA[The VS Code extension entry point that wires every Phase 1-2 surface (sidecar client, tree view, lint diagnostics, code lenses, render & preview, reveal-in-XML) into a single activation pass.]]></intro>
+
+      <llr id="LLR-ACT-01">
+        <text><![CDATA[`activate` shall construct the `ProjectIoClient`, register every contributed command, and create the `Project Spec` tree view, the lint `DiagnosticCollection`, the `tracer-preview:` content provider, and the coverage code-lens provider — pushing each onto `context.subscriptions` so they are torn down deterministically on extension deactivate.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-ACT-02">
+        <text><![CDATA[`activate` shall register the `Project Spec` `OutputChannel` first and pass it to every component that may report a sidecar or parse failure so the user can diagnose interpreter / workspace problems without leaving the editor.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-ACT-03">
+        <text><![CDATA[`activate` shall subscribe to `vscode.workspace.onDidSaveTextDocument` and, when the saved document is the configured `Project.xml`, refresh the tree, refresh the code-lens cache, optionally re-run `lint` (gated on `projectXml.autoLintOnChange`), and optionally invalidate the preview cache (gated on `projectXml.previewOnSave`).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-ACT-04">
+        <text><![CDATA[The extension manifest shall declare `redhat.vscode-xml` as an `extensionDependencies` entry and `untrustedWorkspaces.supported = "limited"` so XSD-backed XML editing comes for free and the deterministic Phase 1-2 surfaces remain available in untrusted workspaces while AI surfaces (Phase 5) can gate themselves off.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+          <trace target="HLR" ref="HLR-045" name="AI Surfaces Disabled in Untrusted Workspaces"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="10"
+              title="`ProjectIoClient` ([tools/vscode-project-xml/src/sidecar.ts](../tools/vscode-project-xml/src/sidecar.ts))"
+              name="ProjectIoClient"
+              source="tools/vscode-project-xml/src/sidecar.ts">
+      <intro><![CDATA[The long-running JSON-RPC 2.0 client wrapping `tools/project_io.py`. Every TypeScript surface (tree, diagnostics, lenses, render commands, preview content provider) routes through it.]]></intro>
+
+      <llr id="LLR-PIC-01">
+        <text><![CDATA[`ProjectIoClient` shall spawn `tools/project_io.py` lazily on first request — never during construction — so importing the module does not require a Python interpreter to be installed and `activate` stays cheap.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PIC-02">
+        <text><![CDATA[`ProjectIoClient.request` shall correlate every JSON-RPC response with its sender by allocating a monotonically-increasing numeric `id`, parking the resolver in a pending-map, and resolving / rejecting it when the line with the matching `id` arrives on stdout — so multiple in-flight requests do not deadlock.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PIC-03">
+        <text><![CDATA[`ProjectIoClient` shall reject every pending request with the same exit error when the sidecar process exits unexpectedly, and shall surface JSON-RPC error responses as `SidecarError(code, message)` so callers can switch on the JSON-RPC error code without parsing message text.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PIC-04">
+        <text><![CDATA[`ProjectIoClient` shall pipe every byte the sidecar writes to stderr into the `Project Spec` `OutputChannel` prefixed with `[sidecar:stderr]`, so Python tracebacks are visible to the user without leaving the editor.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PIC-05">
+        <text><![CDATA[`ProjectIoClient.dispose` shall close the sidecar's stdin and kill the child process, and the same cleanup shall run automatically on extension deactivate via the `context.subscriptions` machinery so the sidecar never outlives the extension.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PIC-06">
+        <text><![CDATA[`ProjectIoClient` shall pick the Python interpreter from the `projectXml.pythonPath` setting first and fall back to `python3` (POSIX) or `python` (Windows) so users with a project venv can point the sidecar at it without editing the extension source.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="11"
+              title="`ProjectSpecProvider` ([tools/vscode-project-xml/src/treeView/ProjectSpecProvider.ts](../tools/vscode-project-xml/src/treeView/ProjectSpecProvider.ts))"
+              name="ProjectSpecProvider"
+              source="tools/vscode-project-xml/src/treeView/ProjectSpecProvider.ts">
+      <intro><![CDATA[The Phase 1 hand-written tree provider that contributes the `Project Spec` Activity Bar view rooted at `Project.xml`. Phase 2.5 will rewrite the per-payload builders to walk the schema-driven hint registry.]]></intro>
+
+      <llr id="LLR-PSP-01">
+        <text><![CDATA[`ProjectSpecProvider.getChildren` shall return one root `ProjectSpecNode` per top-level payload (HLRs, LLRs, Tests, SDD, STP) when invoked with no element, with each root labelled with a count derived from the parsed tree (e.g. `HLRs (45)`).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-02">
+        <text><![CDATA[`ProjectSpecProvider` shall populate the tree by calling `ProjectIoClient.parseToJson` exactly once per refresh and caching the result; `refresh()` shall clear the cache and fire `onDidChangeTreeData` so VS Code re-requests the children.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-03">
+        <text><![CDATA[Every leaf `ProjectSpecNode` mapping to a real `<hlr>`, `<llr>`, `<test>`, or `<module>` element shall carry a `RevealLocator` payload `{tag, attr?, value}` and shall set `contextValue = "revealable"` so the Reveal-in-XML command and the context menu can target it precisely.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-04">
+        <text><![CDATA[When `parse_to_json` fails, `ProjectSpecProvider.getChildren` shall return a single error node (themed with `error` icon) bearing the error message rather than throwing, so the tree still renders and the user sees an actionable explanation in the Activity Bar.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="12"
+              title="`LintDiagnosticsProvider` ([tools/vscode-project-xml/src/diagnostics/LintDiagnosticsProvider.ts](../tools/vscode-project-xml/src/diagnostics/LintDiagnosticsProvider.ts))"
+              name="LintDiagnosticsProvider"
+              source="tools/vscode-project-xml/src/diagnostics/LintDiagnosticsProvider.ts">
+      <intro><![CDATA[Mirrors lint findings from `project_io.lint` into a VS Code `DiagnosticCollection` over `Project.xml`. Phase 2.5's stable-`code` retrofit and Quick Fix table layer on top of this Phase 1 surface.]]></intro>
+
+      <llr id="LLR-LDP-01">
+        <text><![CDATA[`LintDiagnosticsProvider.run` shall call `ProjectIoClient.lint` with the configured `xml_path` and (when set) `xsd_path`, and shall replace the entire `DiagnosticCollection` for `Project.xml` on success so the Problems panel reflects the latest lint state without requiring the user to clear stale entries.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-LDP-02">
+        <text><![CDATA[`LintDiagnosticsProvider.publish` shall map each `Findings.errors` entry to `DiagnosticSeverity.Error`, each warning to `DiagnosticSeverity.Warning`, and each note to `DiagnosticSeverity.Information` — preserving every finding verbatim so warnings are never silently downgraded or hidden.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-LDP-03">
+        <text><![CDATA[Each `Diagnostic` shall be anchored to a best-effort range computed by `rangeForFinding(doc, message)` (HLR/LLR id token first, quoted attribute value second, `<element>` mention third, file head as fallback) and shall set `source = "projectXml"` so users can filter the Problems panel to the linter's output.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-LDP-04">
+        <text><![CDATA[When `ProjectIoClient.lint` rejects (interpreter missing, sidecar exited), `LintDiagnosticsProvider.run` shall publish a single top-of-file `Error` diagnostic carrying the failure message rather than swallowing the rejection silently, so the user sees the failure in the Problems panel and the `Project Spec` `OutputChannel` simultaneously.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="13"
+              title="`revealInXml` and `locator` helpers ([tools/vscode-project-xml/src/](../tools/vscode-project-xml/src/))"
+              name="revealInXml"
+              source="tools/vscode-project-xml/src/commands/revealInXml.ts">
+      <intro><![CDATA[The Phase 1 jump-to-element command, plus the regex-based locator helpers it uses to range XML elements without parsing the file in TypeScript.]]></intro>
+
+      <llr id="LLR-RVX-01">
+        <text><![CDATA[`revealInXml` shall accept either a `ProjectSpecNode` (from a tree-view context-menu invocation) or a bare `RevealLocator` (from the code-lens click path) and shall dispatch through `findIdRange` / `findAttrRange` / `findElementRange` so every caller takes the same locator code path.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RVX-02">
+        <text><![CDATA[`findIdRange` shall match `<TAG ... id="ID">` via regex, return a `vscode.Range` over the `id="..."` attribute value (not the whole tag), and never fall through to a wrong element when two elements share an id substring (the regex anchors on `\bid="ID"`).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RVX-03">
+        <text><![CDATA[When the locator cannot find the requested element, `revealInXml` shall still open `Project.xml` in a non-preview editor and shall surface a warning toast describing what was not found (`<llr id="LLR-PCL-04"> not found in Project.xml`) so the user has both the file and an actionable explanation.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RVX-04">
+        <text><![CDATA[`rangeForFinding` shall scan a finding message for `HLR-NNN` ids first, then `LLR-XXX-NN` ids, then quoted attribute values, then `<element>` mentions, and shall return the first hit's range — falling back to the file head only when none match — so diagnostic underlines target the most specific token available.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="14"
+              title="`renderAndPreview` and `MarkdownPreviewProvider` ([tools/vscode-project-xml/src/](../tools/vscode-project-xml/src/))"
+              name="renderAndPreview"
+              source="tools/vscode-project-xml/src/commands/render.ts">
+      <intro><![CDATA[The Phase 2 side-by-side Markdown preview surface: a `tracer-preview:/<doc-id>.md` content provider plus the command that opens it via `markdown.showPreviewToSide`.]]></intro>
+
+      <llr id="LLR-RAP-01">
+        <text><![CDATA[`renderAndPreview` shall accept an optional `docId` (string or `{docId}` object) argument, prompt the user with a QuickPick over `BASELINE_DOCUMENTS` when none is supplied, and refuse with a warning toast when the supplied id is not in `BASELINE_DOCUMENTS` — never falling through to a partial render.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RAP-02">
+        <text><![CDATA[`renderAndPreview` shall mark the preview cache stale for the chosen `docId` and then dispatch `vscode.commands.executeCommand("markdown.showPreviewToSide", uri)` so the user always sees content rendered against the current `Project.xml` state, not a cached snapshot.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MPP-01">
+        <text><![CDATA[`MarkdownPreviewProvider` shall register the `tracer-preview` URI scheme via `vscode.workspace.registerTextDocumentContentProvider` and shall serve content for `tracer-preview:/<doc-id>.md` URIs by calling `ProjectIoClient.render` — so no preview path ever writes a Markdown file under `doc/`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+          <trace target="HLR" ref="HLR-001" name="Single Source of Truth"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MPP-02">
+        <text><![CDATA[`MarkdownPreviewProvider.markStale(docId?)` shall drop the cached markdown for `docId` (or every tracked preview when called with no argument) and shall fire `onDidChange` for each tracked id so VS Code re-requests content; the on-save handler in `activate` shall call this when `projectXml.previewOnSave` is enabled.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MPP-03">
+        <text><![CDATA[When `ProjectIoClient.render` rejects, `MarkdownPreviewProvider.provideTextDocumentContent` shall return a `# Project Spec preview — render failed` Markdown body quoting the error (and append the failure to the `Project Spec` `OutputChannel`) rather than throwing, so the preview pane always shows actionable text instead of crashing the host.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="15"
+              title="`renderAll` and `BASELINE_DOCUMENTS` ([tools/vscode-project-xml/src/](../tools/vscode-project-xml/src/))"
+              name="renderAll"
+              source="tools/vscode-project-xml/src/commands/render.ts">
+      <intro><![CDATA[The Phase 2 batch-regeneration command, plus the single named constant Phase 2.5 will swap for a `list_documents` sidecar call.]]></intro>
+
+      <llr id="LLR-RAL-01">
+        <text><![CDATA[`renderAll` shall iterate `BASELINE_DOCUMENTS` and shall call `ProjectIoClient.render` for each entry with the `out` parameter set to the corresponding workspace-relative `source` path so each generated Markdown is written by the sidecar (never assembled in TypeScript).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
+          <trace target="HLR" ref="HLR-017" name="One Backend, Many Surfaces"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RAL-02">
+        <text><![CDATA[`renderAll` shall display a progress notification while it runs, shall continue past per-document failures (collecting them into a failure list rather than aborting on the first error), and shall summarise both the success count and the failed document ids in the closing toast.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-RAL-03">
+        <text><![CDATA[`renderAll` shall call `MarkdownPreviewProvider.markStale()` (with no argument) at the end of every run so any preview pane the user opened earlier in the session refreshes against the new on-disk state.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-027" name="Side-by-Side Markdown Preview"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BLD-01">
+        <text><![CDATA[`BASELINE_DOCUMENTS` shall be the single named source of truth for the Phase 2 hard-coded document set (`SDD`, `HLRs`, `LLRs`, `STP`, `Traceability`); every consumer (the `renderAll` loop, the `renderAndPreview` QuickPick, the `MarkdownPreviewProvider` doc-id lookup) shall import this constant rather than enumerating ids inline so the Phase 2.5 swap to a `list_documents` sidecar call is a single-file edit.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-006" name="One Template per Generated Document"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="16"
+              title="`CoverageCodeLensProvider` ([tools/vscode-project-xml/src/codeLens/CoverageCodeLensProvider.ts](../tools/vscode-project-xml/src/codeLens/CoverageCodeLensProvider.ts))"
+              name="CoverageCodeLensProvider"
+              source="tools/vscode-project-xml/src/codeLens/CoverageCodeLensProvider.ts">
+      <intro><![CDATA[The Phase 2 code-lens provider that decorates `<hlr>`, `<llr>`, and `<test>` elements with coverage status and click-through reveal lenses. Phase 2.5 will replace the hard-coded element selectors with a walk over `ui_hints_index.lenses`.]]></intro>
+
+      <llr id="LLR-CCL-01">
+        <text><![CDATA[`CoverageCodeLensProvider.provideCodeLenses` shall return code lenses only when the active document's path equals the configured `Project.xml` so other XML files in the workspace are not decorated.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-CCL-02">
+        <text><![CDATA[For every `<hlr id="…">` element the provider shall emit a summary lens whose title is `"<n> LLRs · <m> tests"` computed from the parsed tree's `<traces>` blocks (LLRs that trace to this HLR, plus tests that trace to it directly), and the analogous summary for every `<llr>` (`"<n> HLRs · <m> tests"`) and every `<test>` (`"<n> LLRs · <m> HLRs"`).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-CCL-03">
+        <text><![CDATA[Each summary lens shall invoke a picker command (`projectXml.codeLens.pickRelated`) that opens a QuickPick over every related element; up to `MAX_INLINE_LENSES` related items shall additionally be emitted as inline `→ <id>` lenses that invoke `projectXml.revealInXml` with the per-related locator so the most common jumps are one click away.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-CCL-04">
+        <text><![CDATA[An element with zero related items shall render the summary lens with title `"<n> LLRs · <m> tests — no coverage"` and an empty command so the user sees the gap without being given a useless click target; the provider shall not emit per-related inline lenses in this case.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-CCL-05">
+        <text><![CDATA[`CoverageCodeLensProvider` shall cache the parsed project across consecutive `provideCodeLenses` invocations and shall coalesce concurrent in-flight `parseToJson` calls into a single sidecar request, so VS Code's per-keystroke lens-recompute does not fan out into N parallel sidecar calls.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-CCL-06">
+        <text><![CDATA[`CoverageCodeLensProvider.refresh` shall drop the parsed-project cache and fire `onDidChangeCodeLenses` so a save (handled in `activate`) refreshes every lens range and label against the new on-disk state.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="17"
+              title="`paths` helpers ([tools/vscode-project-xml/src/util/paths.ts](../tools/vscode-project-xml/src/util/paths.ts))"
+              name="paths"
+              source="tools/vscode-project-xml/src/util/paths.ts">
+      <intro><![CDATA[Workspace-path resolution shared by every extension surface. Centralised here so the multi-root case and the `projectXml.*` settings overrides are handled in one place.]]></intro>
+
+      <llr id="LLR-PTH-01">
+        <text><![CDATA[`getProjectFolder` shall pick the open workspace folder whose root contains the configured `xmlPath` (default `doc/Project.xml`) so the extension works equally for a user who opens the TraceR repo root and for a user who opens a parent multi-root workspace.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PTH-02">
+        <text><![CDATA[`getProjectXmlPath`, `getXsdPath`, `getToolsDir`, and `getProjectIoScript` shall each resolve their result against `getProjectFolder()` when given a relative setting, return the value verbatim when given an absolute path, and return `undefined` only when no workspace folder is open — so callers can fail loudly with a single null check.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PTH-03">
+        <text><![CDATA[`describeWorkspaceState` shall return a single human-readable sentence explaining why path resolution failed (no workspace folder open, or `Project.xml` not found in any folder) so the sidecar's startup error message is actionable.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-020" name="Extension Activation"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
   <tests>
+
+    <file path="test/test_render_doc.py" role="unit" count="16">
+      <header><![CDATA[Tests for the importable surface of tools/render_doc.py: init_project (project bootstrap), load_project / parse_project_to_dict (the renderer's data surface), and render_document (the rendering primitive that the CLI, the JSON-RPC sidecar, and the extension's preview pane all consume).]]></header>
+
+      <test name="test_creates_xml_and_pvd">
+        <purpose><![CDATA[Verifies LLR-INI-01 and LLR-INI-02: `init_project` writes a schema-1.1 `Project.xml` skeleton with `name`, `short_name`, and `author` substituted, plus a `PVD.md` derived from the template with the placeholder text replaced.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-01"/>
+          <trace target="LLR" ref="LLR-INI-02"/>
+        </traces>
+      </test>
+
+      <test name="test_refuses_overwrite_without_force">
+        <purpose><![CDATA[Verifies LLR-INI-03: a second `init_project` call against an existing `Project.xml` raises `ProjectXmlError` rather than silently destroying the existing file.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-03"/>
+        </traces>
+      </test>
+
+      <test name="test_force_overwrites_existing">
+        <purpose><![CDATA[Verifies the explicit `force=True` escape hatch in LLR-INI-03: the caller can opt back in to overwriting, and the `existing` list in the result names exactly the files that were replaced.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-03"/>
+        </traces>
+      </test>
+
+      <test name="test_does_not_write_to_stderr">
+        <purpose><![CDATA[Verifies that `init_project` is a true library function (LLR-INI-01, LLR-PPD-02): it writes neither stdout nor stderr, leaving output policy to the caller.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-01"/>
+          <trace target="LLR" ref="LLR-PPD-02"/>
+        </traces>
+      </test>
+
+      <test name="test_load_known_metadata_id">
+        <purpose><![CDATA[Verifies LLR-PPD-01 and LLR-RND-02: `load_project` accepts a custom `xml_path` and selects the requested metadata id, returning the populated project namespace templates consume.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-01"/>
+          <trace target="LLR" ref="LLR-RND-02"/>
+        </traces>
+      </test>
+
+      <test name="test_load_unknown_metadata_id_raises_project_xml_error">
+        <purpose><![CDATA[Verifies LLR-RND-02: an unknown metadata id raises `ProjectXmlError` rather than falling through to a partial render or `KeyError`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RND-02"/>
+        </traces>
+      </test>
+
+      <test name="test_missing_file_raises_project_xml_error">
+        <purpose><![CDATA[Verifies LLR-PPD-02: a missing input file raises the library's `ProjectXmlError`, not `SystemExit` or a bare `FileNotFoundError`, so JSON-RPC handlers can map it to a JSON-RPC application error.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-02"/>
+        </traces>
+      </test>
+
+      <test name="test_malformed_xml_raises_project_xml_error">
+        <purpose><![CDATA[Verifies LLR-PPD-02: `xml.etree.ElementTree.ParseError` from a truncated `<project><unclosed>` document is wrapped as `ProjectXmlError` with the original cause preserved.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-02"/>
+        </traces>
+      </test>
+
+      <test name="test_returns_jsonable_dict">
+        <purpose><![CDATA[Verifies LLR-PPD-04: the `parse_project_to_dict` projection round-trips through `json.dumps` — no `SimpleNamespace` instances may leak into the JSON-RPC surface.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-04"/>
+        </traces>
+      </test>
+
+      <test name="test_default_metadata_for_first_document">
+        <purpose><![CDATA[Verifies LLR-PPD-03: with no `metadata_for` argument, the parser picks the first `<metadata><document>` entry (the skeleton's `SDD` row).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-03"/>
+        </traces>
+      </test>
+
+      <test name="test_explicit_metadata_for_overrides">
+        <purpose><![CDATA[Verifies the `metadata_for` argument path of LLR-PPD-01 / LLR-PPD-03: an explicit id (`HLRs`) overrides the first-document default.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-01"/>
+          <trace target="LLR" ref="LLR-PPD-03"/>
+        </traces>
+      </test>
+
+      <test name="test_render_hlrs_returns_markdown_with_single_trailing_newline">
+        <purpose><![CDATA[Verifies LLR-RND-03: `render_document` returns Markdown with exactly one trailing newline (never zero, never two), so the CLI, sidecar, and preview pane all emit byte-identical output.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RND-03"/>
+        </traces>
+      </test>
+
+      <test name="test_missing_template_raises_project_xml_error">
+        <purpose><![CDATA[Verifies LLR-RND-01: a missing template path raises `ProjectXmlError` rather than silently rendering an empty document.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RND-01"/>
+        </traces>
+      </test>
+
+      <test name="test_writes_relative_schema_location_when_unset">
+        <purpose><![CDATA[Verifies LLR-INI-04: when the caller does not supply `schema_location`, `init_project` writes a relative (never absolute) `xsi:noNamespaceSchemaLocation` resolving to `project.xsd`, so XSD-aware editors find the schema with no further configuration.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-04"/>
+        </traces>
+      </test>
+
+      <test name="test_explicit_schema_location_overrides_default">
+        <purpose><![CDATA[Verifies the explicit override path of LLR-INI-04: an explicit `schema_location` argument is written verbatim into the skeleton's `xsi:noNamespaceSchemaLocation`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-04"/>
+        </traces>
+      </test>
+
+      <test name="test_rendered_document_uses_gh_slug_anchor">
+        <purpose><![CDATA[Verifies LLR-RND-04: rendering an HLRs document end-to-end exercises the `gh_slug` filter and the `project.*` cross-reference indexes; if either were missing the render would have raised before producing output.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RND-04"/>
+        </traces>
+      </test>
+
+      <test name="test_gh_slug_filter_is_registered_on_jinja_env">
+        <purpose><![CDATA[Pins LLR-RND-04 directly: a one-shot probe template that pipes a string through `gh_slug` round-trips to the expected slug, and the underlying `_gh_slug` helper produces the same value when called directly.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RND-04"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="test/test_lint_project.py" role="unit" count="21">
+      <header><![CDATA[Tests for the importable surface of tools/lint_project.py: the `lint` entry point, the `Findings` dataclass, and the human-readable `Findings.report` formatter consumed by both the CLI and the JSON-RPC sidecar.]]></header>
+
+      <test name="test_lint_returns_findings_object">
+        <purpose><![CDATA[Verifies LLR-LNT-01: `lint` returns a `Findings` instance (not a tuple, not a dict) so callers consume `.errors`, `.warnings`, `.notes`, and `.ok` by attribute.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LNT-01"/>
+        </traces>
+      </test>
+
+      <test name="test_findings_to_dict_is_jsonable">
+        <purpose><![CDATA[Verifies that `Findings.to_dict()` is JSON-serialisable (it is the JSON-RPC `lint` method's return shape) and contains exactly the documented `errors`/`warnings`/`notes` keys, each holding a list.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LNT-01"/>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+        </traces>
+      </test>
+
+      <test name="test_skeleton_has_no_errors">
+        <purpose><![CDATA[Verifies LLR-INI-01 and LLR-LNT-02: a freshly-bootstrapped `Project.xml` lints with zero errors (warnings for empty payloads are acceptable).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-01"/>
+          <trace target="LLR" ref="LLR-LNT-02"/>
+        </traces>
+      </test>
+
+      <test name="test_missing_file_records_error_no_stderr">
+        <purpose><![CDATA[Verifies LLR-LNT-04: `lint` is a pure function — a missing file is recorded as a `Findings.errors` entry, never written to stderr; redirected stderr remains empty.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LNT-04"/>
+        </traces>
+      </test>
+
+      <test name="test_malformed_xml_records_error">
+        <purpose><![CDATA[Verifies LLR-LNT-02: structural validation runs first; a malformed XML document records an error finding and short-circuits the semantic checks instead of producing a cascade of misleading "unknown id" diagnostics.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LNT-02"/>
+        </traces>
+      </test>
+
+      <test name="test_real_repo_project_xml_lints">
+        <purpose><![CDATA[Smoke test against the live `doc/Project.xml`: the project's own source-of-truth must lint with zero error findings (warnings for unbuilt-phase coverage gaps are acceptable per HLR-014/HLR-042).]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+        </traces>
+      </test>
+
+      <test name="test_report_writes_to_supplied_stream">
+        <purpose><![CDATA[Verifies LLR-LNT-04 and HLR-042: `Findings.report` writes errors, warnings, and notes verbatim to the caller-supplied stream and ends with a `N error(s)` summary line — warnings are surfaced, never silently dropped.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LNT-04"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </test>
+
+      <test name="test_report_suppresses_warnings_when_disabled">
+        <purpose><![CDATA[Verifies the explicit `show_warnings=False` API: callers (CI scripts, CLI flag) can opt out of warning text in the report stream, but the warnings remain in the underlying `Findings` collection so the JSON-RPC surface still sees them.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LNT-04"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </test>
+
+      <test name="test_malformed_xml_records_error_and_returns_none">
+        <purpose><![CDATA[Verifies LLR-VST-01: structural validation runs first; a malformed XML payload short-circuits the validator chain, records a `malformed XML` error, and returns `None` so semantic checks do not run on a broken tree.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-VST-01"/>
+        </traces>
+      </test>
+
+      <test name="test_lxml_path_is_preferred_when_available">
+        <purpose><![CDATA[Verifies LLR-VST-01: when `_try_lxml_validate` succeeds, `validate_structure` does not consult `xmllint` and emits no degraded-mode note.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-VST-01"/>
+        </traces>
+      </test>
+
+      <test name="test_xmllint_fallback_when_lxml_unavailable">
+        <purpose><![CDATA[Verifies LLR-VST-02: when `lxml` is unavailable, `validate_structure` falls back to `_try_xmllint_validate` and proceeds without emitting the structural-only note.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-VST-02"/>
+        </traces>
+      </test>
+
+      <test name="test_structural_only_emits_explicit_note">
+        <purpose><![CDATA[Verifies LLR-VST-03: when neither `lxml` nor `xmllint` is available, `validate_structure` returns the well-formedness-only tree and records exactly one explicit note saying that XSD validation was skipped.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-VST-03"/>
+          <trace target="LLR" ref="LLR-VST-04"/>
+        </traces>
+      </test>
+
+      <test name="test_bad_hlr_id_format_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-01: an HLR id that does not match `HLR-NNN` is reported as a hard error naming the offending id and the expected pattern.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-01"/>
+        </traces>
+      </test>
+
+      <test name="test_bad_llr_id_format_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-01: an LLR id that does not match `LLR-XXX-NN` is reported as a hard error naming the offending id and the expected pattern.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-01"/>
+        </traces>
+      </test>
+
+      <test name="test_duplicate_hlr_id_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-02: every duplicate `HLR-NNN` id is reported as an error naming the duplicated id.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-02"/>
+        </traces>
+      </test>
+
+      <test name="test_duplicate_llr_id_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-02: every duplicate `LLR-XXX-NN` id is reported as an error naming the duplicated id.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-02"/>
+        </traces>
+      </test>
+
+      <test name="test_unknown_hlr_trace_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-03: an LLR whose `<trace target="HLR" ref="..."/>` cites a non-existent HLR id produces an error quoting the missing id.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-03"/>
+        </traces>
+      </test>
+
+      <test name="test_unknown_llr_trace_from_test_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-03: a test whose `<trace target="LLR" ref="..."/>` cites a non-existent LLR id produces an error quoting the missing id.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-03"/>
+        </traces>
+      </test>
+
+      <test name="test_non_dotted_sdd_ref_is_a_warning_not_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-04: an SDD trace `ref` that does not match a dotted section pattern produces a warning rather than an error, reflecting that SDD section ids are weakly resolvable.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-04"/>
+        </traces>
+      </test>
+
+      <test name="test_coverage_gap_for_uncovered_llr_is_a_warning">
+        <purpose><![CDATA[Verifies LLR-SEM-05 and LLR-LNT-03: an LLR with no test traces produces exactly one `has no test verifying it` warning and no error finding.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-05"/>
+          <trace target="LLR" ref="LLR-LNT-03"/>
+        </traces>
+      </test>
+
+      <test name="test_coverage_gap_for_uncovered_hlr_is_a_warning">
+        <purpose><![CDATA[Verifies LLR-SEM-05 and LLR-LNT-03: an HLR with no direct test and no LLR-mediated coverage produces a `has no test verifying it` warning rather than an error.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-05"/>
+          <trace target="LLR" ref="LLR-LNT-03"/>
+        </traces>
+      </test>
+
+      <test name="test_hlr_covered_indirectly_via_llr_test_is_not_a_gap">
+        <purpose><![CDATA[Verifies LLR-SEM-05: an HLR is considered covered when at least one of its LLRs has a test, so no gap warning is emitted in the indirect-coverage case.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-05"/>
+        </traces>
+      </test>
+
+      <test name="test_missing_metadata_document_is_a_warning">
+        <purpose><![CDATA[Verifies LLR-SEM-06: a `<metadata>` block missing one of the standard `<document id="..."/>` rows produces a warning per missing id naming the absent document.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-06"/>
+        </traces>
+      </test>
+
+      <test name="test_duplicate_metadata_document_is_an_error">
+        <purpose><![CDATA[Verifies LLR-SEM-06: duplicate `<document id="..."/>` entries within `<metadata>` are reported as errors naming the duplicated id.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-06"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="test/test_project_io.py" role="unit+integration" count="20">
+      <header><![CDATA[Tests for the JSON-RPC surface in tools/project_io.py. Exercises both the in-process handle_request() entry point and the end-to-end stdin/stdout subprocess form (the SubprocessTests class spawns the real `python3 tools/project_io.py` so it covers the same wire path the VS Code extension uses).]]></header>
+
+      <test name="test_lint_method_returns_findings">
+        <purpose><![CDATA[Verifies LLR-SRV-07 and HLR-016: the `lint` method dispatches through the registry, returns a JSON-RPC response with `result` containing `errors`/`warnings`/`notes`/`ok`, and echoes the request's `id`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+        </traces>
+      </test>
+
+      <test name="test_lint_matches_cli_findings">
+        <purpose><![CDATA[Verifies LLR-SRV-07 and HLR-043 (cross-surface output equivalence): the in-process `lint_project.lint` library and the JSON-RPC `lint` method return byte-identical errors/warnings/notes for the same `Project.xml`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Output Equivalence"/>
+        </traces>
+      </test>
+
+      <test name="test_render_method_returns_markdown">
+        <purpose><![CDATA[Verifies LLR-SRV-07 and LLR-RND-03: the `render` method delegates to `render_document` and returns a `result` whose `output` ends with exactly one newline and whose `out_path` is `null` when no `out` parameter is supplied.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="LLR" ref="LLR-RND-03"/>
+        </traces>
+      </test>
+
+      <test name="test_render_writes_to_out_path">
+        <purpose><![CDATA[Verifies the `out` parameter path of LLR-SRV-07 and LLR-RAL-01: when `out` is supplied, the sidecar writes the rendered Markdown to that path and echoes the path in `result.out_path`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+
+      <test name="test_parse_to_json_returns_dict">
+        <purpose><![CDATA[Verifies LLR-SRV-07 and LLR-PPD-04: the `parse_to_json` method delegates to `parse_project_to_dict` and the response round-trips through `json.dumps`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="LLR" ref="LLR-PPD-04"/>
+        </traces>
+      </test>
+
+      <test name="test_init_project_method">
+        <purpose><![CDATA[Verifies LLR-SRV-07 and LLR-INI-01: the `init_project` method delegates to `render_doc.init_project`, writes the new files, and echoes the destination paths in the response.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+          <trace target="LLR" ref="LLR-INI-01"/>
+        </traces>
+      </test>
+
+      <test name="test_init_project_refuses_overwrite">
+        <purpose><![CDATA[Verifies LLR-INI-03 and LLR-SRV-04: `init_project`'s overwrite guard surfaces as a JSON-RPC `APPLICATION_ERROR` (-32000) rather than as a server crash.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-03"/>
+          <trace target="LLR" ref="LLR-SRV-04"/>
+        </traces>
+      </test>
+
+      <test name="test_unknown_method_returns_method_not_found">
+        <purpose><![CDATA[Verifies LLR-SRV-03: an unknown method name produces JSON-RPC `METHOD_NOT_FOUND` (-32601) per the spec.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-03"/>
+        </traces>
+      </test>
+
+      <test name="test_missing_method_returns_invalid_request">
+        <purpose><![CDATA[Verifies LLR-SRV-03: a request object with no `method` key produces JSON-RPC `INVALID_REQUEST` (-32600) per the spec.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-03"/>
+        </traces>
+      </test>
+
+      <test name="test_invalid_params_returns_invalid_params">
+        <purpose><![CDATA[Verifies LLR-SRV-04: a `render` call missing required parameters surfaces as JSON-RPC `INVALID_PARAMS` (-32602), distinguishing user error from sidecar bug.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-04"/>
+        </traces>
+      </test>
+
+      <test name="test_application_error_for_bad_xml_path">
+        <purpose><![CDATA[Verifies LLR-SRV-04: a `render` call against a non-existent `xml_path` surfaces as JSON-RPC `APPLICATION_ERROR` (-32000) so the client can distinguish a fixable user error from an `INTERNAL_ERROR` (-32603) sidecar bug.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-04"/>
+        </traces>
+      </test>
+
+      <test name="test_notification_returns_none">
+        <purpose><![CDATA[Verifies LLR-SRV-05: a JSON-RPC notification (`jsonrpc=="2.0"`, no `id`) returns `None` from `handle_request` so the serve loop emits no response line for it.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-05"/>
+        </traces>
+      </test>
+
+      <test name="test_multiple_requests_one_per_line">
+        <purpose><![CDATA[Verifies LLR-SRV-01 and LLR-SRV-05: `serve` processes line-delimited requests in order and writes one response per line, with the response `id` matching the request `id` for each.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-01"/>
+          <trace target="LLR" ref="LLR-SRV-05"/>
+        </traces>
+      </test>
+
+      <test name="test_invalid_json_returns_parse_error">
+        <purpose><![CDATA[Verifies LLR-SRV-03: a non-JSON line produces JSON-RPC `PARSE_ERROR` (-32700) per the spec.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-03"/>
+        </traces>
+      </test>
+
+      <test name="test_blank_lines_ignored_and_eof_returns_zero">
+        <purpose><![CDATA[Verifies LLR-SRV-02: `serve` ignores blank input lines (no response is written for any of them) and returns exit code 0 on EOF — the documented clean-shutdown path the VS Code extension relies on.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-02"/>
+        </traces>
+      </test>
+
+      <test name="test_methods_registry_contains_documented_methods">
+        <purpose><![CDATA[Verifies LLR-SRV-06 and LLR-SRV-07: the `METHODS` registry table holds exactly the documented method names (`lint`, `render`, `parse_to_json`, `init_project`) and every value is callable.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-06"/>
+          <trace target="LLR" ref="LLR-SRV-07"/>
+        </traces>
+      </test>
+
+      <test name="test_dispatch_routes_through_methods_table">
+        <purpose><![CDATA[Verifies LLR-SRV-06: registering a stub handler at runtime makes a brand-new method dispatchable through `handle_request` without any change to the dispatcher — proving the dispatcher consults `METHODS` rather than a hard-coded if/elif chain.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-06"/>
+        </traces>
+      </test>
+
+      <test name="test_unknown_method_after_unregister_returns_method_not_found">
+        <purpose><![CDATA[Verifies LLR-SRV-06: removing a method from the registry makes it unreachable (`METHOD_NOT_FOUND`) without any code change in `handle_request` — the symmetric proof that dispatch is registry-driven.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-06"/>
+        </traces>
+      </test>
+
+      <test name="test_echo_lint_request_returns_findings">
+        <purpose><![CDATA[End-to-end integration test that spawns the real `python3 tools/project_io.py` subprocess, sends one JSON-RPC `lint` request on stdin, and verifies the response on stdout (LLR-SRV-01, HLR-016, HLR-021). This is the acceptance path the VS Code extension's `ProjectIoClient` exercises in production.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SRV-01"/>
+          <trace target="HLR" ref="HLR-016" name="JSON-RPC Wire Contract"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </test>
+
+      <test name="test_subprocess_lint_matches_in_process_lint">
+        <purpose><![CDATA[Cross-surface equivalence pin (HLR-043): the spawned `python3 tools/project_io.py` subprocess returns byte-identical errors and warnings to the in-process `lint_project.lint` library for the same `Project.xml`.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Output Equivalence"/>
+          <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/documents.test.ts" role="unit-ts" count="6">
+      <header><![CDATA[Tier-1 (Mocha + ts-node, no VS Code host) unit tests for the BASELINE_DOCUMENTS catalogue and its helpers in tools/vscode-project-xml/src/util/documents.ts.]]></header>
+
+      <test name="lists exactly the five Phase-2 baseline ids in the documented order">
+        <purpose><![CDATA[Verifies LLR-BLD-01: `BASELINE_DOCUMENTS` is the single named source of truth for the Phase 2 hard-coded document set, in the documented `SDD`, `HLRs`, `LLRs`, `STP`, `Traceability` order.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BLD-01"/>
+        </traces>
+      </test>
+
+      <test name="every entry names a *.j2 template under tools/templates/">
+        <purpose><![CDATA[Verifies LLR-BLD-01 / LLR-RAL-01: every catalogue entry points at a Jinja2 template under `tools/templates/`, so the `renderAll` loop has a valid template path for every id without further validation.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BLD-01"/>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+
+      <test name="every entry writes to a doc/*.md path matching its id">
+        <purpose><![CDATA[Verifies LLR-BLD-01 / LLR-RAL-01: every catalogue entry writes to a `doc/*.md` path, matching the renderer's contract that the spec stack lives under `doc/`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BLD-01"/>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+
+      <test name="returns the entry with a matching id">
+        <purpose><![CDATA[Verifies the lookup contract used by `renderAndPreview` and the preview content provider: `findBaselineDocument` returns the entry whose id matches.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BLD-01"/>
+          <trace target="LLR" ref="LLR-RAP-01"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined for an unknown id">
+        <purpose><![CDATA[Verifies LLR-RAP-01: `findBaselineDocument` returns `undefined` for an unknown id so `renderAndPreview` can refuse with a warning toast rather than fall through to a partial render.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RAP-01"/>
+        </traces>
+      </test>
+
+      <test name="templatePath joins toolsDir with templates/&lt;file&gt;">
+        <purpose><![CDATA[Verifies the path-join contract behind LLR-RAL-01: `templatePath(toolsDir, doc)` resolves to `<toolsDir>/templates/<doc.template>` so the sidecar render call sees a usable absolute path.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/locator.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Tier-1 unit tests for the regex-based locator in tools/vscode-project-xml/src/util/locator.ts. Drives the locator with a hand-constructed XML sample under a FakeTextDocument so the assertions cover real ranges without standing up a VS Code host.]]></header>
+
+      <test name="targets the id=&quot;...&quot; attribute, not the whole element">
+        <purpose><![CDATA[Verifies LLR-RVX-02: `findIdRange` returns a range over the `id="..."` attribute value (not the whole tag), so the diagnostic underline and the reveal cursor land on the meaningful token.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-02"/>
+        </traces>
+      </test>
+
+      <test name="disambiguates between elements that share an id substring">
+        <purpose><![CDATA[Verifies LLR-RVX-02: the `\bid="ID"` anchoring distinguishes ids whose values overlap as substrings, so HLR-001 cannot be misreported as the location of HLR-002 (and vice versa).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-02"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined when the id is not present">
+        <purpose><![CDATA[Verifies the `undefined`-result contract of `findIdRange` that the reveal command depends on (LLR-RVX-03) so a missing id is reported via a warning toast, not a wrong-range jump.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-02"/>
+          <trace target="LLR" ref="LLR-RVX-03"/>
+        </traces>
+      </test>
+
+      <test name="findAttrRange locates a test by name">
+        <purpose><![CDATA[Verifies the `<test name="...">` location path of LLR-RVX-01: `findAttrRange` ranges a test by its `name` attribute so the tree-view reveal lands on the right test row.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-01"/>
+        </traces>
+      </test>
+
+      <test name="findElementRange locates the opening tag of a payload">
+        <purpose><![CDATA[Verifies the `<element>`-mention fallback path of LLR-RVX-04: `findElementRange` ranges an opening tag so a finding that only mentions `<llrs>` still gets a precise underline.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-04"/>
+        </traces>
+      </test>
+
+      <test name="prefers HLR ids over other tokens in the message">
+        <purpose><![CDATA[Verifies LLR-RVX-04: the scan order is HLR id first, then LLR id, then quoted attribute value, then `<element>` mention; an HLR token wins over an `<element>` token in the same message.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-04"/>
+        </traces>
+      </test>
+
+      <test name="falls back to LLR id when no HLR matches">
+        <purpose><![CDATA[Verifies the LLR-id leg of the LLR-RVX-04 scan order: when no `HLR-NNN` token matches, the locator falls through to `LLR-XXX-NN`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-04"/>
+        </traces>
+      </test>
+
+      <test name="falls back to a quoted attribute value when no id matches">
+        <purpose><![CDATA[Verifies the quoted-attribute leg of LLR-RVX-04: when no HLR or LLR id is in the message, the locator targets the quoted attribute value (`'test_widget'`) rather than the file head.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-04"/>
+        </traces>
+      </test>
+
+      <test name="falls back to file head when no token matches anything">
+        <purpose><![CDATA[Verifies the safe-default of LLR-RVX-04: when nothing in the message matches an id, an attribute value, or a tag mention, the locator returns a zero-length range at line 0 column 0 rather than throwing.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-04"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/paths.test.ts" role="unit-ts" count="8">
+      <header><![CDATA[Tier-1 unit tests for tools/vscode-project-xml/src/util/paths.ts. Drives the workspace-folder and configuration helpers under the FakeWorkspace mock so the multi-root path-resolution rules can be asserted without a VS Code host.]]></header>
+
+      <test name="returns undefined when no workspace folder is open">
+        <purpose><![CDATA[Verifies LLR-PTH-02: `getProjectFolder` returns `undefined` when no workspace folder is open, so callers can fail loudly with a single null check.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-02"/>
+        </traces>
+      </test>
+
+      <test name="picks the folder that contains the configured xmlPath">
+        <purpose><![CDATA[Verifies LLR-PTH-01: in a multi-root workspace, `getProjectFolder` picks the folder whose root contains the configured `xmlPath`, not just the first folder in the list.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-01"/>
+        </traces>
+      </test>
+
+      <test name="falls back to the first folder when no folder contains Project.xml">
+        <purpose><![CDATA[Verifies the documented fallback behaviour of LLR-PTH-01: when no open folder contains `Project.xml`, the helper returns the first folder so the user can still see an actionable error from the sidecar instead of a hard `undefined`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-01"/>
+        </traces>
+      </test>
+
+      <test name="resolves relative settings against the project folder">
+        <purpose><![CDATA[Verifies LLR-PTH-02: `getProjectXmlPath`, `getXsdPath`, `getToolsDir`, and `getProjectIoScript` each resolve their relative setting against `getProjectFolder()`'s root.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-02"/>
+        </traces>
+      </test>
+
+      <test name="returns absolute settings verbatim">
+        <purpose><![CDATA[Verifies the absolute-path branch of LLR-PTH-02: a setting given as an absolute path is returned verbatim, so users with checkouts outside the workspace folder can point each helper at the right file directly.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-02"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined for every helper when no workspace folder is open">
+        <purpose><![CDATA[Verifies LLR-PTH-02: every path helper returns `undefined` (rather than throwing) when no workspace folder is open, so the sidecar startup error message can be shown via the standard `describeWorkspaceState` path.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-02"/>
+          <trace target="LLR" ref="LLR-PTH-03"/>
+        </traces>
+      </test>
+
+      <test name="explains the no-folder case in actionable terms">
+        <purpose><![CDATA[Verifies LLR-PTH-03: `describeWorkspaceState` returns a single human-readable sentence telling the user to open the TraceR folder, so the sidecar startup error is actionable from the Output channel alone.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-03"/>
+        </traces>
+      </test>
+
+      <test name="names the missing Project.xml when folders are open">
+        <purpose><![CDATA[Verifies LLR-PTH-03: when folders are open but `Project.xml` is not present in any of them, `describeWorkspaceState` names the missing file and the searched folders so the user knows which path to fix.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PTH-03"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/sidecar.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Tier-1 unit tests for the line-framing and dispatch path of ProjectIoClient in tools/vscode-project-xml/src/sidecar.ts. The framing is driven directly by feeding bytes to the private onStdout hook and probing the private pending map; this keeps the tests host-free and independent of the spawned Python sidecar.]]></header>
+
+      <test name="dispatches a complete response line to the matching pending request">
+        <purpose><![CDATA[Verifies LLR-PIC-02: pending resolvers are keyed by the response `id`, so a complete response line resolves exactly the matching pending promise and clears it from the in-flight map.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-02"/>
+        </traces>
+      </test>
+
+      <test name="reassembles a response split across multiple chunks">
+        <purpose><![CDATA[Verifies LLR-PIC-02: the line buffer reassembles a JSON response that arrives split across multiple stdout chunks before dispatching it to the resolver.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-02"/>
+        </traces>
+      </test>
+
+      <test name="dispatches multiple responses arriving in one chunk in id order">
+        <purpose><![CDATA[Verifies LLR-PIC-02: multiple responses delivered in a single stdout chunk are split on the newline boundary and dispatched to the correct resolvers, even when responses are returned out of request order.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-02"/>
+        </traces>
+      </test>
+
+      <test name="rejects with SidecarError when the response carries an error object">
+        <purpose><![CDATA[Verifies LLR-PIC-03: a JSON-RPC error response surfaces as `SidecarError(code, message)` so callers can switch on the JSON-RPC error code without parsing message text.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-03"/>
+        </traces>
+      </test>
+
+      <test name="ignores blank lines and unknown ids without disturbing pending requests">
+        <purpose><![CDATA[Verifies LLR-PIC-02: stray notifications and blank lines on the sidecar's stdout do not accidentally resolve a pending request.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-02"/>
+        </traces>
+      </test>
+
+      <test name="logs invalid JSON lines and continues without rejecting any pending request">
+        <purpose><![CDATA[Verifies LLR-PIC-04: invalid JSON arriving on the sidecar's stdout is logged to the `Project Spec` `OutputChannel` and the dispatcher continues processing without rejecting any in-flight request.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-04"/>
+        </traces>
+      </test>
+
+      <test name="failAll rejects every pending request with the supplied error">
+        <purpose><![CDATA[Verifies LLR-PIC-03: when the sidecar process exits unexpectedly, every pending request is rejected with the same exit error rather than hanging the caller.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-03"/>
+        </traces>
+      </test>
+
+      <test name="dispose rejects pending requests with a &quot;sidecar disposed&quot; error">
+        <purpose><![CDATA[Verifies LLR-PIC-05: `ProjectIoClient.dispose` rejects every pending request with a `sidecar disposed` error so callers do not leak promises across extension deactivate.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-05"/>
+        </traces>
+      </test>
+
+      <test name="carries the JSON-RPC error code on a named SidecarError instance">
+        <purpose><![CDATA[Verifies the `SidecarError` constructor contract that LLR-PIC-03 depends on: the error carries the JSON-RPC `code`, identifies as `SidecarError` via its `name`, preserves the `message`, and is an `Error` subclass.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-03"/>
+        </traces>
+      </test>
+    </file>
+
   </tests>
 </project>

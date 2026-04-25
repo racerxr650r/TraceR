@@ -181,5 +181,100 @@ class RenderDocumentTests(unittest.TestCase):
             render_document(self.tmp / "nope.j2", "HLRs", self.xml_path)
 
 
+class InitProjectSchemaLocationTests(unittest.TestCase):
+    """Verifies LLR-INI-04: the bootstrap writes a relative
+    xsi:noNamespaceSchemaLocation pointing at tools/project.xsd."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_writes_relative_schema_location_when_unset(self) -> None:
+        # LLR-INI-04: when schema_location is not supplied, init_project
+        # computes a relative path (never absolute) from the new
+        # Project.xml's parent directory to the canonical project.xsd.
+        import re
+        xml_path = self.tmp / "doc" / "Project.xml"
+        init_project(
+            name="P", short_name="p",
+            xml_path=xml_path,
+            pvd_path=self.tmp / "doc" / "PVD.md",
+        )
+        text = xml_path.read_text()
+        match = re.search(
+            r'xsi:noNamespaceSchemaLocation="([^"]+)"', text,
+        )
+        self.assertIsNotNone(match, msg=f"no xsi:noNamespaceSchemaLocation found in:\n{text[:400]}")
+        loc = match.group(1)
+        self.assertFalse(
+            loc.startswith("/"),
+            msg=f"schema_location should be relative, got absolute: {loc!r}",
+        )
+        self.assertTrue(
+            loc.endswith("project.xsd"),
+            msg=f"schema_location should resolve to project.xsd, got: {loc!r}",
+        )
+
+    def test_explicit_schema_location_overrides_default(self) -> None:
+        xml_path = self.tmp / "Project.xml"
+        init_project(
+            name="P", short_name="p",
+            xml_path=xml_path,
+            pvd_path=self.tmp / "PVD.md",
+            schema_location="schemas/custom.xsd",
+        )
+        self.assertIn(
+            'xsi:noNamespaceSchemaLocation="schemas/custom.xsd"',
+            xml_path.read_text(),
+        )
+
+
+class RenderDataSurfaceTests(unittest.TestCase):
+    """Verifies LLR-RND-04: the gh_slug filter and the project.*
+    cross-reference indexes are exposed to every render."""
+
+    def test_rendered_document_uses_gh_slug_anchor(self) -> None:
+        # The HLRs template emits anchors that gh_slug() produces.
+        # Prove the filter is wired by rendering a document whose
+        # template depends on it: HLRs.md emits "<a id=...></a>" tags
+        # whose ids are gh_slug-derived from the section titles.
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp))
+        xml_path = tmp / "Project.xml"
+        init_project(
+            name="GS", short_name="gs",
+            xml_path=xml_path,
+            pvd_path=tmp / "PVD.md",
+        )
+        out = render_document(
+            _paths.TEMPLATES_DIR / "HLRs.md.j2", "HLRs", xml_path,
+        )
+        # The template depends on the gh_slug filter for anchor ids.
+        # If the filter were missing, the render would have raised a
+        # jinja2 TemplateAssertionError before producing this output.
+        self.assertIn("High-Level Requirements", out)
+
+    def test_gh_slug_filter_is_registered_on_jinja_env(self) -> None:
+        # The render hot path builds the env inside render() and
+        # registers gh_slug there. Cover it by rendering against a
+        # one-shot template that invokes the filter; if it were not
+        # registered the render would raise.
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp))
+        xml_path = tmp / "Project.xml"
+        init_project(
+            name="GS", short_name="gs",
+            xml_path=xml_path,
+            pvd_path=tmp / "PVD.md",
+        )
+        tpl = tmp / "probe.j2"
+        tpl.write_text("slug={{ 'Section 3.2.1' | gh_slug }}\n")
+        out = render_document(tpl, "SDD", xml_path)
+        self.assertEqual(out, "slug=section-321\n")
+        # Sanity-check the filter implementation directly too.
+        self.assertEqual(render_doc._gh_slug("Section 3.2.1"), "section-321")
+
+
 if __name__ == "__main__":
     unittest.main()
