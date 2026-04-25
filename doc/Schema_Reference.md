@@ -840,7 +840,7 @@ outcomes:
         name="project">` `xs:all` block (`minOccurs="0"`).
 2.  **Bump `schema_version`** on the `<project>` root in
     [doc/Project.xml](../doc/Project.xml) (current value is
-    `1.2`; bump to `1.3` for the next change).
+    `1.3`; bump to `1.4` for the next change).
 3.  **Edit [render_doc.py](../tools/render_doc.py):**
     *   Add a `build_<payload>(elem)` function returning a
         `SimpleNamespace` shaped exactly the way you want
@@ -936,3 +936,151 @@ automatically; you do not need to teach it about the new id.
     XSD. The only TypeScript change ever needed is for **bespoke
     visualisations** that go beyond a generic tree node, form, or
     code lens.
+
+## 14. `<plan>` — Phase 2.5 Retrofit Demo Payload
+
+The `<plan>` element is the canonical example of a **payload that the
+toolchain learns about purely through `<metadata><document>` and the
+XSD**, with no edits to `render_doc.py`, `lint_project.py`, or the
+VS Code extension's TypeScript code. It exists to keep the
+schema-driven contract honest: if a future contributor accidentally
+adds a hard-coded reference to one of the five "standard" payloads
+(`<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`, `<tests>`), the `<plan>` proof
+in [test/doc/Project.xml](../test/doc/Project.xml) is what fails first.
+
+### 14.1 XML skeleton
+
+```xml
+<plan version="0.1">
+  Free-form markdown introduction text. Mixed content is
+  allowed so a project can ship a hand-authored plan
+  without committing to a fixed structure.
+
+  <item id="P1" status="done">
+    Markdown body for this plan item, including links,
+    backticks, lists, etc.
+  </item>
+  <item id="P2" status="in-progress">
+    ...
+  </item>
+</plan>
+```
+
+### 14.2 Element reference
+
+| Element / attribute | Required | Notes |
+|---------------------|----------|-------|
+| `<plan>`            | optional on `<project>` | Mixed content; carries an optional `version` attribute. |
+| `<plan>/@version`   | optional | Free-form string. Convention: bump alongside `Project.xml`'s `schema_version` only when the plan's schema-relevant shape changes. |
+| `<plan>/<item>`     | optional, repeatable | Each item is a discrete plan entry. Mixed content (markdown). |
+| `<item>/@id`        | optional | Stable identifier for the item. Convention: short uppercase prefix (`P1`, `M3`). |
+| `<item>/@status`    | optional | Free-form, but the demo template recognises `done`, `in-progress`, `blocked`, and `planned`. |
+
+### 14.3 What the toolchain does *not* know about `<plan>`
+
+*   **`render_doc.py` has no `build_plan` function.** The renderer's
+    `parse_project_to_dict` walks every direct child of `<project>`
+    that it knows about (`<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`,
+    `<tests>`); `<plan>` is read by the template directly as raw
+    markdown via the standard `xml_path` parser surface. New
+    payloads with structured shape *do* need a `build_*` entry
+    (§13 Step 2).
+*   **The linter has no `<plan>`-specific rule.** The XSD validates
+    its structural shape; semantic rules are absent because the
+    payload is intentionally free-form.
+*   **The VS Code extension contributes nothing `<plan>`-specific.**
+    It picks up the document via `<metadata><document id="Plan">`
+    and its `template=`/`output=` attributes, registers a
+    `projectXml.render.Plan` command at runtime, and renders the
+    template through the same code path used for the five standard
+    documents.
+
+### 14.4 Adopting `<plan>` (or removing it) for a real project
+
+`<plan>` ships in [test/doc/Project.xml](../test/doc/Project.xml) as the
+schema-driven retrofit's regression test, **not** in the canonical
+[doc/Project.xml](../doc/Project.xml). A project that wants a planning
+document can either:
+
+*   **Use `<plan>` as-is.** Copy the `<metadata><document>` entry,
+    the [tools/templates/Plan.md.j2](../tools/templates/Plan.md.j2)
+    template, and a `<plan>` payload into the project's
+    `Project.xml`. Lint and render work immediately.
+*   **Define a richer payload.** Follow §13 Steps 2-4: extend the
+    XSD, add a `build_<payload>` to the renderer, and author a
+    template. The `<plan>` proof remains in the test fixture so
+    the schema-driven contract continues to be exercised.
+
+## 15. Linter Contract (`Finding`, `Findings.items[]`, `code` values)
+
+The linter exposes two complementary surfaces. Earlier phases
+contracted only the human-readable string lists; Phase 2.5 adds a
+**structured** surface so downstream consumers (the VS Code
+extension's Quick-Fix layer, AI surfaces, Marketplace dashboards)
+can dispatch on a stable identifier rather than parsing localised
+message text.
+
+### 15.1 `Finding` and `Findings.to_dict()`
+
+Each lint finding is a `Finding` record:
+
+| Field      | Type                                      | Notes |
+|------------|-------------------------------------------|-------|
+| `severity` | `"error"` &#124; `"warning"` &#124; `"note"` | Determines how the CLI report and the VS Code Problems panel categorise the entry. |
+| `message`  | `str`                                     | Canonical user-facing text. The CLI report and the legacy `errors` / `warnings` / `notes` lists hold this verbatim — pinned by HLR-043 cross-surface equivalence. |
+| `code`     | `str` &#124; `None`                       | Stable machine identifier. Optional today; populated for the rules listed in §15.3. |
+
+`Findings.to_dict()` is the JSON-RPC `lint` method's return shape:
+
+```python
+{
+  "errors":   ["error message 1", "error message 2", ...],   # message-only, ordered
+  "warnings": ["warning message 1", ...],                    # message-only, ordered
+  "notes":    ["note message 1", ...],                       # message-only, ordered
+  "items": [
+    {"severity": "error",   "message": "...", "code": "broken-trace"},
+    {"severity": "warning", "message": "...", "code": "no-test"},
+    {"severity": "warning", "message": "...", "code": null},
+    ...
+  ],
+}
+```
+
+The flat `errors` / `warnings` / `notes` lists remain byte-identical
+to the pre-Phase-2.5 surface so cross-surface equivalence holds; the
+new `items` array carries the structured records in declaration
+order.
+
+### 15.2 `LintFinding` (TypeScript mirror)
+
+The VS Code extension declares the same shape as
+`LintFinding` in [tools/vscode-project-xml/src/sidecar.ts](../tools/vscode-project-xml/src/sidecar.ts):
+
+```ts
+interface LintFinding {
+  severity: 'error' | 'warning' | 'note';
+  message: string;
+  code: string | null;
+}
+```
+
+The diagnostics provider keys its `vscode.Diagnostic.code` off
+`LintFinding.code` so a Quick-Fix can match on the stable token
+rather than the user-facing message; the badge index built by
+[util/badges.ts](../tools/vscode-project-xml/src/util/badges.ts)
+walks the same `items[]` array.
+
+### 15.3 `code` values currently emitted
+
+| `code`              | Severity   | Raised when |
+|---------------------|------------|-------------|
+| `broken-trace`      | `error`    | A `<traces>/<trace>` resolves to an id that does not exist (HLR / LLR / SDD §). |
+| `id-format`         | `error`    | An `id="..."` attribute does not match the `HLR-NNN` / `LLR-XXX-NN` pattern, or two payloads share the same id. |
+| `missing-template`  | `warning`  | A declared `<metadata><document>` entry's `template=` (explicit or convention) does not exist on disk. |
+| `no-test`           | `warning`  | An HLR or LLR has no test that traces back to it (directly or via the LLR-fan-out). |
+
+Findings raised before the `code` field was introduced (e.g.
+`<project> is missing required @schema_version`) carry `code: null`.
+New rules added in future phases will document their `code` here;
+existing values are stable and may be relied on by external tooling.
+
