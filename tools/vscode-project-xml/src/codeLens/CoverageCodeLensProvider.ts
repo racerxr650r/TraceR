@@ -17,11 +17,12 @@
 //     <traces> reference it.
 //   * For a test: count the LLR and HLR traces it carries.
 //
-// The provider hard-codes the three element selectors per the Phase
-// 2 prompt; the Phase 2.5 retrofit replaces the selectors with a
-// walk over `ui_hints_index.lenses`. The coverage / per-related-id
-// computations move into named lens kinds at that point and the
-// provider becomes payload-agnostic.
+// Phase 2.5b Slice F: the (element, id_attr) pairs scanned for lenses
+// are no longer hard-coded -- they come from `_ui_hints_index` filtered
+// to entries whose `lenses` contains a `coverage` or `tracesCount`
+// kind. Adding a new payload with one of those lens kinds wires the
+// regex/range pass automatically; the `RELATED_DISPATCH` registry
+// below is the only place that still encodes per-payload semantics.
 
 import * as vscode from 'vscode';
 import {
@@ -30,6 +31,7 @@ import {
     ParsedProject,
     ParsedTest,
     ProjectIoClient,
+    UiHintsIndex,
 } from '../sidecar';
 import { getProjectXmlPath } from '../util/paths';
 import { RevealLocator } from '../treeView/ProjectSpecProvider';
@@ -112,29 +114,24 @@ export class CoverageCodeLensProvider
         const lenses: vscode.CodeLens[] = [];
         const text = document.getText();
 
-        for (const match of matchAll(text, /<hlr\b[^>]*?\bid="([^"]+)"/g)) {
-            const range = rangeAt(document, match.index);
-            const id = match[1];
-            const related = relatedForHlr(id, index);
-            pushLenses(lenses, range, summaryForHlr(related), `HLR ${id}`, related);
-        }
-        for (const match of matchAll(text, /<llr\b[^>]*?\bid="([^"]+)"/g)) {
-            const range = rangeAt(document, match.index);
-            const id = match[1];
-            const related = relatedForLlr(id, index);
-            pushLenses(lenses, range, summaryForLlr(related), `LLR ${id}`, related);
-        }
-        for (const match of matchAll(text, /<test\b[^>]*?\bname="([^"]+)"/g)) {
-            const range = rangeAt(document, match.index);
-            const name = match[1];
-            const related = relatedForTest(name, index);
-            pushLenses(
-                lenses,
-                range,
-                summaryForTest(related),
-                `test ${name}`,
-                related,
-            );
+        for (const target of getLensTargets(project._ui_hints_index)) {
+            const handler = RELATED_DISPATCH[target.element];
+            if (!handler) {
+                continue;
+            }
+            const regex = buildElementIdRegex(target.element, target.idAttr);
+            for (const match of matchAll(text, regex)) {
+                const range = rangeAt(document, match.index);
+                const value = match[1];
+                const related = handler(value, index);
+                pushLenses(
+                    lenses,
+                    range,
+                    target.summary(related),
+                    `${target.label} ${value}`,
+                    related,
+                );
+            }
         }
         return lenses;
     }
@@ -475,4 +472,116 @@ function* matchAll(text: string, re: RegExp): Generator<RegExpExecArray> {
             re.lastIndex++;
         }
     }
+}
+
+// ---------------------------------------------------------------------
+// Phase 2.5b Slice F: schema-driven lens targets
+// ---------------------------------------------------------------------
+
+/**
+ * Per-element coverage handler. Each entry knows how to enumerate
+ * "related" items (LLRs, HLRs, tests) for one parsed element value
+ * and how to summarise the result for the summary lens. The dispatch
+ * table is the only payload-aware code path left in this provider --
+ * the (element, id_attr) pairs scanned for lenses are derived from
+ * `_ui_hints_index` at call time.
+ */
+type RelatedHandler = (value: string, index: CoverageIndex) => RelatedItem[];
+type SummaryFn = (related: RelatedItem[]) => string;
+
+interface LensTarget {
+    readonly element: string;
+    readonly idAttr: string;
+    readonly label: string;
+    readonly summary: SummaryFn;
+}
+
+/** Lens kinds that this provider knows how to render. */
+const SUPPORTED_LENS_KINDS = new Set(['coverage', 'tracesCount']);
+
+/** Maps the lowercase XML tag (UiHintEntry.element) to the per-element
+ *  related-item lookup. Adding a fourth payload with a coverage lens
+ *  in the schema is then a one-line registration here. */
+const RELATED_DISPATCH: Record<string, RelatedHandler> = {
+    hlr:  relatedForHlr,
+    llr:  relatedForLlr,
+    test: relatedForTest,
+};
+
+/** User-visible labels for each known element. */
+const ELEMENT_LABELS: Record<string, string> = {
+    hlr:  'HLR',
+    llr:  'LLR',
+    test: 'test',
+};
+
+/** Per-element summary text strategy. */
+const SUMMARY_DISPATCH: Record<string, SummaryFn> = {
+    hlr:  summaryForHlr,
+    llr:  summaryForLlr,
+    test: summaryForTest,
+};
+
+/**
+ * Walk `_ui_hints_index` and return the ordered list of elements
+ * whose schema annotations declare a supported lens kind. Falls back
+ * to the legacy hard-coded HLR/LLR/Test triple when the sidecar did
+ * not provide an index (older Python builds, or `parse_to_json`
+ * failure paths that still return a partial result).
+ *
+ * Exported for tier-1 tests.
+ */
+export function getLensTargets(
+    hints: UiHintsIndex | undefined,
+): LensTarget[] {
+    if (!hints) {
+        return LEGACY_LENS_TARGETS;
+    }
+    const out: LensTarget[] = [];
+    const seen = new Set<string>();
+    for (const key of Object.keys(hints)) {
+        const entry = hints[key];
+        if (!entry?.element || !entry.tree_node) {
+            continue;
+        }
+        const wanted = entry.lenses.some((l) => SUPPORTED_LENS_KINDS.has(l.kind));
+        if (!wanted) {
+            continue;
+        }
+        if (seen.has(entry.element)) {
+            continue;
+        }
+        seen.add(entry.element);
+        out.push({
+            element: entry.element,
+            idAttr:  entry.tree_node.id_attr || 'id',
+            label:   ELEMENT_LABELS[entry.element]
+                  ?? entry.element.toUpperCase(),
+            summary: SUMMARY_DISPATCH[entry.element] ?? defaultSummary,
+        });
+    }
+    return out.length > 0 ? out : LEGACY_LENS_TARGETS;
+}
+
+const LEGACY_LENS_TARGETS: LensTarget[] = [
+    { element: 'hlr',  idAttr: 'id',   label: 'HLR',  summary: summaryForHlr  },
+    { element: 'llr',  idAttr: 'id',   label: 'LLR',  summary: summaryForLlr  },
+    { element: 'test', idAttr: 'name', label: 'test', summary: summaryForTest },
+];
+
+function defaultSummary(related: RelatedItem[]): string {
+    return pluralize(related.length, 'related');
+}
+
+/** Exported for tier-1 tests. */
+export const _RELATED_DISPATCH = RELATED_DISPATCH;
+/** Exported for tier-1 tests. */
+export const _SUPPORTED_LENS_KINDS = SUPPORTED_LENS_KINDS;
+
+const ATTR_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+function buildElementIdRegex(element: string, idAttr: string): RegExp {
+    const tag  = element.replace(ATTR_ESCAPE, '\\$&');
+    const attr = idAttr.replace(ATTR_ESCAPE, '\\$&');
+    return new RegExp(`<${tag}\\b[^>]*?\\b${attr}="([^"]+)"`, 'g');
 }

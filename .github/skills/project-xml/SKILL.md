@@ -175,6 +175,27 @@ looks the document up by the second positional CLI argument.
 *   **Bump `<project schema_version="...">`** whenever you change the
     structure of `Project.xml` in a way that existing templates or
     `tools/render_doc.py` could not consume unchanged.
+*   **Any change to `tools/project.xsd` requires a matching update
+    to [doc/Schema_Reference.md](../../../doc/Schema_Reference.md)
+    in the same commit.** This applies to every kind of XSD edit:
+    new / removed / renamed elements or attributes, changed
+    cardinality, tightened or loosened restrictions, new
+    `<xs:appinfo>` UI-hint vocabulary, schema_version bumps. The
+    schema reference is the human-facing contract; if it drifts
+    from the XSD, downstream edits made against the reference
+    will silently produce invalid XML. (See also the callout at
+    the top of this file.)
+*   **Update [README.md](../../../README.md) before pushing any
+    commit that changes user-visible status or functionality.**
+    The README's *Status* table (which phase / sub-phase is
+    delivered vs. in flight) and *VS Code extension* / *CLI
+    tooling* feature lists are the project's public face. Whenever
+    a phase or slice ships a new surface (a new tree node, a new
+    command, a new setting, a new `Finding.code`, a new schema-
+    version bump, a phase status change), refresh the README in
+    the same branch and verify the doc-link section still points
+    at the right files. README cleanup is a precondition for
+    `git push`, not a follow-up.
 
 ## Schema and Renderer Data Surface
 

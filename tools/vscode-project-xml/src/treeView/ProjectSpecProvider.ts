@@ -8,7 +8,12 @@
 // but cannot be revealed.
 
 import * as vscode from 'vscode';
-import { ProjectIoClient, ParsedProject } from '../sidecar';
+import {
+    ParsedNode,
+    ParsedProject,
+    ProjectIoClient,
+    UiHintEntry,
+} from '../sidecar';
 import { BadgeIndex } from '../util/badges';
 import { applyHintsToNode } from '../util/hints';
 import { getConfig, getProjectXmlPath } from '../util/paths';
@@ -104,13 +109,134 @@ function buildTopLevel(
     project: ParsedProject,
     badges: BadgeIndex | undefined,
 ): ProjectSpecNode[] {
+    const hints = project._ui_hints_index;
     return [
-        buildHlrsNode(project, badges),
-        buildLlrsNode(project, badges),
-        buildTestsNode(project),
-        buildSddNode(project),
+        buildHlrsNode(project, badges, locatorMeta(hints, 'Hlr', 'hlr', 'id')),
+        buildLlrsNode(project, badges, locatorMeta(hints, 'Llr', 'llr', 'id')),
+        buildTestsNode(project, locatorMeta(hints, 'Test', 'test', 'name')),
+        buildSddNode(project, locatorMeta(hints, 'SddModule', 'module', 'path')),
         buildStpNode(project),
+        ...buildGenericPayloadNodes(project),
     ];
+}
+
+/**
+ * Slice H: resolve `(tag, idAttr)` for the four legacy typed builders
+ * from `_ui_hints_index`, falling back to the original hard-coded
+ * pair when the hints aren't available. Lets the schema rename or
+ * re-attribute a payload (e.g. `<test>` keyed on something other than
+ * `name`) without touching this file.
+ */
+interface LeafLocatorMeta {
+    readonly tag: string;
+    readonly idAttr: string;
+}
+
+/** Exported for tier-1 tests. */
+export function locatorMeta(
+    hints: ParsedProject['_ui_hints_index'],
+    typeKey: string,
+    fallbackTag: string,
+    fallbackIdAttr: string,
+): LeafLocatorMeta {
+    const entry = hints?.[typeKey];
+    const tag = entry?.element ?? fallbackTag;
+    const idAttr = entry?.tree_node?.id_attr || fallbackIdAttr;
+    return { tag, idAttr };
+}
+
+function leafLocator(
+    meta: LeafLocatorMeta,
+    value: string,
+): RevealLocator | undefined {
+    if (!value) {
+        return undefined;
+    }
+    return meta.idAttr === 'id'
+        ? { tag: meta.tag, value }
+        : { tag: meta.tag, attr: meta.idAttr, value };
+}
+
+/**
+ * Phase 2.5b Slice E: schema-driven extension point.
+ *
+ * Walks `project._nodes` (the `Record<typeName, ParsedNode[]>` index
+ * embedded by `parse_to_json` since Slice D) and emits one top-level
+ * tree group for every type-key NOT already covered by the typed
+ * builders above. This is the seam that makes adding a new payload
+ * a zero-TS-edit operation: declare a `<xs:appinfo><ui:treeNode/>`
+ * block on a new complex type in `tools/project.xsd`, render the
+ * node's body in your Jinja template, and the Project Spec view
+ * picks it up automatically.
+ *
+ * The legacy buildHlrsNode / buildLlrsNode / buildTestsNode /
+ * buildSddNode / buildStpNode functions stay in place because they
+ * preserve UX nesting (HLR sections, LLR function groups, test
+ * files) that the generic walker can't recover from a flat node
+ * list. Migrating those onto this seam is a follow-up slice.
+ */
+function buildGenericPayloadNodes(project: ParsedProject): ProjectSpecNode[] {
+    const nodes = project._nodes ?? {};
+    const hints = project._ui_hints_index ?? {};
+    const out: ProjectSpecNode[] = [];
+    // Stable order: type-keys sorted alphabetically.
+    for (const key of Object.keys(nodes).sort()) {
+        if (COVERED_TYPE_KEYS.has(key)) {
+            continue;
+        }
+        const entry = hints[key];
+        if (!entry || !entry.tree_node || !entry.element) {
+            continue;
+        }
+        out.push(buildGenericGroup(key, entry, nodes[key] ?? []));
+    }
+    return out;
+}
+
+function buildGenericGroup(
+    key: string,
+    entry: UiHintEntry,
+    parsedNodes: ParsedNode[],
+): ProjectSpecNode {
+    const tag = entry.element ?? key.toLowerCase();
+    const idAttr = entry.tree_node?.id_attr ?? 'id';
+    const labelTemplate = entry.tree_node?.label || `@${idAttr}`;
+    const children = parsedNodes.map((n) => {
+        const value = n.attrs[idAttr] ?? '';
+        const leaf = new ProjectSpecNode(
+            renderLabel(labelTemplate, n) || `(${tag})`,
+            vscode.TreeItemCollapsibleState.None,
+            undefined,
+            value
+                ? { tag, attr: idAttr, value }
+                : undefined,
+        );
+        applyHintsToNode(leaf, n.ui ?? undefined);
+        return leaf;
+    });
+    const node = new ProjectSpecNode(
+        `${key} (${parsedNodes.length})`,
+        children.length > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None,
+        children,
+    );
+    node.iconPath = new vscode.ThemeIcon('symbol-misc');
+    return node;
+}
+
+/**
+ * Substitute `@<attr>` tokens in a `ui:treeNode/@label` template with
+ * values from `node.attrs`. Unknown tokens collapse to empty string.
+ * Trims redundant whitespace so a template like `"@id — @name"` with
+ * no `name` attribute renders as just `"HLR-001"`, not `"HLR-001 — "`.
+ */
+function renderLabel(template: string, node: ParsedNode): string {
+    const raw = template.replace(
+        /@([A-Za-z_][\w-]*)/g,
+        (_m, name: string) => node.attrs[name] ?? '',
+    );
+    return raw.replace(/\s+[—-]\s+(?=$|\s)/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function badgesEnabled(): boolean {
@@ -124,9 +250,30 @@ function decorate(
     return badge ? `${badge} ${label}` : label;
 }
 
+/** Exported for tier-1 tests. */
+export const COVERED_TYPE_KEYS = new Set([
+    'Hlr',
+    'Llr',
+    'Test',
+    'SddModule',
+]);
+
+/** Exported for tier-1 tests. */
+export function _buildGenericPayloadNodes(
+    project: ParsedProject,
+): ProjectSpecNode[] {
+    return buildGenericPayloadNodes(project);
+}
+
+/** Exported for tier-1 tests. */
+export function _renderLabel(template: string, node: ParsedNode): string {
+    return renderLabel(template, node);
+}
+
 function buildHlrsNode(
     project: ParsedProject,
     badges: BadgeIndex | undefined,
+    meta: LeafLocatorMeta,
 ): ProjectSpecNode {
     const sections = project.hlrs ?? [];
     const total = (project.flat_hlrs ?? []).length
@@ -155,7 +302,7 @@ function buildHlrsNode(
                             ),
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
-                            { tag: 'hlr', value: h.id },
+                            leafLocator(meta, h.id),
                         );
                         applyHintsToNode(leaf, h.ui);
                         return leaf;
@@ -171,6 +318,7 @@ function buildHlrsNode(
 function buildLlrsNode(
     project: ParsedProject,
     badges: BadgeIndex | undefined,
+    meta: LeafLocatorMeta,
 ): ProjectSpecNode {
     const groups = project.llrs ?? [];
     const total = (project.flat_llrs ?? []).length
@@ -194,7 +342,7 @@ function buildLlrsNode(
                             decorate(l.id, badges?.badgeFor('llr', l.id)),
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
-                            { tag: 'llr', value: l.id },
+                            leafLocator(meta, l.id),
                         );
                         applyHintsToNode(leaf, l.ui);
                         return leaf;
@@ -207,7 +355,10 @@ function buildLlrsNode(
     return node;
 }
 
-function buildTestsNode(project: ParsedProject): ProjectSpecNode {
+function buildTestsNode(
+    project: ParsedProject,
+    meta: LeafLocatorMeta,
+): ProjectSpecNode {
     const files = project.tests ?? [];
     const total = (project.flat_tests ?? []).length
         || files.reduce((n, f) => n + (f.tests?.length ?? 0), 0);
@@ -229,7 +380,7 @@ function buildTestsNode(project: ParsedProject): ProjectSpecNode {
                             t.name,
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
-                            { tag: 'test', attr: 'name', value: t.name },
+                            leafLocator(meta, t.name),
                         );
                         applyHintsToNode(leaf, t.ui);
                         return leaf;
@@ -243,7 +394,10 @@ function buildTestsNode(project: ParsedProject): ProjectSpecNode {
     return node;
 }
 
-function buildSddNode(project: ParsedProject): ProjectSpecNode {
+function buildSddNode(
+    project: ParsedProject,
+    meta: LeafLocatorMeta,
+): ProjectSpecNode {
     const modules = project.sdd?.modules ?? [];
     const node = new ProjectSpecNode(
         `SDD (${modules.length} modules)`,
@@ -256,9 +410,7 @@ function buildSddNode(project: ParsedProject): ProjectSpecNode {
                     m.path ?? m.title ?? '(unnamed module)',
                     vscode.TreeItemCollapsibleState.None,
                     undefined,
-                    m.path
-                        ? { tag: 'module', attr: 'path', value: m.path }
-                        : undefined,
+                    leafLocator(meta, m.path ?? ''),
                 );
                 applyHintsToNode(leaf, m.ui);
                 return leaf;

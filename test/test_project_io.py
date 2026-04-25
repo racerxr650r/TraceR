@@ -230,7 +230,7 @@ class MethodsRegistryTests(unittest.TestCase):
         self.assertEqual(
             set(project_io.METHODS.keys()),
             {"lint", "render", "parse_to_json",
-             "list_documents", "init_project"},
+             "list_documents", "ui_hints_index", "init_project"},
         )
         for name, handler in project_io.METHODS.items():
             self.assertTrue(callable(handler), msg=f"{name!r} not callable")
@@ -308,6 +308,129 @@ class SubprocessTests(unittest.TestCase):
         resp = json.loads(proc.stdout.strip())
         self.assertEqual(resp["result"]["errors"], cli_findings.errors)
         self.assertEqual(resp["result"]["warnings"], cli_findings.warnings)
+
+
+class UiHintsIndexTests(unittest.TestCase):
+    """LLR-UHI-01..03 (Phase 2.5b): the `ui_hints_index` JSON-RPC
+    surface distils the `<xs:appinfo>` vocabulary from
+    tools/project.xsd into a JSON-serialisable index keyed by
+    complex-type name; `parse_to_json` embeds the same dict under
+    `_ui_hints_index` so the extension fetches it in one round trip.
+    """
+
+    def test_ui_hints_index_method_returns_index(self) -> None:
+        resp = handle_request({
+            "id": 1, "method": "ui_hints_index",
+            "params": {"xsd_path": str(_paths.PROJECT_XSD)},
+        })
+        self.assertIn("result", resp)
+        index = resp["result"]["ui_hints_index"]
+        # Every renderable complex type with a ui:* annotation must
+        # be present.
+        self.assertEqual(
+            set(index.keys()),
+            {"Document", "SddModule", "Hlr", "Llr", "Test",
+             "Plan", "Plan/item"},
+        )
+        # Hlr carries a tree node, two lenses, and a four-field form.
+        hlr = index["Hlr"]
+        self.assertEqual(hlr["tree_node"]["id_attr"], "id")
+        self.assertEqual(hlr["tree_node"]["group"], "hlrs")
+        self.assertEqual(
+            sorted(l["kind"] for l in hlr["lenses"]),
+            ["coverage", "tracesCount"],
+        )
+        self.assertEqual(len(hlr["form"]), 4)
+        # Document carries the discoverability marker but no tree node.
+        self.assertTrue(index["Document"]["document"])
+        self.assertIsNone(index["Document"]["tree_node"])
+        # The result is JSON-serialisable.
+        json.dumps(resp)
+
+    def test_parse_to_json_embeds_ui_hints_index(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        xml_path = _bootstrap_project(Path(tmp.name))
+        resp = handle_request({
+            "id": 2, "method": "parse_to_json",
+            "params": {"xml_path": str(xml_path)},
+        })
+        self.assertIn("result", resp)
+        self.assertIn("_ui_hints_index", resp["result"])
+        self.assertIn("Hlr", resp["result"]["_ui_hints_index"])
+        # Round-trip through JSON to prove the field is serialisable.
+        json.dumps(resp)
+
+    def test_ui_hints_index_records_element_binding(self) -> None:
+        """Slice D: each index entry now reports the lowercase XML
+        element bound to its complex type so consumers can iterate
+        the parsed tree without special-casing per tag."""
+        resp = handle_request({
+            "id": 3, "method": "ui_hints_index",
+            "params": {"xsd_path": str(_paths.PROJECT_XSD)},
+        })
+        index = resp["result"]["ui_hints_index"]
+        self.assertEqual(index["Hlr"]["element"], "hlr")
+        self.assertEqual(index["Llr"]["element"], "llr")
+        self.assertEqual(index["Test"]["element"], "test")
+        self.assertEqual(index["SddModule"]["element"], "module")
+        self.assertEqual(index["Plan"]["element"], "plan")
+        self.assertEqual(index["Plan/item"]["element"], "item")
+        self.assertEqual(index["Document"]["element"], "document")
+
+
+class NodesIndexTests(unittest.TestCase):
+    """Slice D (Phase 2.5b): `parse_to_json` embeds a generic
+    `_nodes` map keyed by the same complex-type name as the hints
+    index, listing every element bound to a type that carries a
+    `ui:treeNode` hint. Consumers iterate this map instead of
+    calling per-payload builders.
+    """
+
+    FIXTURE = _paths.REPO_ROOT / "test" / "doc" / "Project.xml"
+
+    def test_parse_to_json_embeds_nodes_index(self) -> None:
+        resp = handle_request({
+            "id": 1, "method": "parse_to_json",
+            "params": {"xml_path": str(self.FIXTURE)},
+        })
+        self.assertIn("result", resp)
+        nodes = resp["result"].get("_nodes")
+        self.assertIsInstance(nodes, dict)
+        # Keys mirror the ui_hints_index entries that have a tree node.
+        # Document is excluded (no tree node); every other annotated
+        # type is present even when the fixture has zero instances.
+        self.assertEqual(
+            set(nodes.keys()),
+            {"Hlr", "Llr", "Test", "SddModule", "Plan", "Plan/item"},
+        )
+        # Round-trip through JSON.
+        json.dumps(resp)
+
+    def test_plan_payload_surfaces_in_nodes_index(self) -> None:
+        """The synthetic `<plan>` payload added in Phase 2.5 Plan-proof
+        must appear in `_nodes` without any TS or Python special-casing
+        — this is the acceptance criterion for the schema-driven
+        projection that Slices E+ will consume."""
+        resp = handle_request({
+            "id": 1, "method": "parse_to_json",
+            "params": {"xml_path": str(self.FIXTURE)},
+        })
+        nodes = resp["result"]["_nodes"]
+        # Exactly one <plan> with a version attribute.
+        self.assertEqual(len(nodes["Plan"]), 1)
+        plan = nodes["Plan"][0]
+        self.assertEqual(plan["tag"], "plan")
+        self.assertIn("version", plan["attrs"])
+        # Inline Plan/item children are scoped under <plan>, not the
+        # whole tree, so unrelated <item> elements would not pollute.
+        items = nodes["Plan/item"]
+        self.assertGreaterEqual(len(items), 1)
+        for item in items:
+            self.assertEqual(item["tag"], "item")
+            self.assertIn("id", item["attrs"])
+        # Each item carries its prose body as `text`.
+        self.assertTrue(any(i.get("text") for i in items))
 
 
 if __name__ == "__main__":

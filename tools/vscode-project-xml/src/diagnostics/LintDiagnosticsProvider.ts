@@ -6,14 +6,24 @@
 // it in the Problems panel.
 
 import * as vscode from 'vscode';
-import { ProjectIoClient, LintResult } from '../sidecar';
+import { ProjectIoClient, LintResult, UiHintsIndex } from '../sidecar';
 import { getProjectXmlPath, getProjectXmlUri, getXsdPath } from '../util/paths';
-import { rangeForFinding } from '../util/locator';
+import {
+    DEFAULT_ID_SCAN_REGISTRY,
+    IdScanEntry,
+    buildIdScanRegistryFromHints,
+    rangeForFinding,
+} from '../util/locator';
 
 const SOURCE = 'projectXml';
 
 export class LintDiagnosticsProvider implements vscode.Disposable {
     private readonly collection: vscode.DiagnosticCollection;
+    /** Cached schema-derived id-scan registry. Populated on first
+     *  successful `ui_hints_index` call; falls back to the legacy
+     *  HLR/LLR pair when the sidecar can't supply hints. */
+    private idScanRegistry: IdScanEntry[] = DEFAULT_ID_SCAN_REGISTRY;
+    private hintsLoaded = false;
 
     constructor(
         private readonly client: ProjectIoClient,
@@ -28,6 +38,7 @@ export class LintDiagnosticsProvider implements vscode.Disposable {
         if (!xmlPath || !xmlUri) {
             return undefined;
         }
+        await this.ensureHints();
         const xsdPath = getXsdPath();
         const params: Record<string, unknown> = { xml_path: xmlPath };
         if (xsdPath) {
@@ -64,17 +75,39 @@ export class LintDiagnosticsProvider implements vscode.Disposable {
 
         const diagnostics: vscode.Diagnostic[] = [];
         for (const msg of result.errors) {
-            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Error));
+            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Error, this.idScanRegistry));
         }
         for (const msg of result.warnings) {
-            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Warning));
+            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Warning, this.idScanRegistry));
         }
         for (const msg of result.notes) {
-            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Information));
+            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Information, this.idScanRegistry));
         }
         this.collection.set(uri, diagnostics);
     }
-
+    /**
+     * Phase 2.5b Slice G: pull `_ui_hints_index` from the sidecar on
+     * first use and derive a payload-aware id-scan registry from it.
+     * Falls back silently to the legacy HLR/LLR pair when the call
+     * fails (older sidecar, transient error). Re-fetched once per
+     * provider lifetime; refresh on workspace reload.
+     */
+    private async ensureHints(): Promise<void> {
+        if (this.hintsLoaded) {
+            return;
+        }
+        this.hintsLoaded = true;
+        try {
+            const resp = await this.client.uiHintsIndex();
+            const hints = resp.ui_hints_index as unknown as UiHintsIndex;
+            this.idScanRegistry = buildIdScanRegistryFromHints(hints);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.outputChannel.appendLine(
+                `[lint] ui_hints_index unavailable, using legacy id scan: ${message}`,
+            );
+        }
+    }
     clear(): void {
         this.collection.clear();
     }
@@ -88,8 +121,9 @@ function makeDiagnostic(
     doc: vscode.TextDocument,
     message: string,
     severity: vscode.DiagnosticSeverity,
+    registry: IdScanEntry[],
 ): vscode.Diagnostic {
-    const diag = new vscode.Diagnostic(rangeForFinding(doc, message), message, severity);
+    const diag = new vscode.Diagnostic(rangeForFinding(doc, message, registry), message, severity);
     diag.source = SOURCE;
     return diag;
 }

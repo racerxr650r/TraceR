@@ -80,20 +80,21 @@ export function findElementRange(
 export function rangeForFinding(
     doc: vscode.TextDocument,
     finding: string,
+    registry: IdScanEntry[] = DEFAULT_ID_SCAN_REGISTRY,
 ): vscode.Range {
-    // Prefer HLR-NNN and LLR-XXX-NN tokens since they're contract ids.
-    const hlrIds = finding.match(/\bHLR-\d+\b/g) ?? [];
-    for (const id of hlrIds) {
-        const r = findIdRange(doc, 'hlr', id);
-        if (r) {
-            return r;
-        }
-    }
-    const llrIds = finding.match(/\bLLR-[A-Z0-9]+-\d+\b/g) ?? [];
-    for (const id of llrIds) {
-        const r = findIdRange(doc, 'llr', id);
-        if (r) {
-            return r;
+    // Preferred: schema-driven registry. For each registered element,
+    // scan the finding text for tokens matching its id pattern and
+    // try to range them in the document.
+    for (const entry of registry) {
+        entry.valuePattern.lastIndex = 0;
+        const matches = finding.match(entry.valuePattern) ?? [];
+        for (const value of matches) {
+            const r = entry.idAttr === 'id'
+                ? findIdRange(doc, entry.tag, value)
+                : findAttrRange(doc, entry.tag, entry.idAttr, value);
+            if (r) {
+                return r;
+            }
         }
     }
     // Quoted token — try to match it as an attribute value, then as a tag name.
@@ -121,3 +122,71 @@ export function rangeForFinding(
     // Fallback: top of file.
     return new vscode.Range(0, 0, 0, 0);
 }
+
+/**
+ * Phase 2.5b Slice G: schema-driven id-scan registry.
+ *
+ * Each entry tells `rangeForFinding` how to recognise an id token in
+ * a finding string and where to look for it in `Project.xml`:
+ *
+ *   - `tag`           lowercase XML element to scan (`hlr`, `llr`, ...)
+ *   - `idAttr`        attribute on that element holding the id
+ *   - `valuePattern`  global regex used to extract candidate values
+ *                     from the finding text
+ *
+ * `DEFAULT_ID_SCAN_REGISTRY` matches the legacy behaviour
+ * (`HLR-NNN`, `LLR-XXX-NN`). Callers (e.g. `LintDiagnosticsProvider`)
+ * can build a richer registry from `_ui_hints_index` and pass it in.
+ */
+export interface IdScanEntry {
+    readonly tag: string;
+    readonly idAttr: string;
+    readonly valuePattern: RegExp;
+}
+
+export const DEFAULT_ID_SCAN_REGISTRY: IdScanEntry[] = [
+    { tag: 'hlr', idAttr: 'id', valuePattern: /\bHLR-\d+\b/g },
+    { tag: 'llr', idAttr: 'id', valuePattern: /\bLLR-[A-Z0-9]+-\d+\b/g },
+];
+
+/**
+ * Build a finding-scan registry from the per-type entries in
+ * `_ui_hints_index`. Entries without a `tree_node` (e.g. `Document`)
+ * are skipped. The default value pattern matches dash-separated
+ * upper-case tokens like `HLR-001` or `LLR-PCL-01`; a per-tag
+ * override map lets the caller plug in tighter patterns when the
+ * generic one would over-match.
+ */
+export function buildIdScanRegistryFromHints(
+    hints:
+        | Record<string, { tree_node: { id_attr: string } | null; element: string | null }>
+        | undefined,
+    overrides: Record<string, RegExp> = DEFAULT_ID_PATTERN_OVERRIDES,
+): IdScanEntry[] {
+    if (!hints) {
+        return DEFAULT_ID_SCAN_REGISTRY;
+    }
+    const out: IdScanEntry[] = [];
+    const seen = new Set<string>();
+    for (const key of Object.keys(hints)) {
+        const entry = hints[key];
+        if (!entry?.tree_node || !entry.element) {
+            continue;
+        }
+        if (seen.has(entry.element)) {
+            continue;
+        }
+        seen.add(entry.element);
+        const idAttr = entry.tree_node.id_attr || 'id';
+        const valuePattern = overrides[entry.element]
+            ?? new RegExp('\\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+\\b', 'g');
+        out.push({ tag: entry.element, idAttr, valuePattern });
+    }
+    return out.length > 0 ? out : DEFAULT_ID_SCAN_REGISTRY;
+}
+
+/** Tag-specific patterns used by the default registry builder. */
+const DEFAULT_ID_PATTERN_OVERRIDES: Record<string, RegExp> = {
+    hlr: /\bHLR-\d+\b/g,
+    llr: /\bLLR-[A-Z0-9]+-\d+\b/g,
+};

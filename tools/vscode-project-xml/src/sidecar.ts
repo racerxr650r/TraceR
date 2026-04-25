@@ -49,6 +49,12 @@ export class ProjectIoClient implements vscode.Disposable {
         return this.request<ListDocumentsResult>('list_documents', params);
     }
 
+    async uiHintsIndex(
+        params: Record<string, unknown> = {},
+    ): Promise<UiHintsIndexResult> {
+        return this.request<UiHintsIndexResult>('ui_hints_index', params);
+    }
+
     async render(params: RenderParams): Promise<RenderResult> {
         return this.request<RenderResult>('render', params as unknown as Record<string, unknown>);
     }
@@ -241,6 +247,88 @@ export interface RenderResult {
     out_path: string | null;
 }
 
+/**
+ * Phase 2.5b UI hint vocabulary distilled from `<xs:appinfo>` blocks
+ * in `tools/project.xsd` (urn:tracer:ui:v1).
+ *
+ * The Python sidecar's `ui_hints_index` method walks every renderable
+ * complex type in the schema and returns one entry per type, keyed by
+ * the type's `@name`. Inline complex types under named elements are
+ * keyed under the parent (e.g. `Plan/item`). Types without a
+ * `<xs:appinfo>` block are absent from the index.
+ *
+ * Phase 2.5b consumers (the generic tree provider, lens provider,
+ * locator, and Phase 3 form panels) read this index instead of
+ * special-casing per-payload element names.
+ *
+ * See doc/Schema_Reference.md §16 for the contract.
+ */
+export interface UiTreeNode {
+    label: string;
+    /** Attribute used to identify the element for reveal-in-XML. */
+    id_attr: string;
+    /** Slash-separated path under which siblings cluster (e.g. `hlrs`). */
+    group: string;
+}
+
+export interface UiFormField {
+    /** Name of the attribute or child element this field edits. */
+    target: string;
+    /** Whether the field targets an attribute (`attr`) or child (`child`). */
+    kind: 'attr' | 'child';
+    /** Editor type: `text` | `textarea` | `enum` | `ref:HLR` | `ref:LLR` | `ref:SDD` | `cdata`. */
+    field: string;
+    required: boolean;
+}
+
+export interface UiLens {
+    /** `coverage`, `tracesCount`, or a custom kind handled by the lens provider. */
+    kind: string;
+}
+
+export interface UiHintEntry {
+    tree_node: UiTreeNode | null;
+    form: UiFormField[];
+    lenses: UiLens[];
+    /** True for `Document` (the discoverability marker) and any other
+     *  type that carries `<ui:document/>`. */
+    document: boolean;
+    /** Slice D: the lowercase XML element bound to this complex type
+     *  (e.g. `"hlr"` for `Hlr`, `"item"` for `Plan/item`). Lets
+     *  consumers iterate the parsed tree without hard-coding tag
+     *  names. Null when no `<xs:element type="...">` declaration
+     *  binds the type. */
+    element: string | null;
+}
+
+export type UiHintsIndex = Record<string, UiHintEntry>;
+
+export interface UiHintsIndexResult {
+    ui_hints_index: UiHintsIndex;
+}
+
+/**
+ * Phase 2.5b Slice D: a generic parsed node, surfaced under
+ * `ParsedProject._nodes` and keyed by complex-type name (matching
+ * `UiHintsIndex`). Lets the tree provider, lens provider, and Phase
+ * 3 form panels iterate every payload that carries a `ui:treeNode`
+ * hint without referencing per-payload tag names.
+ */
+export interface ParsedNode {
+    /** Actual lowercase XML element name (matches `UiHintEntry.element`). */
+    tag: string;
+    /** Non-namespaced XML attributes verbatim from the source. */
+    attrs: Record<string, string>;
+    /** Attributes from the `urn:tracer:ui:v1` namespace (icon, color,
+     *  group, ...) collected separately so the tree provider can
+     *  apply them via `applyHintsToNode()`. Null when no UI attrs. */
+    ui: Record<string, string> | null;
+    /** Stripped element text content; null when empty. */
+    text: string | null;
+}
+
+export type ParsedNodesIndex = Record<string, ParsedNode[]>;
+
 export interface ParsedSection {
     number?: string;
     title?: string;
@@ -338,4 +426,14 @@ export interface ParsedProject {
     flat_hlrs?: ParsedHlr[];
     flat_llrs?: ParsedLlr[];
     flat_tests?: ParsedTest[];
+    /** Phase 2.5b: the same UI hint vocabulary returned by
+     *  `ui_hints_index`, embedded under an underscore-prefixed key so
+     *  callers fetch parse + hints in one round trip. Absent on older
+     *  sidecars. */
+    _ui_hints_index?: UiHintsIndex;
+    /** Slice D: generic parsed-node index keyed by complex-type name.
+     *  Mirrors `_ui_hints_index` so a single round trip surfaces every
+     *  payload that carries a `ui:treeNode` hint without per-tag
+     *  builders. Absent on older sidecars. */
+    _nodes?: ParsedNodesIndex;
 }

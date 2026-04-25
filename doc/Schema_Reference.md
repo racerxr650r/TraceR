@@ -41,7 +41,7 @@ generated documents from a single edit point.
 ## 1. Root Element
 
 ```xml
-<project name="Valgrind Parser" short_name="vgp" schema_version="1.2">
+<project name="Valgrind Parser" short_name="vgp" schema_version="1.4">
   <metadata>...</metadata>
   <sdd>...</sdd>
   <stp>...</stp>
@@ -55,14 +55,18 @@ generated documents from a single edit point.
 | --------- | ----------- |
 | `name` | Full project name. |
 | `short_name` | Binary / package name. |
-| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.2`. |
+| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.4`. |
 
 The XSD root reserves the namespace prefix `ui` (`urn:tracer:ui:v1`)
 for optional UI-only hints (icon, group, color) that consumers such
 as the VS Code extension may attach to payload elements via
 `ui:*` attributes. The core renderer ignores these attributes; they
 are reserved so that a future hint registry can be added without
-breaking existing files.
+breaking existing files. The `urn:tracer:ui:v1` namespace is also
+used by `<xs:appinfo>` blocks inside
+[tools/project.xsd](../tools/project.xsd) to publish a per-element
+UI hint vocabulary (`ui:treeNode`, `ui:form`, `ui:lens`,
+`ui:document`); see [§16. UI Hint Vocabulary](#16-ui-hint-vocabulary).
 
 Children may appear in any order; the renderer looks them up by tag.
 The XSD declares `<project>`'s children with `xs:all`, so an
@@ -100,7 +104,7 @@ The renderer selects which `<document>` block populates
 (`SDD`, `HLRs`, `LLRs`, `STP`, or `Traceability`). Every generated
 document must have a matching `<document id="...">` entry.
 
-### Optional `template` and `output` attributes (schema_version `1.2`+)
+### Optional `template` and `output` attributes (schema_version `1.3`+)
 
 A `<document>` may carry two optional attributes that decouple the
 document id from its rendering location:
@@ -603,6 +607,65 @@ When extending the schema with a new payload root, add a corresponding
 `build_*` function in `render_doc.py` and expose it on the returned
 `SimpleNamespace` so templates can reach it by attribute access.
 
+### 9.1 UI Hints Index (Phase 2.5b)
+
+Out-of-band of the `project.*` namespace consumed by Jinja templates,
+[tools/render_doc.py](../tools/render_doc.py) also exposes the
+`<xs:appinfo>` UI vocabulary documented in [§16. UI Hint
+Vocabulary](#16-ui-hint-vocabulary) as a JSON-serialisable index:
+
+```python
+from render_doc import parse_ui_hints_index
+index = parse_ui_hints_index()  # reads tools/project.xsd by default
+```
+
+The index is keyed by complex-type name (e.g. `Hlr`, `Llr`, `Test`,
+`SddModule`, `Document`, `Plan`, `Plan/item`). Each entry has the
+shape:
+
+```json
+{
+  "tree_node": {"label": "@id — @name",
+                "id_attr": "id",
+                "group":   "hlrs"} | null,
+  "form":      [{"target": "id",
+                 "kind":   "attr|child",
+                 "field":  "text|textarea|enum|ref:HLR|ref:LLR|cdata",
+                 "required": true|false}, ...],
+  "lenses":    [{"kind": "coverage|tracesCount|..."}, ...],
+  "document":  true|false,
+  "element":   "hlr" | null
+}
+```
+
+The `element` field (Slice D) records the lowercase XML element name
+the type is bound to via `<xs:element name="X" type="Y">`. For inline
+nested types like `Plan/item` the field carries the inline element
+name (`"item"`). It lets consumers iterate the parsed tree without
+hard-coding per-payload tag names.
+
+The same index is exposed over the JSON-RPC sidecar:
+
+* `ui_hints_index({xsd_path?})` — returns `{"ui_hints_index": {...}}`.
+* `parse_to_json({...})` — embeds the same dict under the
+  `_ui_hints_index` top-level key alongside the parsed project, so
+  the VS Code extension fetches the parsed tree and the hint
+  vocabulary in a single round trip. Slice D additionally embeds a
+  `_nodes` top-level key — a `Record<typeName, ParsedNode[]>` mirror
+  of the index that lists every element in `Project.xml` bound to a
+  type carrying a `ui:treeNode` hint. Each `ParsedNode` is
+  `{tag, attrs, ui, text}` (see [src/sidecar.ts](../tools/vscode-project-xml/src/sidecar.ts)
+  for the TS shape). Inline types are scoped to children of their
+  parent element so unrelated tags with the same local name are not
+  pulled in.
+
+Templates do **not** consume this index — it is dedicated to
+non-Jinja consumers (the VS Code tree provider, lens provider,
+locator, and Phase 3 form panels). Adding a new `<ui:lens>` `kind=`
+or a new `<ui:field>` `kind=` requires a matching change in the
+consumer (and a §16 update); the index walker itself accepts any
+attribute set without further code changes.
+
 ## 10. Regeneration
 
 The XML is the canonical source. After modifying any input, regenerate
@@ -1083,4 +1146,118 @@ Findings raised before the `code` field was introduced (e.g.
 `<project> is missing required @schema_version`) carry `code: null`.
 New rules added in future phases will document their `code` here;
 existing values are stable and may be relied on by external tooling.
+
+## 16. UI Hint Vocabulary
+
+[tools/project.xsd](../tools/project.xsd) publishes a small UI-hint
+vocabulary in the namespace `urn:tracer:ui:v1` (prefix `ui:`). The
+vocabulary is purely declarative — it is documented inside
+`<xs:annotation><xs:appinfo>` blocks on the renderable complex types
+and is **passed through unchanged by every XSD validator**. Phase
+2.5b consumers (the JSON-RPC sidecar in
+[tools/project_io.py](../tools/project_io.py) and the VS Code
+extension) read these blocks to drive tree nodes, code lenses, and
+form panels with no per-payload code. Adding a new payload to the
+schema therefore requires only an XSD change and a Jinja2 template
+— not a TypeScript edit.
+
+The same namespace is also used by **per-element attributes**
+(`ui:icon`, `ui:color`, `ui:group`) that a project author may attach
+to individual `<hlr>` / `<llr>` / `<test>` / `<module>` elements via
+the `xs:anyAttribute` declarations on those types. Those attributes
+are decoration applied to one specific element; the appinfo
+vocabulary documented below decorates the *complex type* and
+applies uniformly to every instance.
+
+### 16.1 Vocabulary
+
+| Element | Where it appears | Purpose |
+| ------- | ---------------- | ------- |
+| `<ui:treeNode label="..." idAttr="..." group="..."/>` | At most once on a renderable complex type. | Declares that elements of this type appear in the Project Spec tree. `label` is a tiny expression of attribute / child references (`@id` for an attribute value, `@id — @name` for a templated label, a literal string for a fixed label, `name1\|name2` to fall back from one to another). `idAttr` names the attribute used to identify the element for reveal-in-XML. `group` is a slash-separated path under which siblings cluster (e.g. `requirements/hlrs`). |
+| `<ui:form>...</ui:form>` | Up to once per renderable type. Wraps any number of `<ui:field>` children. | Declares the editable surface — what a Phase 3 form panel renders. |
+| `<ui:field attr="..." kind="..." required="..."/>` | One per editable attribute, inside `<ui:form>`. | Describes a single attribute on the parent type. `kind` is one of `text` \| `textarea` \| `enum` \| `ref:HLR` \| `ref:LLR` \| `ref:SDD` \| `cdata`. `required="true"` marks the field as required in the form. |
+| `<ui:field child="..." kind="..." required="..."/>` | One per editable child element, inside `<ui:form>`. | Same as the `attr=` variant but targets a named child element rather than an attribute. `kind="cdata"` is the canonical choice for markdown bodies. |
+| `<ui:lens kind="..."/>` | Zero or more per renderable type. | Attaches a code lens above each instance of this type in `Project.xml`. Built-in `kind` values are `coverage` (HLR/LLR — counts downstream LLRs / tests) and `tracesCount` (HLR / Test — counts incoming `<traces>`). New kinds are added to the lens provider in lockstep with the schema. |
+| `<ui:document/>` | On the `Document` complex type only. | Marks `<metadata><document>` entries as discoverable rendering targets. The `id`, `template`, and `output` attributes documented in [§2 — `<metadata>`](#2-metadata) are the contract; the `<ui:document/>` marker is just the affordance that the discovery surface walks. |
+
+### 16.2 Example
+
+The annotation on the `Hlr` complex type:
+
+```xml
+<xs:complexType name="Hlr">
+  <xs:annotation>
+    <xs:appinfo>
+      <ui:treeNode label="@id — @name" idAttr="id" group="hlrs"/>
+      <ui:form>
+        <ui:field attr="id"      kind="text"    required="true"/>
+        <ui:field attr="name"    kind="text"    required="true"/>
+        <ui:field child="text"   kind="cdata"/>
+        <ui:field child="traces" kind="ref:SDD"/>
+      </ui:form>
+      <ui:lens kind="coverage"/>
+      <ui:lens kind="tracesCount"/>
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:sequence>
+    <xs:element name="text"   type="MdText" minOccurs="0"/>
+    <xs:element name="traces" type="Traces" minOccurs="0"/>
+  </xs:sequence>
+  <xs:attribute name="id"   type="HlrId"          use="required"/>
+  <xs:attribute name="name" type="NonEmptyString" use="required"/>
+  <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
+</xs:complexType>
+```
+
+declares that every `<hlr>`:
+
+* Appears in the Project Spec tree under the `hlrs` group, labelled
+  `HLR-001 — name of the requirement`, identified by its `id`
+  attribute for reveal-in-XML.
+* Edits as a four-field form: text id, text name, CDATA-wrapped
+  markdown body, and a list of `<traces><trace target="SDD" .../>`
+  references.
+* Carries two code lenses — one summarising downstream LLR / test
+  coverage, one counting incoming traces.
+
+### 16.3 Currently annotated types
+
+The vocabulary is published on every renderable type in
+[tools/project.xsd](../tools/project.xsd):
+
+| Type      | `ui:treeNode` group | Lenses                           |
+| --------- | ------------------- | -------------------------------- |
+| `Document` | (no tree node — `ui:document` marker only) | — |
+| `SddModule` | `sdd`              | —                                |
+| `Hlr`     | `hlrs`              | `coverage`, `tracesCount`        |
+| `Llr`     | `llrs`              | `coverage`                       |
+| `Test`    | `tests`             | `tracesCount`                    |
+| `Plan`    | `plan`              | —                                |
+| `Plan/item` | `plan/items`      | —                                |
+
+### 16.4 Stability
+
+The vocabulary's element and attribute names listed in §16.1 are
+**stable** for any consumer reading the XSD. New `ui:lens` kinds and
+new `ui:field` `kind=` values may be added; existing values will not
+change meaning.
+
+### 16.5 Consumer status (Phase 2.5b)
+
+The VS Code extension consumes the vocabulary at four seams:
+
+| Seam | Hint key | Slice |
+|---|---|---|
+| `ProjectSpecProvider.buildGenericPayloadNodes` — auto-projects any uncovered `ui:treeNode`-bearing payload | `tree_node` | E |
+| `ProjectSpecProvider.buildHlrsNode` / `buildLlrsNode` / `buildTestsNode` / `buildSddNode` — leaf locators read `(tag, idAttr)` from the schema | `tree_node.id_attr`, `element` | H |
+| `CoverageCodeLensProvider.getLensTargets` — inline coverage / tracesCount lenses scan whichever elements declare a supported lens | `lenses[].kind`, `tree_node.id_attr`, `element` | F |
+| `LintDiagnosticsProvider` (via `buildIdScanRegistryFromHints`) — diagnostic ranges resolve any payload's id tokens, not only `HLR-NNN` / `LLR-XXX-NN` | `tree_node.id_attr`, `element` | G |
+
+Adding a new payload with a `<ui:treeNode/>` annotation in
+`tools/project.xsd` therefore surfaces in the tree, lens, and
+diagnostic surfaces with **no TypeScript edits**. Adding a `ui:lens
+kind="coverage"` annotation (and registering the per-element related-
+items handler in `RELATED_DISPATCH`) lights up inline coverage lenses
+on the new payload too.
+
 

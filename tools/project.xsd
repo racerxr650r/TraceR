@@ -23,15 +23,41 @@
   <!-- ============================================================ -->
   <!-- UI hint vocabulary (urn:tracer:ui:v1)                         -->
   <!--                                                               -->
-  <!-- The `ui:` namespace is reserved for `<xs:appinfo>` annotations -->
-  <!-- on payload-bearing elements (e.g. ui:treeNode, ui:form,       -->
-  <!-- ui:lens, ui:document). Phase 2.5 reserves the namespace and   -->
-  <!-- the `<metadata><document>` discovery surface (template/output -->
-  <!-- attributes); Phase 2.5b will define and consume the per-      -->
-  <!-- payload `ui:*` element vocabulary so tree nodes, forms, and   -->
-  <!-- lenses are emitted from the schema with no TypeScript edits.  -->
+  <!-- Each renderable complexType below carries an <xs:annotation>  -->
+  <!-- <xs:appinfo> block describing how the schema element should   -->
+  <!-- be projected to a UI surface:                                 -->
   <!--                                                               -->
-  <!-- See doc/Schema_Reference.md §"UI hints" for the contract.   -->
+  <!--   <ui:treeNode label="..." idAttr="..." group="..."/>          -->
+  <!--     The element appears in the Project Spec tree. `label`      -->
+  <!--     is a small expression of attribute / child references     -->
+  <!--     (e.g. "@id — @name"). `idAttr` names the attribute used    -->
+  <!--     to identify the element (for reveal-in-XML).              -->
+  <!--                                                               -->
+  <!--   <ui:form>                                                   -->
+  <!--     <ui:field attr="id" kind="text" required="true"/>          -->
+  <!--     <ui:field child="text" kind="textarea"/>                  -->
+  <!--     ...                                                       -->
+  <!--   </ui:form>                                                  -->
+  <!--     One <ui:field> per editable attribute or child element.   -->
+  <!--     `kind` is one of text | textarea | enum | ref:HLR |       -->
+  <!--     ref:LLR | cdata.                                          -->
+  <!--                                                               -->
+  <!--   <ui:lens kind="coverage|tracesCount|..."/>                  -->
+  <!--     A code lens to attach inline in Project.xml.              -->
+  <!--                                                               -->
+  <!--   <ui:document/>                                              -->
+  <!--     Marks the element as a discoverable rendering target.     -->
+  <!--     Carried by <metadata><document>.                         -->
+  <!--                                                               -->
+  <!-- The XSD validator passes appinfo through unchanged; consumers -->
+  <!-- (Phase 2.5b's project_io.py and the VS Code extension) read   -->
+  <!-- the blocks to drive tree nodes, lenses, and forms with no     -->
+  <!-- per-payload TypeScript code. The same `urn:tracer:ui:v1`       -->
+  <!-- namespace also accepts per-element `ui:icon` / `ui:color` /   -->
+  <!-- `ui:group` attributes via the existing xs:anyAttribute        -->
+  <!-- declarations on Hlr / Llr / Test / SddModule (Phase 2.5).     -->
+  <!--                                                               -->
+  <!-- See doc/Schema_Reference.md §16 for the full contract.        -->
   <!-- ============================================================ -->
 
   <!-- ============================================================ -->
@@ -80,6 +106,21 @@
   <!-- ============================================================ -->
 
   <xs:complexType name="Document">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:document/>
+        <ui:form>
+          <ui:field attr="id"       kind="text"     required="true"/>
+          <ui:field attr="title"    kind="text"     required="true"/>
+          <ui:field attr="source"   kind="text"     required="true"/>
+          <ui:field attr="version"  kind="text"     required="true"/>
+          <ui:field attr="date"     kind="text"     required="true"/>
+          <ui:field attr="author"   kind="text"     required="true"/>
+          <ui:field attr="template" kind="text"     required="false"/>
+          <ui:field attr="output"   kind="text"     required="false"/>
+        </ui:form>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:attribute name="id"       type="NonEmptyString" use="required"/>
     <xs:attribute name="title"    type="NonEmptyString" use="required"/>
     <xs:attribute name="source"   type="NonEmptyString" use="required"/>
@@ -247,6 +288,19 @@
   </xs:complexType>
 
   <xs:complexType name="SddModule">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:treeNode label="@title|@path" idAttr="path" group="sdd"/>
+        <ui:form>
+          <ui:field attr="path"             kind="text"     required="false"/>
+          <ui:field attr="title"            kind="text"     required="false"/>
+          <ui:field child="purpose"         kind="cdata"/>
+          <ui:field child="responsibility"  kind="cdata"/>
+          <ui:field child="data_structures" kind="cdata"/>
+          <ui:field child="algorithm"       kind="cdata"/>
+        </ui:form>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="purpose"         type="MdText"            minOccurs="0"/>
       <xs:element name="responsibility"  type="MdText"            minOccurs="0" maxOccurs="unbounded"/>
@@ -453,13 +507,26 @@
   <!-- ============================================================ -->
 
   <xs:complexType name="Hlr">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:treeNode label="@id — @name" idAttr="id" group="hlrs"/>
+        <ui:form>
+          <ui:field attr="id"     kind="text"     required="true"/>
+          <ui:field attr="name"   kind="text"     required="true"/>
+          <ui:field child="text"  kind="cdata"/>
+          <ui:field child="traces" kind="ref:SDD"/>
+        </ui:form>
+        <ui:lens kind="coverage"/>
+        <ui:lens kind="tracesCount"/>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="text"   type="MdText" minOccurs="0"/>
       <xs:element name="traces" type="Traces" minOccurs="0"/>
     </xs:sequence>
     <xs:attribute name="id"   type="HlrId"          use="required"/>
     <xs:attribute name="name" type="NonEmptyString" use="required"/>
-    <!-- Phase 2.5b: optional `ui:icon` / `ui:color` / `ui:group` hints   -->
+    <!-- Phase 2.5: optional `ui:icon` / `ui:color` / `ui:group` hints    -->
     <!-- (urn:tracer:ui:v1) consumed by the VS Code tree provider.        -->
     <xs:anyAttribute namespace="urn:tracer:ui:v1" processContents="skip"/>
   </xs:complexType>
@@ -484,6 +551,17 @@
   <!-- ============================================================ -->
 
   <xs:complexType name="Llr">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:treeNode label="@id" idAttr="id" group="llrs"/>
+        <ui:form>
+          <ui:field attr="id"      kind="text"    required="true"/>
+          <ui:field child="text"   kind="cdata"/>
+          <ui:field child="traces" kind="ref:HLR"/>
+        </ui:form>
+        <ui:lens kind="coverage"/>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="text"   type="MdText" minOccurs="0"/>
       <xs:element name="traces" type="Traces" minOccurs="0"/>
@@ -514,6 +592,17 @@
   <!-- ============================================================ -->
 
   <xs:complexType name="Test">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:treeNode label="@name" idAttr="name" group="tests"/>
+        <ui:form>
+          <ui:field attr="name"     kind="text"    required="true"/>
+          <ui:field child="purpose" kind="cdata"/>
+          <ui:field child="traces"  kind="ref:LLR"/>
+        </ui:form>
+        <ui:lens kind="tracesCount"/>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="purpose" type="MdText" minOccurs="0"/>
       <xs:element name="traces"  type="Traces" minOccurs="0"/>
@@ -553,9 +642,26 @@
   <!-- ============================================================ -->
 
   <xs:complexType name="Plan" mixed="true">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:treeNode label="plan" idAttr="version" group="plan"/>
+        <ui:form>
+          <ui:field attr="version" kind="text" required="false"/>
+        </ui:form>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="item" minOccurs="0" maxOccurs="unbounded">
         <xs:complexType mixed="true">
+          <xs:annotation>
+            <xs:appinfo>
+              <ui:treeNode label="@id|item" idAttr="id" group="plan/items"/>
+              <ui:form>
+                <ui:field attr="id"     kind="text" required="false"/>
+                <ui:field attr="status" kind="enum" required="false"/>
+              </ui:form>
+            </xs:appinfo>
+          </xs:annotation>
           <xs:attribute name="id"     type="NonEmptyString" use="optional"/>
           <xs:attribute name="status" type="NonEmptyString" use="optional"/>
         </xs:complexType>
