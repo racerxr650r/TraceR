@@ -10,6 +10,8 @@
 
 import { strict as assert } from 'assert';
 import {
+    ParsedNode,
+    ParsedNodesIndex,
     ParsedProject,
     ProjectIoClient,
     UiHintEntry,
@@ -44,6 +46,7 @@ const HLR_ENTRY: UiHintEntry = {
     ],
     lenses: [{ kind: 'coverage' }, { kind: 'tracesCount' }],
     document: false,
+    element: 'hlr',
 };
 
 const DOCUMENT_ENTRY: UiHintEntry = {
@@ -51,6 +54,7 @@ const DOCUMENT_ENTRY: UiHintEntry = {
     form: [],
     lenses: [],
     document: true,
+    element: 'document',
 };
 
 const SAMPLE_INDEX: UiHintsIndex = {
@@ -101,5 +105,45 @@ describe('ParsedProject._ui_hints_index (Phase 2.5b Slice C)', () => {
     it('treats _ui_hints_index as optional (older sidecars)', () => {
         const project: ParsedProject = { name: 'Legacy' };
         assert.equal(project._ui_hints_index, undefined);
+    });
+});
+
+describe('ParsedNode + _nodes (Phase 2.5b Slice D)', () => {
+    it('UiHintEntry exposes the bound element name', () => {
+        assert.equal(HLR_ENTRY.element, 'hlr');
+        assert.equal(DOCUMENT_ENTRY.element, 'document');
+    });
+
+    it('ParsedProject._nodes accepts a generic node index', () => {
+        const planNode: ParsedNode = {
+            tag: 'plan',
+            attrs: { version: '0.1' },
+            ui: null,
+            text: null,
+        };
+        const itemNode: ParsedNode = {
+            tag: 'item',
+            attrs: { id: 'P-001', status: 'done' },
+            ui: { icon: 'check', color: 'charts.green' },
+            text: 'Wire list_documents through the sidecar.',
+        };
+        const nodes: ParsedNodesIndex = {
+            Plan: [planNode],
+            'Plan/item': [itemNode],
+        };
+        const project: ParsedProject = {
+            name: 'TraceR',
+            schema_version: '1.4',
+            _nodes: nodes,
+        };
+        assert.ok(project._nodes);
+        assert.equal(project._nodes['Plan'].length, 1);
+        assert.equal(project._nodes['Plan/item'][0].attrs.id, 'P-001');
+        assert.equal(project._nodes['Plan/item'][0].ui?.icon, 'check');
+    });
+
+    it('treats _nodes as optional (older sidecars)', () => {
+        const project: ParsedProject = { name: 'Legacy' };
+        assert.equal(project._nodes, undefined);
     });
 });

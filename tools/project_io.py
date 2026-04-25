@@ -67,6 +67,7 @@ from render_doc import (
     PROJECT_XSD,
     PVD_TEMPLATE,
     ProjectXmlError,
+    collect_nodes_by_type as _collect_nodes_by_type,
     init_project as _init_project,
     list_documents as _list_documents,
     parse_project_to_dict as _parse_project_to_dict,
@@ -137,7 +138,13 @@ def _method_parse_to_json(params: dict[str, Any]) -> dict[str, Any]:
     # alongside the parsed tree so a single round trip gives the
     # extension everything it needs to render schema-driven surfaces.
     # Underscore-prefixed key keeps it out of band of the payload.
-    project["_ui_hints_index"] = _parse_ui_hints_index(PROJECT_XSD)
+    hints_index = _parse_ui_hints_index(PROJECT_XSD)
+    project["_ui_hints_index"] = hints_index
+    # Slice D: also embed a generic node index keyed by the same
+    # complex-type name, so consumers (e.g. the VS Code tree provider)
+    # can iterate every payload that carries a `ui:treeNode` hint
+    # without special-casing per-tag builders.
+    project["_nodes"] = _collect_nodes_by_type(xml_path, hints_index)
     return project
 
 

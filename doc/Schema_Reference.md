@@ -633,9 +633,16 @@ shape:
                  "field":  "text|textarea|enum|ref:HLR|ref:LLR|cdata",
                  "required": true|false}, ...],
   "lenses":    [{"kind": "coverage|tracesCount|..."}, ...],
-  "document":  true|false
+  "document":  true|false,
+  "element":   "hlr" | null
 }
 ```
+
+The `element` field (Slice D) records the lowercase XML element name
+the type is bound to via `<xs:element name="X" type="Y">`. For inline
+nested types like `Plan/item` the field carries the inline element
+name (`"item"`). It lets consumers iterate the parsed tree without
+hard-coding per-payload tag names.
 
 The same index is exposed over the JSON-RPC sidecar:
 
@@ -643,7 +650,14 @@ The same index is exposed over the JSON-RPC sidecar:
 * `parse_to_json({...})` — embeds the same dict under the
   `_ui_hints_index` top-level key alongside the parsed project, so
   the VS Code extension fetches the parsed tree and the hint
-  vocabulary in a single round trip.
+  vocabulary in a single round trip. Slice D additionally embeds a
+  `_nodes` top-level key — a `Record<typeName, ParsedNode[]>` mirror
+  of the index that lists every element in `Project.xml` bound to a
+  type carrying a `ui:treeNode` hint. Each `ParsedNode` is
+  `{tag, attrs, ui, text}` (see [src/sidecar.ts](../tools/vscode-project-xml/src/sidecar.ts)
+  for the TS shape). Inline types are scoped to children of their
+  parent element so unrelated tags with the same local name are not
+  pulled in.
 
 Templates do **not** consume this index — it is dedicated to
 non-Jinja consumers (the VS Code tree provider, lens provider,

@@ -161,6 +161,10 @@ def _parse_appinfo(appinfo: ET.Element) -> dict[str, Any]:
         "form":      form,
         "lenses":    lenses,
         "document":  document,
+        # `element` (the lowercase XML tag bound to this complex type)
+        # is filled in by parse_ui_hints_index after a second pass
+        # over the XSD's <xs:element type="..."> declarations.
+        "element":   None,
     }
 
 
@@ -223,8 +227,106 @@ def parse_ui_hints_index(
             if not local:
                 continue
             _walk_complextype(inline, f"{name}/{local}")
+            # Inline complex types are bound to their own element name.
+            if f"{name}/{local}" in index:
+                index[f"{name}/{local}"]["element"] = local
+
+    # Second pass: bind top-level named types to the lowercase XML
+    # element name(s) they appear under (xs:element name="X" type="Y").
+    # If a type is bound to multiple element names we keep the first;
+    # all currently-annotated types are 1:1.
+    for elem in root.iter(element_tag):
+        type_attr = elem.get("type")
+        local = elem.get("name")
+        if not type_attr or not local:
+            continue
+        if type_attr in index and index[type_attr]["element"] is None:
+            index[type_attr]["element"] = local
 
     return index
+
+
+def collect_nodes_by_type(
+    xml_path: Path | str = PROJECT_XML,
+    hints_index: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Walk Project.xml and collect every element bound to a complex
+    type that carries a ``ui:treeNode`` hint, keyed by the same
+    complex-type name used by :func:`parse_ui_hints_index`.
+
+    Each emitted node is a JSON-serialisable dict::
+
+        {
+            "tag":   "hlr",                     # actual XML local name
+            "attrs": {"id": "HLR-001", ...},     # non-namespaced attrs
+            "ui":    {"icon": "star", ...} | None,  # urn:tracer:ui:v1 attrs
+            "text":  "..." | None,                # stripped element.text
+        }
+
+    Inline nested types (e.g. ``Plan/item``) are scoped to children of
+    their parent element so unrelated ``<item>`` elements elsewhere in
+    the tree are not pulled in.
+
+    Types whose ``tree_node`` hint is None are skipped; the index is
+    only useful to consumers that want to render those nodes (the
+    VS Code Project Spec tree provider, Phase 2.5b Slice E+).
+    """
+    xml_path = Path(xml_path)
+    if hints_index is None:
+        hints_index = parse_ui_hints_index()
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError as exc:
+        raise ProjectXmlError(
+            f"{xml_path}: malformed XML: {exc}"
+        ) from exc
+    except FileNotFoundError as exc:
+        raise ProjectXmlError(f"{xml_path}: file not found") from exc
+
+    def _node_payload(elem: ET.Element) -> dict[str, Any]:
+        attrs: dict[str, str] = {}
+        ui: dict[str, str] = {}
+        for k, v in elem.attrib.items():
+            if k.startswith("{"):
+                ns, local = k[1:].split("}", 1)
+                if ns == UI_NAMESPACE:
+                    ui[local] = v
+                # Other foreign-namespace attrs are dropped.
+            else:
+                attrs[k] = v
+        text = (elem.text or "").strip() or None
+        return {
+            "tag":   elem.tag,
+            "attrs": attrs,
+            "ui":    ui or None,
+            "text":  text,
+        }
+
+    nodes: dict[str, list[dict[str, Any]]] = {}
+
+    for key, entry in hints_index.items():
+        if entry.get("tree_node") is None:
+            continue
+        element = entry.get("element")
+        if not element:
+            continue
+        if "/" in key:
+            # Inline type: scope to the parent type's element.
+            parent_key = key.split("/", 1)[0]
+            parent_element = (hints_index.get(parent_key) or {}).get("element")
+            if not parent_element:
+                continue
+            collected: list[dict[str, Any]] = []
+            for parent in root.iter(parent_element):
+                for child in parent.iter(element):
+                    if child is parent:
+                        continue
+                    collected.append(_node_payload(child))
+            nodes[key] = collected
+        else:
+            nodes[key] = [_node_payload(e) for e in root.iter(element)]
+
+    return nodes
 
 
 
