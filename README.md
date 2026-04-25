@@ -19,7 +19,7 @@ phased VS Code extension roadmap).
 | 1     | Read-only VS Code extension: tree view, lint diagnostics, Reveal in XML. | ✅ Complete |
 | 2     | Code Lenses + Render & Preview. | ✅ Complete |
 | 2.5   | Schema-driven retrofit: `list_documents` discovery, dynamic `Render <Doc>` commands, `Finding.code` linter contract, `ui:*` per-element hints, coverage status badges, `<plan>` acceptance proof. | ✅ Complete |
-| 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | 🚧 In progress (Python side: `xs:appinfo` published in XSD, `ui_hints_index` surfaced over JSON-RPC) |
+| 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | 🚧 In progress (Python side complete; TS sidecar now exposes typed `uiHintsIndex()` + embedded `_ui_hints_index` on `parse_to_json`; tree / lens / locator rewrite pending) |
 | 2.5c  | Payload-agnostic Quick Fix table keyed on `Finding.code`. | ⏳ Not started |
 | 3     | Form webviews for HLRs / LLRs. | ⏳ Not started |
 | 4     | SDD/STP/Test forms + Walkthrough. | ⏳ Not started |
