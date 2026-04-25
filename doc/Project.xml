@@ -88,7 +88,7 @@ sane.]]></para>
 documents are an output, not an input**. Every authoring surface
 edits the structured source and lets the renderer produce the
 prose. This SDD documents the components that enforce that
-contract; the SPD ([doc/SDD.md](SPD.md)) documents the *plan* to
+contract; the SDP ([doc/SDP.md](SDP.md)) documents the *plan* to
 build them.]]></para>
       <para><![CDATA[The architecture is deliberately **schema-driven from Phase 2.5
 onwards** ([PVD §6 Principle 11](PVD.md)). The VS Code
@@ -147,8 +147,9 @@ to the language model on every AI request: schema subtree,
 `Schema_Reference.md` excerpt, PVD excerpt, relevant SDD/HLR/LLR
 context, sibling items, and the lint state of the target. Bounded
 by `projectXml.ai.maxContextTokens`.]]></term>
-      <term name="Intent"><![CDATA[A named AI operation (`draft.hlr`, `expand.hlr_to_llrs`,
-`review.item`, `merge.body`, …) with its own prompt template
+      <term name="Intent"><![CDATA[A named AI operation (`draft.hlr`, `draft.pvd`,
+`expand.hlr_to_llrs`, `review.item`, `merge.body`, …) with
+its own prompt template
 (`tools/ai/intents/`) and JSON response schema
 (`tools/ai/schemas/`). Responses are typed JSON, never raw XML.]]></term>
       <term name="Validate→retry pipeline"><![CDATA[The AI pipeline (`tools/ai/pipeline.py`) that parses an AI
@@ -171,8 +172,10 @@ validate→retry pipeline as authoring intents.]]></term>
 
     <references>
       <ref><![CDATA[[doc/PVD.md](PVD.md) — Product Vision Document.]]></ref>
-      <ref><![CDATA[[doc/SPD.md](SPD.md) — Software Plan Document (phased delivery,
+      <ref><![CDATA[[doc/SDP.md](SDP.md) — Software Development Plan (phased delivery,
 required tools, risks).]]></ref>
+      <ref><![CDATA[[tools/PLAN_vscode_extension.md](../tools/PLAN_vscode_extension.md) — companion
+phasing plan for the VS Code extension surface (Phases 1–5.5).]]></ref>
       <ref><![CDATA[[Schema_Reference.md](Schema_Reference.md) —
 human-facing schema reference; canonical for element shapes and
 attribute meanings.]]></ref>
@@ -328,7 +331,7 @@ change. The extension discovers what to render from
 `tools/project.xsd` UI hints and `<metadata><document>`
 entries. Bespoke visualisations and domain-specific lint rules
 are the only payload-aware code paths. From
-[PVD §6 Principle 11](PVD.md), implemented in SPD Phase 2.5.]]></goal>
+[PVD §6 Principle 11](PVD.md), implemented in SDP Phase 2.5.]]></goal>
       <goal name="Graceful degradation"><![CDATA[Every optional capability fails closed: AI surfaces hide when
 no language model is available, XSD validation falls back to
 `xmllint` then to a structural-only pass with a note when
@@ -350,7 +353,7 @@ surfaces are off in untrusted workspaces. The
 `projectXml.ai.contextAllowList` setting is the only knob that
 widens the disclosure surface. From [PVD §6 Principle 7](PVD.md)
 and the trusted-workspace gating called out in
-[SPD Phase 5](SPD.md).]]></goal>
+[SDP Phase 5](SDP.md).]]></goal>
     </design_goals>
 
     <modules>
@@ -358,7 +361,12 @@ and the trusted-workspace gating called out in
       <module path="tools/project.xsd">
         <purpose><![CDATA[is the canonical schema for `doc/Project.xml`: every payload
 element, attribute, and (from Phase 2.5) the UI-hint
-vocabulary that drives the schema-driven extension surfaces.]]></purpose>
+vocabulary that drives the schema-driven extension surfaces.
+
+**Status:** as-built (Phase 1) for the payload schema. UI-hint
+`xs:appinfo` annotations land in Phase 2.5 per [SDP](SDP.md);
+the element catalogue and validation contract documented here
+are current.]]></purpose>
         <responsibility><![CDATA[Constrain the structure of `<project>` and every payload
 (`<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`, `<tests>`, plus future
 schema-declared sections).]]></responsibility>
@@ -393,7 +401,11 @@ Schema for each form-target subtree on demand.]]></interface>
 
       <module path="tools/render_doc.py">
         <purpose><![CDATA[is the document renderer: it turns `doc/Project.xml` plus a
-Jinja2 template into one Markdown spec document.]]></purpose>
+Jinja2 template into one Markdown spec document.
+
+**Status:** as-built (Phase 1). CLI, `--init` bootstrap, and
+the template data-surface (cross-reference indexes, coverage
+gap lists, `gh_slug` filter) are all shipping.]]></purpose>
         <responsibility><![CDATA[Parse `Project.xml` into a `SimpleNamespace` tree (the
 `project.*` namespace consumed by every template).]]></responsibility>
         <responsibility><![CDATA[Compute derived projections used by templates: flat lists
@@ -434,7 +446,11 @@ catch them directly.]]></interface>
 
       <module path="tools/lint_project.py">
         <purpose><![CDATA[is the structural and semantic linter for `Project.xml`. Its
-findings drive both CI and the in-editor diagnostics surface.]]></purpose>
+findings drive both CI and the in-editor diagnostics surface.
+
+**Status:** as-built (Phase 1). Stable `Finding.code` values
+are emitted today; the Phase 2.5 work is to tighten the code
+set that the extension's Quick Fix table keys on.]]></purpose>
         <responsibility><![CDATA[Validate well-formedness and XSD conformance against
 `tools/project.xsd`, using `lxml` (preferred), then
 `xmllint` (fallback), then a structural-only pass with a
@@ -476,7 +492,11 @@ right Quick Fix.]]></interface>
 
       <module path="tools/templates/">
         <purpose><![CDATA[holds the per-document Jinja2 templates that own all spec-doc
-scaffolding (titles, headings, numbering, tables, anchors).]]></purpose>
+scaffolding (titles, headings, numbering, tables, anchors).
+
+**Status:** as-built (Phase 1). All five generated documents
+(`SDD`, `HLRs`, `LLRs`, `STP`, `Traceability`) plus the
+`PVD.md.template` bootstrap are present.]]></purpose>
         <responsibility><![CDATA[One template per `<metadata><document>` entry. Each consumes
 the `project.*` namespace exposed by `render_doc.py` and
 emits Markdown.]]></responsibility>
@@ -500,11 +520,80 @@ module above).]]></dep>
         </dependencies>
       </module>
 
+      <module path="tools/Makefile" title="Developer and CI convenience targets">
+        <purpose><![CDATA[is the developer- and CI-facing wrapper around the
+toolchain documented in [SDP §0](SDP.md). It auto-detects
+the host OS, installs prerequisites, bootstraps a project
+venv, builds the VS Code extension, and runs the umbrella
+`ci` target (`lint` + `validate-xml` + `render` + `test` +
+`ext`).
+
+**Status:** as-built. Targets exercised in CI keep the
+generated documents, the linter, the renderer, the test
+suite, and the VS Code extension build all passing on
+every commit.]]></purpose>
+        <responsibility><![CDATA[Detect the host OS family from `uname -s` and
+`/etc/os-release` (`debian`, `fedora`, `arch`, `macos`,
+`unknown`) and dispatch to the matching `prereqs-*` recipe.]]></responsibility>
+        <responsibility><![CDATA[Provide a slim `prereqs-ci` variant that omits VS Code,
+`vsce`, and `gh` for headless CI runners.]]></responsibility>
+        <responsibility><![CDATA[Auto-detect privilege escalation (`SUDO` is empty when
+already root, otherwise `sudo`) so the same recipes work
+in containerised CI and on a developer workstation.]]></responsibility>
+        <responsibility><![CDATA[Bootstrap a per-project venv, install
+`jinja2`/`lxml`/`pytest`/`xmlschema`, run `npm install`
+in the extension directory, and install the
+`redhat.vscode-xml` extension when `code` is on `PATH`.]]></responsibility>
+        <responsibility><![CDATA[Expose `lint`, `validate-xml`, `render`, `test`,
+`ext-typecheck`, `ext-build`, `ext-package`, and the
+`ci` umbrella as composable targets reusable by GitHub
+Actions and by humans.]]></responsibility>
+        <responsibility><![CDATA[Provide `clean`, `clean-docs`, `clean-ext`, and
+`distclean` for reversible removal of generated docs,
+extension build output, `__pycache__`, and the venv.]]></responsibility>
+        <responsibility><![CDATA[Self-verify TraceR's own spec stack: the `ci` target
+shall run lint, render every generated document, and run
+the pytest suite against TraceR's own `doc/Project.xml`
+so the repository's own specification artefacts are
+guaranteed lint-clean and in sync on every commit. A
+non-zero exit blocks merge.]]></responsibility>
+        <interfaces title_suffix="(public targets)">
+          <interface title="Onboarding"><![CDATA[`make -C tools detect`, `make -C tools prereqs`
+(developer), `make -C tools prereqs-ci` (CI),
+`make -C tools verify`, `make -C tools bootstrap`.]]></interface>
+          <interface title="Verification"><![CDATA[`make -C tools lint`, `make -C tools validate-xml`,
+`make -C tools render`, `make -C tools test`,
+`make -C tools ci` (lint + validate-xml + render + test +
+ext, fail-fast).]]></interface>
+          <interface title="VS Code extension"><![CDATA[`make -C tools ext-typecheck`, `make -C tools ext-build`,
+`make -C tools ext` (alias), `make -C tools ext-package`
+(produces `.vsix` via `vsce`).]]></interface>
+          <interface title="Cleanup"><![CDATA[`make -C tools clean`, `make -C tools clean-docs`,
+`make -C tools clean-ext`, `make -C tools distclean`.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[GNU Make 4+, `bash`, the per-OS package manager.]]></dep>
+          <dep><![CDATA[`tools/render_doc.py`, `tools/lint_project.py`, the
+templates under `tools/templates/`, and the test suite
+under `test/` (consumed by the `lint`, `render`, and
+`test` targets respectively).]]></dep>
+          <dep><![CDATA[`tools/vscode-project-xml/package.json` (consumed by the
+`ext-*` targets).]]></dep>
+        </dependencies>
+      </module>
+
       <module path="tools/project_io.py">
         <purpose><![CDATA[is the long-running JSON-RPC 2.0 sidecar that exposes every
 parse / render / lint / merge / AI operation to all UI
 surfaces. The "one backend, many surfaces" guarantee
-([PVD §6 Principle 5](../doc/PVD.md)) is enforced here.]]></purpose>
+([PVD §6 Principle 5](PVD.md)) is enforced here.
+
+**Status:** Phase 1 ships `lint`, `render`, `parse_to_json`,
+and `init_project` as JSON-RPC methods over line-delimited
+stdio. `apply_edit`, `list_documents`, `merge_three_way`,
+`ai_request`, and `subscribe_changes` are designed below but
+not yet implemented; they land in Phases 2.5–5.5 per
+[SDP](SDP.md).]]></purpose>
         <responsibility><![CDATA[Speak JSON-RPC 2.0 over stdin/stdout. Methods:
 `lint`, `render`, `parse_to_json`, `apply_edit`,
 `init_project`, `list_documents`, `merge_three_way`,
@@ -572,20 +661,24 @@ returns `code = -32010` ("conflicting concurrent edit") and
 the caller retries.]]></case>
           <case name="AI provider unavailable"><![CDATA[`ai_request` returns `code = -32020` ("no language model
 available"); the extension hides the AI surfaces gracefully
-per [PVD §7.1](../doc/PVD.md) graceful-degradation contract.]]></case>
+per [PVD §7.1](PVD.md) graceful-degradation contract.]]></case>
         </error_handling>
       </module>
 
-      <module path="tools/project_merge.py">
+      <module path="tools/project_merge.py" title="Structured three-way merger (planned)">
         <purpose><![CDATA[is the deterministic three-way structural merger over
 `Project.xml` (Stage A of the merge pipeline described in
-SPD Phase 5.5).]]></purpose>
+[SDP Phase 5.5](SDP.md)).
+
+**Status:** planned (Phase 5.5). No file ships in the current
+checkout; the design below freezes the contract the sidecar's
+`merge_three_way` will satisfy.]]></purpose>
         <responsibility><![CDATA[Re-key elements by their stable ids (`HLR-NNN`,
 `LLR-XXX-NN`, test names, module paths) so a merge is
 position-independent.]]></responsibility>
         <responsibility><![CDATA[Union additions when ids do not collide; on collision where
 both sides are new, allocate the next free id to one side
-(existing ids never move, per [PVD §6 Principle 9](../doc/PVD.md)).]]></responsibility>
+(existing ids never move, per [PVD §6 Principle 9](PVD.md)).]]></responsibility>
         <responsibility><![CDATA[Union `<traces>` entries by `(target, ref)` tuple, deduping.]]></responsibility>
         <responsibility><![CDATA[Recompute `<metadata>/<counts>` from the merged tree.]]></responsibility>
         <responsibility><![CDATA[Take the structurally-equivalent side when whitespace,
@@ -613,11 +706,15 @@ gates acceptance.]]></dep>
         </dependencies>
       </module>
 
-      <module path="tools/ai/">
+      <module path="tools/ai/" title="AI authoring pipeline (planned)">
         <purpose><![CDATA[is the AI pipeline. It assembles a grounding bundle from
 project data, calls the language model with a typed JSON
 response schema, and validates the response through the same
-XSD + lint pipeline as manual edits.]]></purpose>
+XSD + lint pipeline as manual edits.
+
+**Status:** planned (Phase 5). No directory ships in the
+current checkout; the design below freezes the contract the
+sidecar's `ai_request` will satisfy.]]></purpose>
         <responsibility><![CDATA[`context.py` — `build_ai_context(target) -> bundle` packs
 the schema subtree, `Schema_Reference.md` excerpt,
 PVD excerpt, SDD/HLR/LLR context appropriate to the intent,
@@ -634,10 +731,26 @@ suggestion + the failures to the user.]]></responsibility>
         <responsibility><![CDATA[`intents/` — one Markdown file per intent, holding the
 system prompt and few-shot examples grounded in the
 schema. Authoring intents: `draft.hlr`, `draft.llr`,
-`draft.test`, `draft.module`, `expand.hlr_to_llrs`,
+`draft.test`, `draft.module`, `draft.pvd`,
+`expand.hlr_to_llrs`, `expand.llr_to_tests`,
 `review.item`, `suggest.traces`, `gap.fix`. Merge intents:
 `merge.body`, `merge.trace`, `merge.rename`,
 `merge.schema_bump`.]]></responsibility>
+        <responsibility><![CDATA[**PVD ghostwriting flow** — `draft.pvd` differs from the
+other authoring intents in that the target document is
+hand-authored Markdown (`doc/PVD.md`), not a payload of
+`Project.xml`. The intent shall identify thin or missing
+sections (placeholders, single-sentence sections expected
+to be paragraphs, lists with one item where multiple are
+expected) by structure, surface targeted clarifying
+questions to the user before drafting any prose, and only
+then produce content matching the existing voice and
+heading style. The pipeline shall route accepted PVD
+edits through the same diff-preview gate as `Project.xml`
+edits and shall append the same provenance entry to
+`.edit_doc/ai_history.jsonl`. Vision, scope, success
+metrics, and roadmap themes shall never be invented
+without an explicit user answer.]]></responsibility>
         <responsibility><![CDATA[`schemas/` — one JSON Schema per intent describing the
 shape of a valid response (Pydantic-validated). The
 deterministic translator that maps the JSON to a JSON
@@ -685,7 +798,14 @@ keep working unchanged.]]></case>
 `Project.xml` into a structured editing surface and is the
 primary delivery vehicle for the in-editor authoring,
 schema-driven views, AI assistance, and AI-mediated merge
-resolution called out in [PVD §5 / §7.1](../doc/PVD.md).]]></purpose>
+resolution called out in [PVD §5 / §7.1](PVD.md).
+
+**Status:** Phase 1 ships the activation scaffolding,
+sidecar wrapper (`src/sidecar.ts`), `Project Spec` tree view,
+lint diagnostics, and the `revealInXml` command. Schema-driven
+surfaces, form webviews, AI surfaces, walkthrough, and merge
+integration land in Phases 2.5–5.5 per
+[SDP](SDP.md) and [tools/PLAN_vscode_extension.md](../tools/PLAN_vscode_extension.md).]]></purpose>
         <responsibility><![CDATA[Activate on workspaces containing `doc/Project.xml`. Spawn
 `tools/project_io.py` once per session and route every
 operation through it; never parse, render, lint, or merge
@@ -736,7 +856,12 @@ implies graceful degradation.]]></dep>
         <purpose><![CDATA[contributes the "Project Spec" Activity Bar view that
 gives every payload a structured outline with inline
 status badges. From Phase 2.5 it is built entirely from
-the schema's UI hints, with no per-payload TypeScript.]]></purpose>
+the schema's UI hints, with no per-payload TypeScript.
+
+**Status:** Phase 1 ships a payload-aware
+`ProjectSpecProvider` rooted at `doc/Project.xml`. The
+schema-driven hint walk, status badges, and AI context-menu
+commands described below are the Phase 2.5–5 target.]]></purpose>
         <responsibility><![CDATA[Walk `ui_hints_index.treeNodes` and emit one root node per
 `ui:treeNode`-marked element kind, populated from the
 parsed payload returned by `parse_to_json`.]]></responsibility>
@@ -768,7 +893,12 @@ watcher on `doc/Project.xml`) and to the sidecar's
       <module path="tools/vscode-project-xml/src/diagnostics/" title="Diagnostics and Quick Fixes">
         <purpose><![CDATA[mirrors lint findings into the Problems panel as VS Code
 `Diagnostic` objects, with payload-agnostic Quick Fixes for
-the most common findings.]]></purpose>
+the most common findings.
+
+**Status:** Phase 1 ships `LintDiagnosticsProvider`, which
+mirrors lint findings into the Problems panel. The
+`CodeActionProvider` Quick Fix table below is the Phase 2.5
+target; the AI-suggest variants land with Phase 5.]]></purpose>
         <responsibility><![CDATA[Maintain a `DiagnosticCollection` for `doc/Project.xml`;
 update on save, on `apply_edit` success, and on out-of-band
 file change.]]></responsibility>
@@ -799,9 +929,116 @@ each fix).]]></dep>
         </dependencies>
       </module>
 
-      <module path="tools/vscode-project-xml/src/codeLens/" title="Code lenses">
+      <module path="tools/vscode-project-xml/src/sidecar.ts" title="Sidecar JSON-RPC client (TypeScript)">
+        <purpose><![CDATA[is the long-running JSON-RPC 2.0 client that every
+extension surface uses to talk to `tools/project_io.py`.
+It is the only TypeScript code that ever spawns a Python
+process; the surfaces never call out to a child process
+themselves.
+
+**Status:** as-built (Phase 1). Wraps `lint`, `render`,
+`parse_to_json`, and `init_project`; `apply_edit`,
+`merge_three_way`, and `ai_request` are added as the
+matching Python methods land in Phases 2.5–5.5.]]></purpose>
+        <responsibility><![CDATA[Spawn `tools/project_io.py` lazily on first call, with
+the interpreter chosen by `util/paths.getProjectIoScript`
+(honouring `projectXml.pythonPath`).]]></responsibility>
+        <responsibility><![CDATA[Frame requests as line-delimited JSON-RPC 2.0 over
+stdio; correlate responses by numeric id; surface errors
+as `SidecarError(code, message)`.]]></responsibility>
+        <responsibility><![CDATA[Tear the process down on `dispose()` (extension
+deactivate); buffer in-flight requests so a single bad
+request does not crash the session.]]></responsibility>
+        <responsibility><![CDATA[Stream the sidecar's stderr to a dedicated VS Code
+`OutputChannel` so the user can diagnose interpreter
+problems without leaving the editor.]]></responsibility>
+        <interfaces title_suffix="(extension API)">
+          <interface title="ProjectIoClient"><![CDATA[`new ProjectIoClient(outputChannel)`; `lint()`,
+`render({ template, metadata_id })`, `parseToJson()`,
+`initProject({...})`; `dispose()`. Every method returns
+a typed Promise; rejections carry a `SidecarError` with
+the JSON-RPC error code.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`tools/project_io.py` (the spawned subprocess).]]></dep>
+          <dep><![CDATA[`util/paths.ts` (interpreter discovery, workspace path
+resolution).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/commands/" title="Command palette contributions">
+        <purpose><![CDATA[hosts the per-command modules wired into VS Code's
+command palette through `package.json`'s
+`contributes.commands`. Each command is a thin handler
+that delegates to the sidecar and updates the relevant
+view.
+
+**Status:** as-built (Phase 1) for `projectXml.refresh`,
+`projectXml.lint`, and `projectXml.revealInXml`. The
+schema-driven `Add child …`, `Render this section …`,
+and AI-mediated commands land in Phases 2.5–5 alongside
+the views that call them.]]></purpose>
+        <responsibility><![CDATA[`revealInXml.ts` — open `doc/Project.xml`, locate the
+selected payload element via `util/locator.ts`, and reveal
+its line in the active editor. Used by the tree view's
+context menu and (later) by the code-lens action.]]></responsibility>
+        <responsibility><![CDATA[Each command is registered in `extension.ts`'s `activate`
+function and disposed of when the extension deactivates.
+Commands never reach into provider internals; they go
+through the sidecar.]]></responsibility>
+        <interfaces title_suffix="(VS Code)">
+          <interface title="Contributed commands"><![CDATA[`projectXml.refresh` (re-runs `parse_to_json` and rebuilds
+the tree), `projectXml.lint` (re-runs lint and refreshes
+diagnostics), `projectXml.revealInXml` (jumps to a payload
+element from the tree).]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`sidecar.ts` (client to `tools/project_io.py`).]]></dep>
+          <dep><![CDATA[`util/locator.ts` for element resolution.]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/util/" title="Shared helpers (paths, locator)">
+        <purpose><![CDATA[is the small library of payload-agnostic helpers shared
+by every other extension module: workspace path discovery,
+interpreter selection, and element location inside
+`doc/Project.xml`.
+
+**Status:** as-built (Phase 1). The locator is currently
+seeded with a hard-coded payload-element table; from
+Phase 2.5 it is regenerated at runtime from
+`ui_hints_index` so it gains new payloads without
+TypeScript changes.]]></purpose>
+        <responsibility><![CDATA[`paths.ts` — resolve `doc/Project.xml`, the tools
+directory, and the Python interpreter from the active
+workspace and `projectXml.*` settings; surface
+`describeWorkspaceState()` for the sidecar's startup
+diagnostics.]]></responsibility>
+        <responsibility><![CDATA[`locator.ts` — given an `(elementName, idAttr, idValue)`
+triple, scan the open `Project.xml` text buffer (or the
+on-disk file) and return a `vscode.Range` for the matching
+element. The single source of truth for "jump to element"
+across the tree, code lenses, and Quick Fixes.]]></responsibility>
+        <interfaces title_suffix="(library)">
+          <interface title="paths"><![CDATA[`getProjectXmlPath()`, `getToolsDir()`,
+`getProjectIoScript()`, `getConfig()`,
+`describeWorkspaceState()`.]]></interface>
+          <interface title="locator"><![CDATA[`locateElement(uri, { elementName, idAttr, idValue }) ->
+vscode.Range | undefined`.]]></interface>
+        </interfaces>
+        <dependencies>
+          <dep><![CDATA[`vscode` API (workspace, configuration, text documents).]]></dep>
+          <dep><![CDATA[The Microsoft Python extension's interpreter API
+(optional; falls back to `python3`/`python` on PATH).]]></dep>
+        </dependencies>
+      </module>
+
+      <module path="tools/vscode-project-xml/src/codeLens/" title="Code lenses (planned)">
         <purpose><![CDATA[decorates schema-marked elements in `Project.xml` with
-inline status and click-through actions.]]></purpose>
+inline status and click-through actions.
+
+**Status:** planned (Phase 2). No directory ships in the
+current checkout; the design below freezes the contract.]]></purpose>
         <responsibility><![CDATA[Walk `ui_hints_index.lenses` and attach the named lens
 kind (`coverage`, `tracesCount`, custom) to every matching
 element. From Phase 2.5 the lens provider has zero
@@ -823,10 +1060,14 @@ Lazily computes lens text from the cached
         </dependencies>
       </module>
 
-      <module path="tools/vscode-project-xml/src/webview/" title="Form panels and Markdown preview">
+      <module path="tools/vscode-project-xml/src/webview/" title="Form panels and Markdown preview (planned)">
         <purpose><![CDATA[hosts the single-item form webviews used to edit one
 payload element at a time, plus the side-by-side Markdown
-preview pane.]]></purpose>
+preview pane.
+
+**Status:** planned (Phases 3–4). No directory ships in the
+current checkout; the design below freezes the contract
+shared with [tools/PLAN_web_form.md](../tools/PLAN_web_form.md).]]></purpose>
         <responsibility><![CDATA[Open one form panel per `Edit`/`Add` action. The form's
 JSON Schema comes from the sidecar's `parse_to_json`
 response, which derives it from the relevant XSD subtree
@@ -861,10 +1102,13 @@ web form).]]></dep>
         </dependencies>
       </module>
 
-      <module path="tools/vscode-project-xml/src/walkthrough/" title="Guided authoring (Walkthrough)">
+      <module path="tools/vscode-project-xml/src/walkthrough/" title="Guided authoring (Walkthrough) (planned)">
         <purpose><![CDATA[contributes the VS Code Walkthrough that steps a new user
 through bootstrapping a project and filling each payload in
-order. The IDE-native equivalent of the web form's wizard.]]></purpose>
+order. The IDE-native equivalent of the web form's wizard.
+
+**Status:** planned (Phase 4). No directory ships in the
+current checkout.]]></purpose>
         <responsibility><![CDATA[Provide seven steps: bootstrap, PVD, SDD, HLRs, LLRs,
 tests, render & commit. Each step has Markdown content, a
 "Run command" link, and an automatic completion check
@@ -885,11 +1129,14 @@ a command invocation).]]></dep>
         </dependencies>
       </module>
 
-      <module path="tools/vscode-project-xml/src/ai/" title="AI participant and merge surface">
+      <module path="tools/vscode-project-xml/src/ai/" title="AI participant and merge surface (planned)">
         <purpose><![CDATA[hosts the `@projectspec` chat participant, the right-click
 "with AI" actions, and the merge editor integration. The
 TypeScript side of the AI pipeline; the heavy lifting
-lives in `tools/ai/`.]]></purpose>
+lives in `tools/ai/`.
+
+**Status:** planned (Phase 5). No directory ships in the
+current checkout.]]></purpose>
         <responsibility><![CDATA[Register the chat participant via
 `vscode.chat.createChatParticipant` with the
 `/draft-hlr`, `/expand`, `/review`, `/gap-fill`, and
@@ -1017,7 +1264,7 @@ resolution") rather than silently picking one side.]]></case>
 
       <other><![CDATA[The repository layout for the extension itself (TypeScript source
 tree, test fixtures, build assets) is project-conventional and
-described in [SPD §7](SPD.md). It is not reproduced here because
+described in [SDP §7](SDP.md). It is not reproduced here because
 its precise shape is delivery-phase scaffolding rather than a
 design contract — the design contract is the responsibilities and
 interfaces declared per module above.]]></other>
@@ -1046,6 +1293,738 @@ interfaces declared per module above.]]></other>
 
   <!-- High-Level Requirements (see Schema_Reference.md §5). -->
   <hlrs>
+
+    <section number="2" title="Source of Truth and Schema">
+      <intro><![CDATA[Requirements covering the canonical XML store, the schema that
+constrains it, and the invariants every other component depends
+on. Map directly to [SDD §3](SDD.md#3) (the schema) and the
+foundational design goals in [SDD §2.2](SDD.md#22).]]></intro>
+
+      <hlr id="HLR-001" name="Single Source of Truth">
+        <text><![CDATA[The system shall maintain `doc/Project.xml` as the single
+authoritative store of every design element, requirement, and
+test, and shall treat all generated Markdown documents
+(`SDD.md`, `HLRs.md`, `LLRs.md`, `STP.md`,
+`Traceability.md`) as outputs that are never read back as
+inputs by any component.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="3"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-002" name="Schema-Constrained Payloads">
+        <text><![CDATA[The system shall validate `doc/Project.xml` against
+`tools/project.xsd` before any render or write, and shall
+reject any payload that violates the schema's element,
+attribute, cardinality, or child-order constraints.]]></text>
+        <traces>
+          <trace target="SDD" ref="3"/>
+          <trace target="SDD" ref="5"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-003" name="Schema Versioning">
+        <text><![CDATA[The schema shall expose a `schema_version` attribute on
+`<project>` and the system shall require this attribute to be
+incremented whenever a structural change is made that
+existing templates or `tools/render_doc.py` could not consume
+unchanged.]]></text>
+        <traces>
+          <trace target="SDD" ref="3"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-004" name="Schema-Driven UI Hints">
+        <text><![CDATA[The schema shall carry UI-hint annotations under the
+`https://tracer.dev/ui/1` namespace
+(`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`) and the
+sidecar shall publish these as a runtime hint registry that
+downstream surfaces consume without any per-payload
+TypeScript code.]]></text>
+        <traces>
+          <trace target="SDD" ref="3"/>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-005" name="Stable Identifiers">
+        <text><![CDATA[The system shall enforce `HLR-NNN` and `LLR-XXX-NN` identifier
+formats; the linter shall flag malformed IDs as errors and
+duplicate IDs as errors; allocation of new IDs shall always
+take the next free number so that existing IDs are never
+renumbered.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="9"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-041" name="No Runtime Service Dependency">
+        <text><![CDATA[The product shall require no database, no network service, no
+binary store, and no proprietary file format to read, render,
+or verify a project's specification stack; every input and
+output shall be a plain text file under version control so
+that the spec stack is fully usable with `git`, `xmllint`, and
+a text editor and nothing else.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="3"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="3" title="Document Rendering">
+      <intro><![CDATA[Requirements covering the renderer
+([SDD §4](SDD.md#4)) and the Jinja2 template stack
+([SDD §6](SDD.md#6)) that turns `Project.xml` into the five
+generated Markdown documents.]]></intro>
+
+      <hlr id="HLR-006" name="One Template per Generated Document">
+        <text><![CDATA[For each `<metadata><document id="…">` entry the system shall
+provide exactly one Jinja2 template under `tools/templates/`
+that owns the document's headings, numbering, and tables; the
+renderer shall select the template by document id at
+render time.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-007" name="Template Data Surface">
+        <text><![CDATA[The renderer shall expose a stable `project.*` namespace to
+templates that includes the parsed payloads, flat lists
+(`flat_hlrs`, `flat_llrs`, `flat_tests`), id-based lookups
+(`hlr_by_id`, `llr_by_id`, `file_of_test`), and
+cross-reference indexes (`hlrs_by_sdd`, `llrs_by_hlr`,
+`tests_by_hlr`, `tests_by_llr`); templates shall not
+recompute these relations.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-008" name="Renderer Library API">
+        <text><![CDATA[The renderer shall expose an importable library API
+(`render_to_str`, `parse_project_to_dict`) so the sidecar,
+the merger, and the AI pipeline can render and parse without
+spawning a subprocess; the CLI shall be a thin wrapper around
+this API.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-009" name="Project Bootstrap">
+        <text><![CDATA[The renderer shall provide an `--init` mode that creates a
+skeleton `doc/Project.xml` and substitutes
+`tools/templates/PVD.md.template` into a new `doc/PVD.md`,
+allowing a fresh project to be set up in one command.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-010" name="Template Anchor Convention">
+        <text><![CDATA[The HLRs, LLRs, and STP templates shall each emit
+`<a id="..."></a>` anchors immediately before every
+`HLR-NNN`, `LLR-XXX-NN`, and `test_*` row so the Traceability
+template can produce stable cross-document links; payloads
+shall not embed anchors.]]></text>
+        <traces>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="4" title="Linting and Traceability">
+      <intro><![CDATA[Requirements covering the linter ([SDD §5](SDD.md#5)) and the
+end-to-end traceability invariants it enforces.]]></intro>
+
+      <hlr id="HLR-011" name="XSD Validation Fallback Chain">
+        <text><![CDATA[The linter shall validate `doc/Project.xml` against
+`tools/project.xsd` using `lxml` when available, fall back to
+`xmllint` when it is not, and degrade to a structural-only
+pass with an explicit "not XSD-validated" note when neither
+is available; in every case the linter shall surface a
+clear note about which validator was used.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="2.2"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-012" name="Stable Lint Codes">
+        <text><![CDATA[Every lint finding shall carry a stable `code` string
+(`broken-trace`, `id-format`, `no-test`, …) so the extension's
+Quick Fix table and downstream automation can attach behaviour
+to a finding by id rather than by message text.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="13"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-013" name="Trace Reference Resolution">
+        <text><![CDATA[The linter shall resolve every `<trace target="…" ref="…"/>`
+reference and shall report unresolved or syntactically-malformed
+references as errors, and weakly-resolvable references (e.g.
+SDD section refs that look mis-formatted) as warnings.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-014" name="Coverage-Gap Reporting">
+        <text><![CDATA[The linter shall compute coverage gaps — HLRs with no LLR or
+test linking to them, and LLRs with no test linking to them —
+and shall surface them as warnings; the Traceability template
+shall render them as explicit rows so gaps are never silently
+hidden.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="5"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-015" name="Metadata Completeness">
+        <text><![CDATA[The linter shall verify that every Jinja2 template under
+`tools/templates/` has a matching `<metadata><document id="…">`
+entry and that document IDs are unique; missing or duplicate
+entries shall be reported as errors.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-042" name="Warnings Are Never Silently Suppressed">
+        <text><![CDATA[The linter and every surface that consumes its findings shall
+treat warnings as first-class output: warnings shall not be
+downgraded to keep CI green, and any tool that aggregates
+findings (the Problems panel, the `ci` umbrella, the
+Traceability template's coverage-gap rows) shall display them
+verbatim. The only legitimate way to silence a finding is to
+fix the underlying issue or document the gap explicitly in
+`Traceability.md`.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="7"/>
+          <trace target="SDD" ref="13"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="5" title="JSON-RPC Sidecar">
+      <intro><![CDATA[Requirements covering the long-running sidecar
+([SDD §8](SDD.md#8)) that is the only backend any UI surface
+calls into.]]></intro>
+
+      <hlr id="HLR-016" name="JSON-RPC Wire Contract">
+        <text><![CDATA[The sidecar shall speak JSON-RPC 2.0 over line-delimited
+JSON on stdin/stdout, shall correlate requests and responses
+by numeric `id`, and shall return errors as standard
+JSON-RPC error objects so any client (extension, web form,
+CI script) can interoperate with the same wire format.]]></text>
+        <traces>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-017" name="One Backend, Many Surfaces">
+        <text><![CDATA[The sidecar shall be the only component that performs
+parsing, rendering, linting, structural merging, or AI
+requests; UI surfaces shall not re-implement any of these
+operations and shall route every call through the sidecar.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-018" name="Whitespace-Preserving Writes">
+        <text><![CDATA[When the sidecar writes back to `doc/Project.xml` (via
+`apply_edit` or after a structural merge) it shall preserve
+comments, CDATA sections, attribute order, and whitespace so
+that diffs reflect the user's intent rather than the
+serializer's preferences.]]></text>
+        <traces>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-019" name="Atomic Validate-then-Write">
+        <text><![CDATA[`apply_edit` shall apply each JSON Patch on a working copy
+of the parsed tree, run XSD plus lint validation, and only
+on success persist the result to `doc/Project.xml`; failures
+shall leave the on-disk file untouched and shall return the
+validation findings to the caller.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-043" name="Cross-Surface Output Equivalence">
+        <text><![CDATA[For a given `doc/Project.xml`, the CLI, the JSON-RPC sidecar,
+the VS Code extension, and the planned web form shall return
+byte-identical lint findings (same `code`, severity, line, and
+column) and byte-identical rendered Markdown for every
+generated document; divergence between any two surfaces shall
+be a release-blocking defect.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="8"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="6" title="VS Code Extension Authoring Surface">
+      <intro><![CDATA[Requirements covering the in-editor authoring surface
+([SDD §11–§19](SDD.md#11)). The extension is the primary
+delivery vehicle for the "no hand-written XML on the
+critical path" goal in [SDD §2.2](SDD.md#22).]]></intro>
+
+      <hlr id="HLR-020" name="Extension Activation">
+        <text><![CDATA[The extension shall activate on workspaces containing
+`doc/Project.xml`, shall declare `redhat.vscode-xml` as an
+extension dependency so users get XSD-backed XML editing for
+free, and shall declare `untrustedWorkspaces.supported =
+"limited"` so the deterministic surfaces remain available in
+untrusted workspaces while AI surfaces are gated off.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-021" name="Sidecar Lifecycle">
+        <text><![CDATA[The extension shall spawn `tools/project_io.py` lazily on
+first call, shall correlate JSON-RPC responses by id, shall
+stream the sidecar's stderr to a dedicated VS Code
+`OutputChannel`, and shall tear the process down on
+extension deactivate.]]></text>
+        <traces>
+          <trace target="SDD" ref="8"/>
+          <trace target="SDD" ref="14"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-022" name="Project Spec Tree View">
+        <text><![CDATA[The extension shall contribute a "Project Spec" Activity Bar
+view that renders one root node per payload kind, populated
+from the sidecar's `parse_to_json` response; from Phase 2.5
+the contributed nodes shall be derived from the schema's
+UI-hint registry rather than from hard-coded TypeScript.]]></text>
+        <traces>
+          <trace target="SDD" ref="3"/>
+          <trace target="SDD" ref="11"/>
+          <trace target="SDD" ref="12"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-023" name="Lint Diagnostics in the Problems Panel">
+        <text><![CDATA[The extension shall mirror every lint finding into VS Code's
+Problems panel as a `Diagnostic`, preserving the finding's
+stable `code`, line, column, and xpath so Quick Fixes,
+filters, and CI integrations can act on it.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="13"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-024" name="Reveal in XML">
+        <text><![CDATA[The extension shall provide a `Reveal in Project.xml` command
+that, given an `(elementName, idAttr, idValue)` triple from
+any surface, opens `doc/Project.xml` and selects the matching
+element via the generic locator helper.]]></text>
+        <traces>
+          <trace target="SDD" ref="15"/>
+          <trace target="SDD" ref="16"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-025" name="Quick Fixes for Common Findings">
+        <text><![CDATA[The extension shall provide payload-agnostic Quick Fixes for
+the most common lint findings (broken trace ref, malformed
+ID, missing-document metadata, missing-test gap), keyed on
+the finding's stable `code` so new fixes are added by table
+entry rather than per-payload code.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="13"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-026" name="Structured Form Editing">
+        <text><![CDATA[The extension shall provide a form webview for every payload
+element kind whose JSON Schema is derived at runtime from
+the relevant XSD subtree plus per-field `ui:form` hints, so
+that adding a new field is a schema-and-hint change rather
+than a TypeScript change.]]></text>
+        <traces>
+          <trace target="SDD" ref="3"/>
+          <trace target="SDD" ref="18"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-027" name="Side-by-Side Markdown Preview">
+        <text><![CDATA[The extension shall offer a side-by-side Markdown preview
+for each generated document, populated by calling the
+sidecar's `render` method against an in-memory virtual
+document so no preview ever writes to disk; the preview
+shall refresh on save when `projectXml.previewOnSave` is
+enabled.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="8"/>
+          <trace target="SDD" ref="18"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-028" name="Guided Authoring Walkthrough">
+        <text><![CDATA[The extension shall contribute a VS Code Walkthrough that
+steps a new user through bootstrap → PVD → SDD → HLRs → LLRs
+→ tests → render & commit, with each step's completion check
+derived from the underlying file or count state rather than
+from a separately-maintained checklist.]]></text>
+        <traces>
+          <trace target="SDD" ref="19"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="7" title="AI Authoring Pipeline">
+      <intro><![CDATA[Requirements covering the AI co-author surface
+([SDD §10](SDD.md#10) and [SDD §20](SDD.md#20)). Every
+requirement here is a Phase 5 deliverable in
+[SDP](SDP.md); the contracts are frozen now so the
+deterministic surfaces below them can be built without
+guessing how AI will plug in.]]></intro>
+
+      <hlr id="HLR-029" name="Grounded AI Requests">
+        <text><![CDATA[Every AI request shall include a deterministically-assembled
+grounding bundle (schema subtree, `Schema_Reference.md`
+excerpt, PVD excerpt, sibling items, current lint state of
+the target) capped by `projectXml.ai.maxContextTokens`; the
+schema and the user intent shall never be dropped by the
+packer when truncation is required.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-030" name="Typed AI Responses">
+        <text><![CDATA[Every named AI intent shall declare a JSON Schema for its
+response and the AI pipeline shall reject any response that
+does not validate against that schema; raw XML responses
+from the model shall never be accepted.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-031" name="Validate-then-Retry Loop">
+        <text><![CDATA[The AI pipeline shall apply each schema-valid response as a
+JSON Patch on a copy of the tree, run XSD plus lint, and on
+failure retry up to `projectXml.ai.maxRetries` times with the
+validator's findings fed back as a correction prompt; once
+the budget is exhausted the suggestion and the failures shall
+be surfaced to the user instead of being written.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="10"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-032" name="Diff Preview Before Write">
+        <text><![CDATA[No AI-authored edit shall be persisted to `doc/Project.xml`
+without first being shown to the user in a diff preview that
+the user explicitly accepts; `projectXml.ai.autoApplyValidated`
+shall default to false and shall be honoured even for
+fully-validated suggestions.]]></text>
+        <traces>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-033" name="AI Provenance Logging">
+        <text><![CDATA[Each accepted or rejected AI suggestion shall be appended
+to `.edit_doc/ai_history.jsonl` with timestamp, intent name,
+model identifier, prompt hash, accept/reject outcome, and
+final validator state, when
+`projectXml.ai.logHistory` is enabled.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-044" name="Graceful Degradation Without an AI Model">
+        <text><![CDATA[When no language model is available
+(`vscode.lm.selectChatModels` returns an empty set), every AI
+surface shall hide itself cleanly — chat participant
+unregistered, AI-suggest Quick Fixes suppressed, AI commands
+hidden — and every deterministic surface (tree, diagnostics,
+code lenses, form panels, render, Stage A merge) shall
+continue to function unchanged.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="8"/>
+          <trace target="SDD" ref="10"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-045" name="AI Surfaces Disabled in Untrusted Workspaces">
+        <text><![CDATA[The extension shall declare
+`untrustedWorkspaces.supported = "limited"` and shall block
+activation of every AI surface (chat participant, right-click
+actions, AI Quick Fixes, AI-mediated merge resolution) until
+the user explicitly trusts the workspace; the deterministic
+surfaces shall remain available in untrusted mode.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-048" name="AI-Assisted Drafting Across Every Payload Kind">
+        <text><![CDATA[The AI authoring pipeline shall provide a named drafting
+intent for every payload kind that contributes to a generated
+document — SDD modules and components (`draft.module`), HLRs
+(`draft.hlr`), LLRs (`draft.llr`), and tests (`draft.test`) —
+so that a developer can produce a schema-valid first draft of
+*any* element in the SDD → HLR → LLR → Test stack from natural
+language plus the existing project context, without leaving
+the editor and without ever hand-authoring XML.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-049" name="AI-Assisted Expansion Down the Stack">
+        <text><![CDATA[The AI pipeline shall provide expansion intents that walk the
+SDD → HLR → LLR → Test stack: `expand.hlr_to_llrs` shall
+draft a candidate set of LLRs for a selected HLR with traces
+pre-populated, and an equivalent intent shall draft test
+purposes for a selected LLR with traces pre-populated. Each
+expansion result shall pass through the same XSD + lint
+pipeline as a manual edit before any write.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-050" name="AI-Assisted Review of Every Item">
+        <text><![CDATA[The AI pipeline shall provide a `review.item` intent that,
+given any HLR, LLR, test, or SDD module, returns advisory
+findings about clarity, completeness, and alignment with the
+upstream item it traces to (PVD vision for HLRs, HLR for LLRs,
+LLR/HLR for tests, SDD design goals for modules). Review
+output shall be advisory only — surfaced in the chat
+participant or as inline diagnostics — and shall never apply
+edits without an explicit user accept.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-051" name="AI-Assisted Trace Suggestion and Gap Fill">
+        <text><![CDATA[The AI pipeline shall provide a `suggest.traces` intent that,
+given a payload element, proposes plausible upstream
+`<trace>` targets and a `gap.fix` intent that, given a
+coverage-gap warning from the linter, drafts the missing
+LLR or test that would close it. Both intents shall pre-fill
+the suggestion with stable IDs and route through the
+validate-then-retry pipeline before any write.]]></text>
+        <traces>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="10"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-052" name="AI-Assisted PVD Ghostwriting">
+        <text><![CDATA[The AI pipeline shall provide a guided ghostwriting flow for
+the hand-authored `doc/PVD.md`: when a developer asks for
+help on the PVD, the AI shall identify thin or missing
+sections by structure (placeholders, single-sentence
+sections expected to be paragraphs, lists with one item where
+multiple are expected), ask the developer targeted questions
+to elicit direction, and only then draft prose in the existing
+voice and heading style. AI shall never invent product
+direction (vision, scope, success metrics, roadmap) without
+the developer's explicit answer, and PVD edits shall pass
+through the same diff-preview gate as Project.xml edits
+([HLR-032](#HLR-032)).]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-053" name="AI Surfaces in the Project Spec Tree">
+        <text><![CDATA[Every node in the "Project Spec" tree view that represents a
+payload element shall offer the applicable AI authoring
+actions (`Draft / Expand / Review / Suggest traces / Fix gap
+with AI`) as context-menu commands derived from the schema's
+UI-hint registry; the available actions per node shall be
+discovered from the registry, not hard-coded per element kind,
+so a new payload kind gains the AI surface for free.]]></text>
+        <traces>
+          <trace target="SDD" ref="3"/>
+          <trace target="SDD" ref="10"/>
+          <trace target="SDD" ref="12"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="8" title="Structured Merge Resolution">
+      <intro><![CDATA[Requirements covering the two-stage merge pipeline
+([SDD §9](SDD.md#9) deterministic Stage A,
+[SDD §20](SDD.md#20) AI-mediated Stage B). All Phase 5.5
+deliverables in [SDP](SDP.md).]]></intro>
+
+      <hlr id="HLR-034" name="Deterministic Structural Merge (Stage A)">
+        <text><![CDATA[The structured merger shall perform a deterministic three-way
+merge keyed by the stable identifiers of every payload
+element, shall union additions whose IDs do not collide,
+shall union `<traces>` entries by `(target, ref)` tuple, and
+shall recompute `<metadata>/<counts>` from the merged tree.]]></text>
+        <traces>
+          <trace target="SDD" ref="9"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-035" name="Residual Conflict Reporting">
+        <text><![CDATA[Stage A shall emit overlapping body edits, divergent trace
+targets, ID renames, and schema-version bumps as a
+structured list of residual `Conflict` records rather than
+guessing a resolution; the AI pipeline (Stage B) consumes
+that list.]]></text>
+        <traces>
+          <trace target="SDD" ref="9"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-036" name="Merge Editor Integration">
+        <text><![CDATA[The extension shall expose `projectXml.resolveMergeConflicts`,
+shall pull the `:1`/`:2`/`:3` blobs of `doc/Project.xml` via
+the `git` extension API, shall call `merge_three_way`, and
+shall present each Stage B suggestion as a distinct region
+in VS Code's three-way merge editor that the user accepts
+or rejects per region; merge resolutions shall never auto-land.]]></text>
+        <traces>
+          <trace target="SDD" ref="9"/>
+          <trace target="SDD" ref="20"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="9" title="Developer and CI Tooling">
+      <intro><![CDATA[Requirements covering the convenience tooling layer
+([SDD §7 Makefile](SDD.md#7)) and the operational invariants
+that keep CI healthy.]]></intro>
+
+      <hlr id="HLR-037" name="Cross-Platform Prerequisite Installation">
+        <text><![CDATA[`tools/Makefile` shall detect the host OS family from
+`uname -s` plus `/etc/os-release` (`debian`, `fedora`,
+`arch`, `macos`) and dispatch to a matching `prereqs-*`
+recipe that installs the toolchain documented in
+[SDP §0](SDP.md), with sudo auto-detected so the same
+recipes work for a developer with `sudo` and for a
+CI container running as root.]]></text>
+        <traces>
+          <trace target="SDD" ref="7"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-038" name="Slim CI Prerequisites Path">
+        <text><![CDATA[`tools/Makefile` shall provide a `prereqs-ci` target that
+installs only the headless toolchain (Python, Node, libxml2,
+git) and omits VS Code, `vsce`, and `gh` so headless CI
+runners do not pull desktop binaries unnecessarily.]]></text>
+        <traces>
+          <trace target="SDD" ref="7"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-039" name="CI Umbrella Target">
+        <text><![CDATA[`tools/Makefile` shall provide a `ci` umbrella target that
+runs lint, XSD validation, render of every generated
+document, the pytest suite under `test/`, and the VS Code
+extension type-check + bundle, in fail-fast order; CI shall
+invoke this single target.]]></text>
+        <traces>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="7"/>
+          <trace target="SDD" ref="11"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-040" name="Reproducible Project Bootstrap">
+        <text><![CDATA[`tools/Makefile bootstrap` shall create a per-project
+Python venv at `.venv`, install the renderer/linter/test
+dependencies (jinja2, lxml, pytest, xmlschema), run
+`npm install` in the VS Code extension directory, and
+install the `redhat.vscode-xml` extension when the `code`
+CLI is available; the target shall be idempotent so repeated
+invocations are safe.]]></text>
+        <traces>
+          <trace target="SDD" ref="7"/>
+          <trace target="SDD" ref="11"/>
+        </traces>
+      </hlr>
+    </section>
+
+    <section number="10" title="Cross-Cutting Quality Attributes">
+      <intro><![CDATA[Cross-cutting requirements that span multiple components and
+encode the product principles in [PVD §6](PVD.md) that did not
+have a natural home in any single component-scoped section
+above.]]></intro>
+
+      <hlr id="HLR-046" name="Minimal Core Dependencies">
+        <text><![CDATA[The renderer (`tools/render_doc.py`) and the linter
+(`tools/lint_project.py`) shall depend only on the Python
+standard library plus Jinja2 on the spec-generation hot path;
+rich-XML facilities (`lxml`, `xmllint`) shall remain optional
+and the linter shall degrade gracefully when they are absent
+so a fresh checkout can render and validate every generated
+document without any extra installs beyond `pip install jinja2`.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="4"/>
+          <trace target="SDD" ref="5"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-047" name="Self-Verification of TraceR's Own Spec Stack">
+        <text><![CDATA[TraceR shall ship with its own populated `doc/Project.xml`,
+fully generated SDD/HLRs/LLRs/STP/Traceability documents, and
+a self-applied lint pass; the repository's own `ci` target
+(see [HLR-039](#HLR-039)) shall fail when its own
+`doc/Project.xml` lints with any error or when any generated
+document is out of date with respect to the source XML.]]></text>
+        <traces>
+          <trace target="SDD" ref="2.2"/>
+          <trace target="SDD" ref="5"/>
+          <trace target="SDD" ref="7"/>
+        </traces>
+      </hlr>
+    </section>
+
   </hlrs>
 
   <!-- Low-Level Requirements (see Schema_Reference.md §6). -->
