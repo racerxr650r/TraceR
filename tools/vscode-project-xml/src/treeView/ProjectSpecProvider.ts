@@ -9,7 +9,8 @@
 
 import * as vscode from 'vscode';
 import { ProjectIoClient, ParsedProject } from '../sidecar';
-import { getProjectXmlPath } from '../util/paths';
+import { BadgeIndex } from '../util/badges';
+import { getConfig, getProjectXmlPath } from '../util/paths';
 
 export interface RevealLocator {
     readonly tag: string;
@@ -40,6 +41,7 @@ export class ProjectSpecProvider
     readonly onDidChangeTreeData = this._onDidChange.event;
 
     private cached: ProjectSpecNode[] | undefined;
+    private badges: BadgeIndex | undefined;
 
     constructor(
         private readonly client: ProjectIoClient,
@@ -47,6 +49,19 @@ export class ProjectSpecProvider
     ) {}
 
     refresh(): void {
+        this.cached = undefined;
+        this._onDidChange.fire();
+    }
+
+    /**
+     * Slice E: install the badge index built from the most recent
+     * lint result. Stored on the provider rather than passed through
+     * every getChildren call so the lint and tree refresh paths can
+     * stay independent. Callers should invoke `refresh()` afterwards
+     * to redraw the tree.
+     */
+    setBadges(badges: BadgeIndex | undefined): void {
+        this.badges = badges;
         this.cached = undefined;
         this._onDidChange.fire();
     }
@@ -66,7 +81,8 @@ export class ProjectSpecProvider
             const xmlPath = getProjectXmlPath();
             const params = xmlPath ? { xml_path: xmlPath } : {};
             const project = await this.client.parseToJson(params);
-            this.cached = buildTopLevel(project);
+            const badges = badgesEnabled() ? this.badges : undefined;
+            this.cached = buildTopLevel(project, badges);
             return this.cached;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -83,17 +99,34 @@ export class ProjectSpecProvider
     }
 }
 
-function buildTopLevel(project: ParsedProject): ProjectSpecNode[] {
+function buildTopLevel(
+    project: ParsedProject,
+    badges: BadgeIndex | undefined,
+): ProjectSpecNode[] {
     return [
-        buildHlrsNode(project),
-        buildLlrsNode(project),
+        buildHlrsNode(project, badges),
+        buildLlrsNode(project, badges),
         buildTestsNode(project),
         buildSddNode(project),
         buildStpNode(project),
     ];
 }
 
-function buildHlrsNode(project: ParsedProject): ProjectSpecNode {
+function badgesEnabled(): boolean {
+    return getConfig().get<boolean>('showCoverageBadges', true);
+}
+
+function decorate(
+    label: string,
+    badge: string | undefined,
+): string {
+    return badge ? `${badge} ${label}` : label;
+}
+
+function buildHlrsNode(
+    project: ParsedProject,
+    badges: BadgeIndex | undefined,
+): ProjectSpecNode {
     const sections = project.hlrs ?? [];
     const total = (project.flat_hlrs ?? []).length
         || sections.reduce((n, s) => n + (s.hlrs?.length ?? 0), 0);
@@ -115,7 +148,10 @@ function buildHlrsNode(project: ParsedProject): ProjectSpecNode {
                 hlrs.map(
                     (h) =>
                         new ProjectSpecNode(
-                            `${h.id}${h.name ? ` ${h.name}` : ''}`,
+                            decorate(
+                                `${h.id}${h.name ? ` ${h.name}` : ''}`,
+                                badges?.badgeFor('hlr', h.id),
+                            ),
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
                             { tag: 'hlr', value: h.id },
@@ -128,7 +164,10 @@ function buildHlrsNode(project: ParsedProject): ProjectSpecNode {
     return node;
 }
 
-function buildLlrsNode(project: ParsedProject): ProjectSpecNode {
+function buildLlrsNode(
+    project: ParsedProject,
+    badges: BadgeIndex | undefined,
+): ProjectSpecNode {
     const groups = project.llrs ?? [];
     const total = (project.flat_llrs ?? []).length
         || groups.reduce((n, g) => n + (g.llrs?.length ?? 0), 0);
@@ -148,7 +187,7 @@ function buildLlrsNode(project: ParsedProject): ProjectSpecNode {
                 llrs.map(
                     (l) =>
                         new ProjectSpecNode(
-                            l.id,
+                            decorate(l.id, badges?.badgeFor('llr', l.id)),
                             vscode.TreeItemCollapsibleState.None,
                             undefined,
                             { tag: 'llr', value: l.id },

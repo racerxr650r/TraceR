@@ -2278,6 +2278,24 @@ implement it.]]></text>
           <trace target="SDD" ref="2.2"/>
         </traces>
       </hlr>
+
+      <hlr id="HLR-057" name="Coverage Status Badges in the Tree">
+        <text><![CDATA[The Project Spec tree view shall decorate every HLR and
+LLR leaf node whose id is cited by a current lint finding
+with a status badge: ❌ when any error finding cites it
+(e.g. broken trace, malformed id) and ⚠ when only warnings
+do (e.g. coverage gaps). The badge set shall be derived
+from the structured `Findings.items` returned by the
+linter (matched on the finding's internal `code`), so a
+single source — the linter — drives both the Problems
+panel and the tree decoration. The decoration shall be
+gated on the `projectXml.showCoverageBadges` setting so
+users who prefer an undecorated tree can turn it off
+without losing the underlying lint output.]]></text>
+        <traces>
+          <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
     </section>
 
   </hlrs>
@@ -3032,6 +3050,44 @@ implement it.]]></text>
       </llr>
     </function>
 
+    <function number="19"
+              title="`BadgeIndex` ([tools/vscode-project-xml/src/util/badges.ts](../tools/vscode-project-xml/src/util/badges.ts))"
+              name="BadgeIndex"
+              source="tools/vscode-project-xml/src/util/badges.ts">
+      <intro><![CDATA[Phase 2.5 Slice E: a small projection of the linter's structured `Findings.items[]` output onto the HLR / LLR ids each finding mentions, so the tree provider can decorate the matching leaf nodes with a coverage status badge. The linter remains the single source of truth — the badge set is built each time `lint` runs and replaces any prior set.]]></intro>
+
+      <llr id="LLR-BDG-01">
+        <text><![CDATA[`buildBadgeIndex(items)` shall iterate the structured lint findings (`severity`, `message`, `code`) returned in `Findings.to_dict()["items"]` and shall record every `HLR-NNN` and `LLR-XXX-NN` id mentioned in each error or warning message under the corresponding tag (`'hlr'`, `'llr'`); notes shall not contribute to the badge set so informational findings do not clutter the tree.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BDG-02">
+        <text><![CDATA[`BadgeIndex.badgeFor(tag, id)` shall return `'❌'` when any error finding cites the id, `'⚠'` when only warnings do, and `undefined` otherwise; an id cited by both an error and a warning shall always badge as `'❌'` so the most severe state surfaces regardless of finding order.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+          <trace target="HLR" ref="HLR-042" name="Warnings Are Never Silently Suppressed"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BDG-03">
+        <text><![CDATA[`ProjectSpecProvider.setBadges(idx)` shall accept the index produced by `buildBadgeIndex` (or `undefined` to clear), shall drop the cached tree, and shall fire `onDidChangeTreeData` so VS Code re-requests the leaf labels with the new decorations applied; the extension's activate path shall call this method after every `LintDiagnosticsProvider.run()` so the Problems panel and the tree decorations stay in lock-step.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BDG-04">
+        <text><![CDATA[The tree decoration shall be gated on the `projectXml.showCoverageBadges` setting (boolean, default true). When disabled, `buildTopLevel` shall ignore the stored badge index and emit undecorated labels so a user who prefers an unannotated tree can opt out without losing the underlying Problems-panel output.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-057" name="Coverage Status Badges in the Tree"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
@@ -3602,6 +3658,82 @@ implement it.]]></text>
         <traces>
           <trace target="LLR" ref="LLR-MET-01"/>
           <trace target="LLR" ref="LLR-RAL-01"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/badges.test.ts" role="unit-ts" count="10">
+      <header><![CDATA[Tier-1 (Mocha + ts-node, no VS Code host) unit tests for the lint-driven badge index in tools/vscode-project-xml/src/util/badges.ts. Drives `buildBadgeIndex` with hand-rolled `LintFinding` arrays so the projection from finding messages onto HLR / LLR ids and the error-wins-over-warning rule are pinned without spawning the Python sidecar.]]></header>
+
+      <test name="marks HLR ids cited by warnings with ⚠">
+        <purpose><![CDATA[Verifies LLR-BDG-01 and LLR-BDG-02: a single warning finding citing `HLR-001` produces the `'⚠'` badge for that id under the `'hlr'` tag.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="marks LLR ids cited by warnings with ⚠">
+        <purpose><![CDATA[Verifies LLR-BDG-01 and LLR-BDG-02: a warning finding citing an `LLR-XXX-NN` id produces the `'⚠'` badge for that id under the `'llr'` tag.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="marks ids cited by errors with ❌">
+        <purpose><![CDATA[Verifies LLR-BDG-02: an error finding citing an HLR id produces the `'❌'` badge.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="errors win over warnings when both cite the same id">
+        <purpose><![CDATA[Pins the severity-ordering rule in LLR-BDG-02: when the same id appears in both a warning and an error finding (in either order), the badge is always `'❌'`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined for ids that no finding mentions">
+        <purpose><![CDATA[Verifies LLR-BDG-02: ids no current finding cites have no badge, so the tree provider emits an undecorated label.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="ignores notes (info-only findings carry no badge)">
+        <purpose><![CDATA[Verifies LLR-BDG-01: `note`-severity findings (informational, e.g. validator-path notes) do not contribute to the badge set, so the tree is not cluttered by ids that lint did not flag as a real problem.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+        </traces>
+      </test>
+
+      <test name="handles undefined items (no lint result yet)">
+        <purpose><![CDATA[Verifies LLR-BDG-03: `buildBadgeIndex(undefined)` returns an empty `BadgeIndex`, so the tree provider can call `setBadges` unconditionally during the initial load before the first lint run completes.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-03"/>
+        </traces>
+      </test>
+
+      <test name="does not return a badge for unrelated tags (test, file)">
+        <purpose><![CDATA[Verifies LLR-BDG-02: only `'hlr'` and `'llr'` tags carry a badge today; lookups for `'test'` or `'file'` always return `undefined` so future lint findings on those tags can be added without changing existing tree behaviour.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
+        </traces>
+      </test>
+
+      <test name="extracts every id mentioned in a single message">
+        <purpose><![CDATA[Verifies LLR-BDG-01: a single finding message that mentions both an HLR id and an LLR id (e.g. a broken-trace error) badges both ids, matching the existing `rangeForFinding` extraction rules used by the diagnostics provider.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-01"/>
+        </traces>
+      </test>
+
+      <test name="exposes the raw severity for callers that need finer control">
+        <purpose><![CDATA[Verifies LLR-BDG-02: `BadgeIndex.severityFor(tag, id)` returns the underlying severity (`'error'` / `'warning'` / `undefined`) so future consumers (status-bar item, AI surfaces) can branch on the raw severity without parsing the emoji badge.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-02"/>
         </traces>
       </test>
     </file>

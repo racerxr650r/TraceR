@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { DocumentInfo, ProjectIoClient } from './sidecar';
 import { ProjectSpecProvider } from './treeView/ProjectSpecProvider';
 import { LintDiagnosticsProvider } from './diagnostics/LintDiagnosticsProvider';
+import { buildBadgeIndex } from './util/badges';
 import { revealInXml } from './commands/revealInXml';
 import { renderAll, renderAndPreview } from './commands/render';
 import {
@@ -84,13 +85,15 @@ export function activate(context: vscode.ExtensionContext): void {
             treeProvider.refresh();
             lensProvider.refresh();
             previewProvider.markStale();
-            await diagnostics.run();
+            const result = await diagnostics.run();
+            treeProvider.setBadges(buildBadgeIndex(result?.items));
             await syncDynamicRenderCommands(
                 sidecar, previewProvider, dynamicRenderCommands, context, output,
             );
         }),
         vscode.commands.registerCommand('projectXml.lint', async () => {
             const result = await diagnostics.run();
+            treeProvider.setBadges(buildBadgeIndex(result?.items));
             if (result) {
                 const e = result.errors.length;
                 const w = result.warnings.length;
@@ -126,7 +129,9 @@ export function activate(context: vscode.ExtensionContext): void {
             treeProvider.refresh();
             lensProvider.refresh();
             if (getConfig().get<boolean>('autoLintOnChange', true)) {
-                void diagnostics.run();
+                void diagnostics.run().then((result) => {
+                    treeProvider.setBadges(buildBadgeIndex(result?.items));
+                });
             }
             if (getConfig().get<boolean>('previewOnSave', true)) {
                 // Drop cached renders for every tracked preview so any
@@ -141,7 +146,9 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     // Initial population.
-    void diagnostics.run();
+    void diagnostics.run().then((result) => {
+        treeProvider.setBadges(buildBadgeIndex(result?.items));
+    });
 }
 
 export function deactivate(): void {
