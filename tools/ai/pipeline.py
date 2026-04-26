@@ -281,6 +281,21 @@ def run(
                 bundle_estimated_tokens=bundle.estimated_tokens,
             )
 
+        # Merge resolution: no JSON Patch, no apply_edit. The response
+        # is fed to ``project_merge.apply_resolution`` on the caller's
+        # side which substitutes it into the merged XML and re-lints
+        # the whole tree (Phase 5.5, HLR-034).
+        if intent.kind == "merge":
+            return AiResult(
+                kind="merge_resolved",
+                intent=intent_id,
+                target=target.to_dict(),
+                retries=attempt,
+                response=parsed,
+                bundle_estimated_tokens=bundle.estimated_tokens,
+            )
+
+
         # Authoring intent: translate → apply.
         try:
             patch = translate(
@@ -519,6 +534,24 @@ def evaluate(
                 response=parsed,
                 markdown=md,
                 advisory=list(questions),
+                bundle_estimated_tokens=bundle_tokens,
+            ),
+        )
+
+    if intent.kind == "merge":
+        # Phase 5.5: no patch, no apply_edit. The TS layer feeds the
+        # response into ``project_merge.apply_resolution`` and lints
+        # the post-substitution tree.
+        return StepResult(
+            kind="merge_resolved",
+            retries=retry_count,
+            bundle_estimated_tokens=bundle_tokens,
+            result=AiResult(
+                kind="merge_resolved",
+                intent=intent_id,
+                target=target.to_dict(),
+                retries=retry_count,
+                response=parsed,
                 bundle_estimated_tokens=bundle_tokens,
             ),
         )

@@ -9,10 +9,16 @@ Each intent owns:
 
 * ``id``        — dotted intent name (e.g. ``"draft.hlr"``).
 * ``label``     — human-readable label for menus and chat.
-* ``kind``      — one of ``"authoring"`` | ``"pvd"`` | ``"advisory"``.
+* ``kind``      — one of ``"authoring"`` | ``"pvd"`` | ``"advisory"`` |
+                  ``"merge"``.
                   ``advisory`` intents (``review.item``) never produce
                   a JSON Patch; ``pvd`` intents (``draft.pvd``) target
-                  ``doc/PVD.md`` instead of ``Project.xml``.
+                  ``doc/PVD.md`` instead of ``Project.xml``; ``merge``
+                  intents (``merge.*``) target a residual conflict
+                  from ``project_merge.merge_three_way`` and return
+                  resolution payloads consumed by
+                  ``project_merge.apply_resolution`` (Phase 5.5,
+                  HLR-034).
 * ``targets``   — ``ui:treeNode`` payload kinds this intent applies to
                   (e.g. ``("Hlr",)``). Empty tuple means "global".
 * ``slash``     — slash command for the chat participant.
@@ -153,6 +159,47 @@ _REGISTRY: tuple[IntentSpec, ...] = (
         slash="gap-fill",
         schema="gap.fix.schema.json",
         prompt="gap.fix.md",
+    ),
+    # Phase 5.5 — AI-assisted merge conflict resolution (HLR-034).
+    # Each ``merge.*`` intent runs through the same validate→retry
+    # pipeline as the authoring intents but does not produce a JSON
+    # Patch: the resolution payload is substituted into the merged
+    # XML by ``project_merge.apply_resolution`` on the TS side.
+    IntentSpec(
+        id="merge.body",
+        label="Resolve merge body conflict with AI",
+        kind="merge",
+        targets=("Hlr", "Llr", "Test", "SddModule"),
+        slash="resolve-conflicts",
+        schema="merge.body.schema.json",
+        prompt="merge.body.md",
+    ),
+    IntentSpec(
+        id="merge.trace",
+        label="Resolve merge trace conflict with AI",
+        kind="merge",
+        targets=("Hlr", "Llr", "Test"),
+        slash="resolve-conflicts",
+        schema="merge.trace.schema.json",
+        prompt="merge.trace.md",
+    ),
+    IntentSpec(
+        id="merge.rename",
+        label="Resolve merge id collision with AI",
+        kind="merge",
+        targets=("Hlr", "Llr", "Test"),
+        slash="resolve-conflicts",
+        schema="merge.rename.schema.json",
+        prompt="merge.rename.md",
+    ),
+    IntentSpec(
+        id="merge.schema_bump",
+        label="Resolve schema_version conflict with AI",
+        kind="merge",
+        targets=("Project",),
+        slash="resolve-conflicts",
+        schema="merge.schema_bump.schema.json",
+        prompt="merge.schema_bump.md",
     ),
 )
 

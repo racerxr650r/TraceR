@@ -14,6 +14,7 @@ class IntentCatalogTests(unittest.TestCase):
             "draft.module", "draft.hlr", "draft.llr", "draft.test",
             "draft.pvd", "expand.hlr_to_llrs", "expand.llr_to_tests",
             "review.item", "suggest.traces", "gap.fix",
+            "merge.body", "merge.trace", "merge.rename", "merge.schema_bump",
         }
         self.assertEqual(set(registry.INTENTS.keys()), expected)
 

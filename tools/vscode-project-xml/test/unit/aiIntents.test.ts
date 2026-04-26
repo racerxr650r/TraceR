@@ -14,7 +14,7 @@ describe('ai/intents', () => {
         for (const i of INTENTS) {
             assert.ok(i.id, `intent missing id`);
             assert.ok(i.label, `intent ${i.id} missing label`);
-            assert.match(i.kind, /^(authoring|pvd|advisory)$/);
+            assert.match(i.kind, /^(authoring|pvd|advisory|merge)$/);
             assert.ok(i.slash, `intent ${i.id} missing slash`);
         }
     });
@@ -30,6 +30,10 @@ describe('ai/intents', () => {
             'expand.hlr_to_llrs',
             'expand.llr_to_tests',
             'gap.fix',
+            'merge.body',
+            'merge.rename',
+            'merge.schema_bump',
+            'merge.trace',
             'review.item',
             'suggest.traces',
         ]);
@@ -42,6 +46,7 @@ describe('ai/intents', () => {
             'draft-test',
             'expand',
             'gap-fill',
+            'resolve-conflicts',
             'review',
             'suggest-traces',
         ]);
