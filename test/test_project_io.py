@@ -231,7 +231,8 @@ class MethodsRegistryTests(unittest.TestCase):
             set(project_io.METHODS.keys()),
             {"lint", "render", "parse_to_json",
              "list_documents", "ui_hints_index", "init_project",
-             "apply_edit", "form_schema", "next_free_id"},
+             "apply_edit", "form_schema", "next_free_id",
+             "ai_request"},
         )
         for name, handler in project_io.METHODS.items():
             self.assertTrue(callable(handler), msg=f"{name!r} not callable")

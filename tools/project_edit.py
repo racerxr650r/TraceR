@@ -278,6 +278,7 @@ def apply_edit(
     xml_path: Path | str = PROJECT_XML,
     xsd_path: Path | str = PROJECT_XSD,
     expect_clean: bool = True,
+    dry_run: bool = False,
 ) -> ApplyEditResult:
     """Apply a list of JSON-Patch-like operations to ``Project.xml``.
 
@@ -309,6 +310,13 @@ def apply_edit(
         the result is written regardless and findings are returned
         for advisory display — used only by future AI-suggest flows
         that intentionally introduce a transient problem.
+    dry_run:
+        When True, the candidate is parsed, applied, and validated but
+        the on-disk file is **never** written, even when validation
+        passes. Used by :mod:`tools.ai.pipeline` to honour
+        ``projectXml.ai.autoApplyValidated=false`` (HLR-032): the same
+        validate path runs so the diff-preview surface gets a real
+        lint result, then the user explicitly accepts before any write.
     """
     if etree is None:
         raise ProjectXmlError(
@@ -371,6 +379,17 @@ def apply_edit(
             assert xml_path.read_bytes() == original_bytes
             return ApplyEditResult(
                 ok=False,
+                written=False,
+                findings=findings_dict,
+                operations_applied=applied,
+            )
+        if dry_run:
+            # Validation passed (or expect_clean=False) but the caller
+            # asked us not to write — the diff-preview surface owns
+            # the eventual write. Sanity check: file untouched.
+            assert xml_path.read_bytes() == original_bytes
+            return ApplyEditResult(
+                ok=ok,
                 written=False,
                 findings=findings_dict,
                 operations_applied=applied,

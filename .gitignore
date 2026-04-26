@@ -11,3 +11,7 @@ tools/__pycache__/
 
 # Test bytecode cache
 test/__pycache__/
+
+tools/ai/__pycache__/
+**/__pycache__/
+test_out.log
