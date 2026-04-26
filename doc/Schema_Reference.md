@@ -903,7 +903,7 @@ outcomes:
         name="project">` `xs:all` block (`minOccurs="0"`).
 2.  **Bump `schema_version`** on the `<project>` root in
     [doc/Project.xml](../doc/Project.xml) (current value is
-    `1.3`; bump to `1.4` for the next change).
+    `1.5`; bump to `1.6` for the next change).
 3.  **Edit [render_doc.py](../tools/render_doc.py):**
     *   Add a `build_<payload>(elem)` function returning a
         `SimpleNamespace` shaped exactly the way you want
