@@ -30,7 +30,7 @@ from render_doc import (
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PVD_PATH = REPO_ROOT / "doc" / "PVD.md"
 SDD_PATH = REPO_ROOT / "doc" / "SDD.md"
-SCHEMA_REFERENCE_PATH = REPO_ROOT / "doc" / "Schema_Reference.md"
+SCHEMA_REFERENCE_PATH = REPO_ROOT / "tools" / "Developers_Guide.md"
 
 # 4 chars ~= 1 token. Conservative; under-packs rather than over-packs.
 _CHARS_PER_TOKEN = 4

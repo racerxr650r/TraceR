@@ -151,7 +151,7 @@ These principles are the tie-breakers when requirements conflict.
     binary store, and no proprietary format. This rules out any
     feature that would require a runtime service to read the spec.
 3.  **Schema before tooling.** Every payload field is described in
-    `tools/project.xsd` and `Schema_Reference.md` before
+    `tools/project.xsd` and `tools/Developers_Guide.md` before
     any template, renderer, or UI consumes it. Schema bumps are
     versioned (`schema_version`). This rules out ad-hoc XML tags
     introduced by one tool.

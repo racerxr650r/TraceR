@@ -6,7 +6,7 @@
   "*Trace:*" footer. Project-specific content comes from the <hlrs>
   payload of doc/Project.xml.
 
-  Data shape (see doc/Schema_Reference.md for the full schema):
+  Data shape (see tools/Developers_Guide.md for the full schema):
 
       project.metadata.{title,version,date,author}
       project.name           — long project name
@@ -45,7 +45,7 @@
 
 {% if not project.hlrs -%}
 *No `<hlrs>` payload is present in [doc/Project.xml](Project.xml). Add
-an `<hlrs>` block (see [doc/Schema_Reference.md §5](../doc/Schema_Reference.md))
+an `<hlrs>` block (see [tools/Developers_Guide.md §5](../tools/Developers_Guide.md))
 and re-render to populate this document.*
 {%- else %}
 {% for sec in project.hlrs %}

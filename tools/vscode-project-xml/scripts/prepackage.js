@@ -9,6 +9,7 @@
 //     project_merge.py, project.xsd
 //   - templates/   (Jinja2 templates the renderer reads)
 //   - ai/          (sidecar AI pipeline package, when present)
+//   - User_Manual.md, Developers_Guide.md  (Phase 7 — bundled docs)
 //
 // Wipes any pre-existing `dist/python/` first so each package build
 // starts from a clean copy. Writes the source XSD's `version`
@@ -37,6 +38,14 @@ const PYTHON_FILES = [
 const PYTHON_DIRS = [
     'templates',
     'ai',
+];
+// Phase 7 (LLR-PKG-08): ship the user-facing documentation alongside
+// the Python toolchain so the Walkthrough's "Open the User Manual"
+// and "Open the Developer's Guide" steps work in any installed
+// extension, even without a workspace checkout.
+const DOC_FILES = [
+    'User_Manual.md',
+    'Developers_Guide.md',
 ];
 
 /** Recursively remove a directory if it exists. */
@@ -99,6 +108,14 @@ function main() {
             continue;
         }
         copyDir(src, path.join(DIST, name));
+    }
+
+    for (const name of DOC_FILES) {
+        const src = path.join(TOOLS_SRC, name);
+        if (!fs.existsSync(src)) {
+            throw new Error(`prepackage: missing required doc file ${src}`);
+        }
+        fs.copyFileSync(src, path.join(DIST, name));
     }
 
     const version = readSchemaVersion(path.join(DIST, 'project.xsd'));

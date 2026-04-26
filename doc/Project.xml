@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Project.xml — single source of truth for this project's spec stack.
-  See Schema_Reference.md for the schema reference.
+  See tools/Developers_Guide.md for the schema reference.
 
   This file was created by `render_doc.py` in init mode. Fill in the
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
@@ -29,7 +29,7 @@
     </counts>
   </metadata>
 
-  <!-- Software Design Document payload (see Schema_Reference.md §3). -->
+  <!-- Software Design Document payload (see tools/Developers_Guide.md §3). -->
   <sdd>
     <kind>Software Design Document</kind>
     <audience><![CDATA[the five personas named in [PVD §4](PVD.md):
@@ -149,7 +149,7 @@ explicitly in `Traceability.md`; surfaced as a lint warning and
 a tree-view badge. Never silently hidden.]]></term>
       <term name="Grounding bundle"><![CDATA[The deterministic packed payload (`tools/ai/context.py`) sent
 to the language model on every AI request: schema subtree,
-`Schema_Reference.md` excerpt, PVD excerpt, relevant SDD/HLR/LLR
+`tools/Developers_Guide.md` excerpt, PVD excerpt, relevant SDD/HLR/LLR
 context, sibling items, and the lint state of the target. Bounded
 by `projectXml.ai.maxContextTokens`.]]></term>
       <term name="Intent"><![CDATA[A named AI operation (`draft.hlr`, `draft.pvd`,
@@ -181,7 +181,7 @@ validate→retry pipeline as authoring intents.]]></term>
 required tools, risks).]]></ref>
       <ref><![CDATA[[tools/PLAN_vscode_extension.md](../tools/PLAN_vscode_extension.md) — companion
 phasing plan for the VS Code extension surface (Phases 1–5.5).]]></ref>
-      <ref><![CDATA[[Schema_Reference.md](Schema_Reference.md) —
+      <ref><![CDATA[[Developers_Guide.md](../tools/Developers_Guide.md) —
 human-facing schema reference; canonical for element shapes and
 attribute meanings.]]></ref>
       <ref><![CDATA[[tools/PLAN_web_form.md](../tools/PLAN_web_form.md) — companion
@@ -299,7 +299,7 @@ database, no server, no binary store, no proprietary format.
 This rules out any feature that would require a runtime service
 to read the spec. From [PVD §6 Principle 2](PVD.md).]]></goal>
       <goal name="Schema before tooling"><![CDATA[Every payload field is described in `tools/project.xsd` and
-documented in `Schema_Reference.md` before any template,
+documented in `tools/Developers_Guide.md` before any template,
 renderer, or UI consumes it. `schema_version` is bumped on
 breaking changes. From [PVD §6 Principle 3](PVD.md).]]></goal>
       <goal name="Minimal dependencies"><![CDATA[The core renderer and linter use only the Python standard
@@ -400,7 +400,7 @@ Schema for each form-target subtree on demand.]]></interface>
         <dependencies>
           <dep><![CDATA[None at runtime; this is a static schema file.]]></dep>
           <dep><![CDATA[Authoring depends on `xmllint` for local validation;
-`Schema_Reference.md` is the human-facing reference.]]></dep>
+`tools/Developers_Guide.md` is the human-facing reference.]]></dep>
         </dependencies>
       </module>
 
@@ -721,7 +721,7 @@ XSD + lint pipeline as manual edits.
 current checkout; the design below freezes the contract the
 sidecar's `ai_request` will satisfy.]]></purpose>
         <responsibility><![CDATA[`context.py` — `build_ai_context(target) -> bundle` packs
-the schema subtree, `Schema_Reference.md` excerpt,
+the schema subtree, `tools/Developers_Guide.md` excerpt,
 PVD excerpt, SDD/HLR/LLR context appropriate to the intent,
 sibling items as style anchors, and the lint state of the
 target. A deterministic packer enforces
@@ -775,7 +775,7 @@ above), which is the only entry point UI surfaces use; the
 TS side never imports `tools/ai/` directly.]]></interface>
         </interfaces>
         <dependencies>
-          <dep><![CDATA[`tools/project.xsd` and `Schema_Reference.md` for
+          <dep><![CDATA[`tools/project.xsd` and `tools/Developers_Guide.md` for
 the grounding bundle's schema and authoring-guidance
 sections.]]></dep>
           <dep><![CDATA[`tools/lint_project.py` for the validation gate.]]></dep>
@@ -1274,7 +1274,7 @@ resolution") rather than silently picking one side.]]></case>
       </type>
       <type name="Bundle" header="tools/ai/context.py" summary="Grounding bundle assembled per AI request. The deterministic packer enforces projectXml.ai.maxContextTokens; schema and user intent are never dropped.">
         <field name="schema_excerpt" type="string" desc="Relevant XSD subtree for the intent's target."/>
-        <field name="authoring_guide" type="string" desc="Relevant subtree of `Schema_Reference.md`."/>
+        <field name="authoring_guide" type="string" desc="Relevant subtree of `tools/Developers_Guide.md`."/>
         <field name="pvd_excerpt" type="string" desc="First N kb of `doc/PVD.md`."/>
         <field name="sdd_context" type="string" desc="Slim list or full module/component depending on intent."/>
         <field name="hlr_context" type="string" desc="Slim id+name list or full HLR depending on intent."/>
@@ -1336,7 +1336,7 @@ interfaces declared per module above.]]></other>
     </traceability>
   </sdd>
 
-  <!-- Software Test Plan payload (see Schema_Reference.md §4). -->
+  <!-- Software Test Plan payload (see tools/Developers_Guide.md §4). -->
   <stp>
 
     <introduction>
@@ -1371,7 +1371,7 @@ phase lands.]]></scope>
         <doc><![CDATA[[HLRs.md](HLRs.md) — high-level requirements that every test ultimately traces back to.]]></doc>
         <doc><![CDATA[[LLRs.md](LLRs.md) — function-level `shall` clauses that individual tests verify.]]></doc>
         <doc><![CDATA[[Traceability.md](Traceability.md) — forward and reverse matrices computed from the same `<traces>` data this STP uses.]]></doc>
-        <doc><![CDATA[[Schema_Reference.md](Schema_Reference.md) — the contract between `Project.xml`, the renderer, and the templates.]]></doc>
+        <doc><![CDATA[[Developers_Guide.md](../tools/Developers_Guide.md) — the contract between `Project.xml`, the renderer, and the templates.]]></doc>
       </related>
     </introduction>
 
@@ -1542,7 +1542,7 @@ verification backlog.]]></maintenance>
 
   </stp>
 
-  <!-- High-Level Requirements (see Schema_Reference.md §5). -->
+  <!-- High-Level Requirements (see tools/Developers_Guide.md §5). -->
   <hlrs>
 
     <section number="2" title="Source of Truth and Schema">
@@ -2038,7 +2038,7 @@ guessing how AI will plug in.]]></intro>
 
       <hlr id="HLR-029" name="Grounded AI Requests">
         <text><![CDATA[Every AI request shall include a deterministically-assembled
-grounding bundle (schema subtree, `Schema_Reference.md`
+grounding bundle (schema subtree, `tools/Developers_Guide.md`
 excerpt, PVD excerpt, sibling items, current lint state of
 the target) capped by `projectXml.ai.maxContextTokens`; the
 schema and the user intent shall never be dropped by the
@@ -2446,7 +2446,7 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
 
   </hlrs>
 
-  <!-- Low-Level Requirements (see Schema_Reference.md §6).
+  <!-- Low-Level Requirements (see tools/Developers_Guide.md §6).
 
        Coverage scope. The LLRs below cover the code that has shipped
        through SDP Phases 0-2: the Python core (render_doc.py,
@@ -2536,7 +2536,7 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
       </llr>
 
       <llr id="LLR-RND-04">
-        <text><![CDATA[`render_document` shall expose the `gh_slug` filter and the `project.*` cross-reference indexes documented in [doc/Schema_Reference.md §9](Schema_Reference.md) on every render so templates can link to SDD section anchors and traverse the SDD → HLR → LLR → Test stack without recomputing relations in Jinja.]]></text>
+        <text><![CDATA[`render_document` shall expose the `gh_slug` filter and the `project.*` cross-reference indexes documented in [tools/Developers_Guide.md §9](../tools/Developers_Guide.md) on every render so templates can link to SDD section anchors and traverse the SDD → HLR → LLR → Test stack without recomputing relations in Jinja.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-007" name="Template Data Surface"/>
           <trace target="HLR" ref="HLR-010" name="Template Anchor Convention"/>
@@ -3871,7 +3871,7 @@ and shall not block the resolution flow.]]></text>
 
   </llrs>
 
-  <!-- Test sources (see Schema_Reference.md §7). -->
+  <!-- Test sources (see tools/Developers_Guide.md §7). -->
   <tests>
 
     <file path="test/test_render_doc.py" role="unit" count="21">

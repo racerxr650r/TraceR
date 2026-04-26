@@ -24,11 +24,11 @@ purposes:
     [doc/Traceability.md](../../../doc/Traceability.md).
 
 The canonical schema reference for humans is
-[doc/Schema_Reference.md](../../../doc/Schema_Reference.md).
+[tools/Developers_Guide.md](../../../tools/Developers_Guide.md).
 **Read that file before performing any non-trivial edit to
 `Project.xml` or any of its templates.**
 
-> **Keep `Schema_Reference.md` in sync.** Any change to
+> **Keep `Developers_Guide.md` in sync.** Any change to
 > [tools/project.xsd](../../../tools/project.xsd) (new element,
 > renamed attribute, changed cardinality, tightened restriction,
 > bumped `schema_version`) **or** to how
@@ -36,7 +36,7 @@ The canonical schema reference for humans is
 > `Project.xml` and exposes data on the `project.*` namespace
 > consumed by templates (new `build_*` function, new index, new
 > filter, changed field name) **must be reflected in
-> [doc/Schema_Reference.md](../../../doc/Schema_Reference.md)
+> [tools/Developers_Guide.md](../../../tools/Developers_Guide.md)
 > in the same change.** The schema reference is the contract
 > between the data, the renderer, and template authors; if it
 > drifts, future edits made against it will silently produce
@@ -145,8 +145,8 @@ looks the document up by the second positional CLI argument.
 | "Add an LLR" | Append a new `<llr id="LLR-XXX-NN">` inside the matching `<llrs>/<function>`; add `<traces target="HLR" ref="HLR-NNN" name="...">` for every HLR it implements. Regenerate `LLRs.md` and `Traceability.md`. |
 | "Add a test" | Add the `static void test_*(void **state)` under `test/` *with a doc-comment block citing `LLR-XXX-NN` and/or `HLR-NNN`*. Then add a matching `<test name="...">` (with `<purpose>` and `<traces>`) inside the appropriate `<tests>/<file>`. Regenerate `STP.md` and `Traceability.md`. |
 | "Why is HLR-NNN / LLR-XXX-NN listed as having no test?" | It has no `<test>` whose `<traces>` cite it. Either add a test, or document the gap in `Traceability.md §6.x` (the renderer does this from the data). |
-| "Add a new field to a section that doesn't exist yet" | First update [tools/project.xsd](../../../tools/project.xsd) (and bump `schema_version`), then update [doc/Schema_Reference.md](../../../doc/Schema_Reference.md) so the human-facing reference matches, then `Project.xml`, then the relevant template under `tools/templates/` (and `tools/render_doc.py` if a new `build_*` is needed), then regenerate. |
-| "Change how a payload element is parsed/exposed to templates" | Update [tools/render_doc.py](../../../tools/render_doc.py), then update the *Renderer Data Surface* section of [doc/Schema_Reference.md](../../../doc/Schema_Reference.md) so template authors see the new field/index/filter, then update any affected templates. |
+| "Add a new field to a section that doesn't exist yet" | First update [tools/project.xsd](../../../tools/project.xsd) (and bump `schema_version`), then update [tools/Developers_Guide.md](../../../tools/Developers_Guide.md) so the human-facing reference matches, then `Project.xml`, then the relevant template under `tools/templates/` (and `tools/render_doc.py` if a new `build_*` is needed), then regenerate. |
+| "Change how a payload element is parsed/exposed to templates" | Update [tools/render_doc.py](../../../tools/render_doc.py), then update the *Renderer Data Surface* section of [tools/Developers_Guide.md](../../../tools/Developers_Guide.md) so template authors see the new field/index/filter, then update any affected templates. |
 
 ## Hard Rules
 
@@ -176,7 +176,7 @@ looks the document up by the second positional CLI argument.
     structure of `Project.xml` in a way that existing templates or
     `tools/render_doc.py` could not consume unchanged.
 *   **Any change to `tools/project.xsd` requires a matching update
-    to [doc/Schema_Reference.md](../../../doc/Schema_Reference.md)
+    to [tools/Developers_Guide.md](../../../tools/Developers_Guide.md)
     in the same commit.** This applies to every kind of XSD edit:
     new / removed / renamed elements or attributes, changed
     cardinality, tightened or loosened restrictions, new
@@ -203,7 +203,7 @@ All schema details — every element, every attribute, cardinality
 rules, child-order constraints, the full XML skeleton, and the
 `project.*` namespace exposed by
 [tools/render_doc.py](../../../tools/render_doc.py) to templates —
-live in [doc/Schema_Reference.md](../../../doc/Schema_Reference.md).
+live in [tools/Developers_Guide.md](../../../tools/Developers_Guide.md).
 Consult that document before authoring or modifying any
 `<sdd>`/`<stp>`/`<hlrs>`/`<llrs>`/`<tests>` content, before writing
 a new template, or before changing how the renderer parses a
@@ -234,7 +234,7 @@ The shape of the `project` namespace passed to every template —
 payload roots, flat lists, ID lookups, cross-reference indexes,
 coverage-gap lists, and available filters — is documented in the
 *Renderer Data Surface* section of
-[doc/Schema_Reference.md](../../../doc/Schema_Reference.md). Use
+[tools/Developers_Guide.md](../../../tools/Developers_Guide.md). Use
 those prebuilt structures rather than recomputing relations in
 Jinja, and update that section whenever you add a new `build_*`
 function or index in [tools/render_doc.py](../../../tools/render_doc.py).

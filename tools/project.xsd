@@ -3,7 +3,7 @@
   XML Schema for Project.xml — the single source of truth for a
   project's spec stack (PVD / SDD / HLRs / LLRs / STP / Traceability).
 
-  Companion to doc/Schema_Reference.md (human-facing schema
+  Companion to tools/Developers_Guide.md (human-facing schema
   reference) and tools/lint_project.py (validator + semantic checker).
 
   This schema covers the structural shape of Project.xml. The semantic
@@ -58,7 +58,7 @@
   <!-- `ui:group` attributes via the existing xs:anyAttribute        -->
   <!-- declarations on Hlr / Llr / Test / SddModule (Phase 2.5).     -->
   <!--                                                               -->
-  <!-- See doc/Schema_Reference.md §16 for the full contract.        -->
+  <!-- See tools/Developers_Guide.md §16 for the full contract.        -->
   <!-- ============================================================ -->
 
   <!-- ============================================================ -->

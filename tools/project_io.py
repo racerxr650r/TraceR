@@ -213,7 +213,7 @@ def _method_ui_hints_index(params: dict[str, Any]) -> dict[str, Any]:
     Used by the VS Code extension's tree provider, lens provider,
     locator, and Phase 3 form panels.
 
-    See doc/Schema_Reference.md §16 for the vocabulary contract and
+    See tools/Developers_Guide.md §16 for the vocabulary contract and
     §9 for the Renderer Data Surface field.
     """
     xsd_path = _as_path(params.get("xsd_path"), PROJECT_XSD)
