@@ -3157,6 +3157,52 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
       </llr>
     </function>
 
+    <function number="21"
+              title="Quick Fix table ([tools/vscode-project-xml/src/codeActions/](../tools/vscode-project-xml/src/codeActions/))"
+              name="quickfix"
+              source="tools/vscode-project-xml/src/codeActions/QuickFixProvider.ts">
+      <intro><![CDATA[Phase 2.5c: a payload-agnostic `CodeActionProvider` whose Quick Fix table is keyed strictly on the stable `Finding.code` values shipped in Phase 2.5 (`broken-trace`, `id-format`, `missing-template`, `no-test`). Every fix uses VS Code `WorkspaceEdit` text edits so the Phase 3 `apply_edit` write path is not required. The provider never branches on payload element name, so a new payload kind that triggers an existing `Finding.code` inherits the Quick Fix surface for free.]]></intro>
+
+      <llr id="LLR-QFX-01">
+        <text><![CDATA[`LintDiagnosticsProvider.publish` shall mirror each structured `LintFinding`'s optional `code` field onto the corresponding `vscode.Diagnostic.code` so the `QuickFixProvider` can dispatch on the stable token without re-parsing the human message; older sidecar responses lacking the structured `items` list shall fall back to the flat `errors`/`warnings`/`notes` projection unchanged so the diagnostic surface keeps working when the field is absent.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-025" name="Quick Fixes for Common Findings"/>
+          <trace target="HLR" ref="HLR-043" name="Cross-Surface Equivalence"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-QFX-02">
+        <text><![CDATA[`QuickFixProvider.provideCodeActions` shall iterate the `context.diagnostics`, ignore any whose `source` is not `'projectXml'`, look up the diagnostic's `code` in a static `FIX_TABLE` keyed on the four Phase 2.5 finding codes (`broken-trace`, `id-format`, `missing-template`, `no-test`), and emit one `vscode.CodeAction` per matched diagnostic carrying `kind = QuickFix`, `isPreferred = true`, and a `command` invocation whose arguments forward the diagnostic's URI, range, and message verbatim. The provider source shall not reference any payload element name (HLR / LLR / plan / future), pinning the SDP §8 Phase 2.5c contract.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-025" name="Quick Fixes for Common Findings"/>
+          <trace target="HLR" ref="HLR-012" name="Lint Surface"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-QFX-03">
+        <text><![CDATA[`codeActions/fixes.ts` shall expose pure helpers for each Quick Fix: message parsers (`parseBrokenTrace`, `parseIdFormat`, `parseMissingTemplate`, `parseNoTest`) that pull just the data the linter prints out of each finding; id allocators (`nextFreeHlrId`, `nextFreeLlrId`) that preserve the zero-padded width of the existing ids; and stub builders (`templateStubContent`, `stubTestFragment`) that produce text the command layer feeds into a `WorkspaceEdit`. None of the helpers shall touch the VS Code API so they remain unit-testable from a plain Node process.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-025" name="Quick Fixes for Common Findings"/>
+          <trace target="HLR" ref="HLR-005" name="Stable IDs"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-QFX-04">
+        <text><![CDATA[The Quick Fix command bodies in `commands/quickFixes.ts` shall apply their text edits via `vscode.WorkspaceEdit` only — `replace` for `broken-trace` and `id-format`, `createFile` + `insert` for `missing-template`, and `insert` before `</tests>` for `no-test`. None of the Phase 2.5c fixes shall route through the (future) Phase 3 `apply_edit` sidecar method; structural rewrites that need an XSD-validated round trip migrate onto `apply_edit` once Phase 3 lands.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-025" name="Quick Fixes for Common Findings"/>
+          <trace target="HLR" ref="HLR-018" name="Round-trip Preservation"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-QFX-05">
+        <text><![CDATA[The `broken-trace` Quick Fix shall populate its picker by walking `flat_hlrs` or `flat_llrs` from the parsed tree according to the trace `target` parsed out of the finding message, never by enumerating known payload element names; this lets a future payload that carries `<traces>` over the same `target` namespace inherit the picker without provider edits.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-025" name="Quick Fixes for Common Findings"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
@@ -4090,6 +4136,202 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
         <purpose><![CDATA[Verifies the `SidecarError` constructor contract that LLR-PIC-03 depends on: the error carries the JSON-RPC `code`, identifies as `SidecarError` via its `name`, preserves the `message`, and is an `Error` subclass.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PIC-03"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/fixes.test.ts" role="unit-ts" count="11">
+      <header><![CDATA[Tier-1 unit tests for the pure Quick Fix helpers in tools/vscode-project-xml/src/codeActions/fixes.ts: Finding.code recognition, message parsers, id allocators, and stub builders. Drives every helper without spawning a VS Code host so the SDP §8 Phase 2.5c contract that fixes route on Finding.code (never on payload element name) is pinned at the lowest tier.]]></header>
+
+      <test name="lists exactly the four Phase 2.5c codes">
+        <purpose><![CDATA[Pins LLR-QFX-02: the Quick Fix code set is exactly `{broken-trace, id-format, missing-template, no-test}` so adding a fifth code is a deliberate edit to fixes.ts rather than an accidental drift.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+        </traces>
+      </test>
+
+      <test name="isFixableCode accepts the four codes and rejects others">
+        <purpose><![CDATA[Pins LLR-QFX-02: the type guard accepts the four codes and rejects unknown / empty / non-string inputs so the dispatcher cannot accidentally route an unfixable diagnostic.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+        </traces>
+      </test>
+
+      <test name="parses broken-trace HLR messages">
+        <purpose><![CDATA[Pins LLR-QFX-03: `parseBrokenTrace` extracts the trace target (HLR) and the bad ref token from the linter's error message verbatim.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+        </traces>
+      </test>
+
+      <test name="parses broken-trace LLR messages">
+        <purpose><![CDATA[Pins LLR-QFX-03 and LLR-QFX-05: `parseBrokenTrace` recognises an `LLR` target without any payload-name branching, so the same picker code path serves both HLR-side and LLR-side broken traces.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+          <trace target="LLR" ref="LLR-QFX-05"/>
+        </traces>
+      </test>
+
+      <test name="parses id-format messages for HLRs">
+        <purpose><![CDATA[Pins LLR-QFX-03: `parseIdFormat` extracts the `kind` (`HLR`) and the malformed id from the linter's `<hlr id="..."> does not match HLR-NNN` message.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+        </traces>
+      </test>
+
+      <test name="parses id-format messages for LLRs and extracts the prefix">
+        <purpose><![CDATA[Pins LLR-QFX-03: `parseIdFormat` infers the function-name prefix (`PCL`) out of a malformed `LLR-PCL-1` so the renumber Quick Fix preserves the function the malformed id belongs to.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+        </traces>
+      </test>
+
+      <test name="parses missing-template messages">
+        <purpose><![CDATA[Pins LLR-QFX-03: `parseMissingTemplate` pulls the `<document>` id and the workspace-relative template path the linter said is missing.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+        </traces>
+      </test>
+
+      <test name="parses no-test messages for HLRs and LLRs">
+        <purpose><![CDATA[Pins LLR-QFX-03 and LLR-QFX-05: `parseNoTest` recognises an orphan whether it is an HLR or an LLR, so the stub-test fragment is built from the same code path for both.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+          <trace target="LLR" ref="LLR-QFX-05"/>
+        </traces>
+      </test>
+
+      <test name="next free HLR id picks max+1 with preserved width">
+        <purpose><![CDATA[Pins LLR-QFX-03: `nextFreeHlrId` returns `HLR-NNN` zero-padded to the widest existing id so the renumber Quick Fix preserves the project's id-width convention.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+        </traces>
+      </test>
+
+      <test name="next free LLR id keeps the requested prefix">
+        <purpose><![CDATA[Pins LLR-QFX-03: `nextFreeLlrId('PCL', existing)` only counts ids matching the requested prefix when computing max+1, so renumbering an LLR-PCL never reuses an LLR-OTHER number.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+        </traces>
+      </test>
+
+      <test name="stubTestFragment cites the orphan via a payload-agnostic &lt;trace&gt;">
+        <purpose><![CDATA[Pins LLR-QFX-03 and LLR-QFX-05: the stub-test fragment carries one `<trace target="..." ref="..."/>` whose `target` is the orphan kind passed in (HLR or LLR), proving the no-test fix never names HLR or LLR specifically in its emitted text.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+          <trace target="LLR" ref="LLR-QFX-05"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/quickFixProvider.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Tier-1 unit tests for the payload-agnostic CodeActionProvider in tools/vscode-project-xml/src/codeActions/QuickFixProvider.ts. Drives the dispatcher with hand-rolled `vscode.Diagnostic` instances so each Finding.code surfaces exactly the right Quick Fix command — and asserts the provider source contains no payload element name, pinning the SDP §8 Phase 2.5c contract at the lowest tier.]]></header>
+
+      <test name="contributes only the QuickFix code action kind">
+        <purpose><![CDATA[Pins LLR-QFX-02: the provider declares only `CodeActionKind.QuickFix`, so VS Code never asks it for refactor or source actions outside its scope.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+        </traces>
+      </test>
+
+      <test name="exposes a fix table keyed exactly on the four Finding.codes">
+        <purpose><![CDATA[Pins LLR-QFX-02: the static `FIX_TABLE` keys are exactly the four Phase 2.5 codes, so a contributor cannot register a fifth fix without a deliberate table edit.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+        </traces>
+      </test>
+
+      <test name="returns a Quick Fix for each Finding.code (broken-trace)">
+        <purpose><![CDATA[Pins LLR-QFX-02 and LLR-QFX-04: a `broken-trace` diagnostic surfaces a Quick Fix whose command is `projectXml.fix.replaceTraceRef` and whose kind is `quickfix`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+
+      <test name="returns a Quick Fix for id-format">
+        <purpose><![CDATA[Pins LLR-QFX-02 and LLR-QFX-04: an `id-format` diagnostic surfaces the renumber Quick Fix.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+
+      <test name="returns a Quick Fix for missing-template">
+        <purpose><![CDATA[Pins LLR-QFX-02 and LLR-QFX-04: a `missing-template` diagnostic surfaces the stub-template Quick Fix.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+
+      <test name="returns a Quick Fix for no-test">
+        <purpose><![CDATA[Pins LLR-QFX-02 and LLR-QFX-04: a `no-test` diagnostic surfaces the stub-test Quick Fix.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+
+      <test name="ignores diagnostics from other sources (eg redhat.vscode-xml)">
+        <purpose><![CDATA[Pins LLR-QFX-02: diagnostics whose `source` is not `'projectXml'` are ignored, so the Quick Fix table never fires on redhat.vscode-xml errors that happen to share a code value.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+        </traces>
+      </test>
+
+      <test name="payload-agnostic: a `&lt;plan&gt;`-shaped diagnostic still routes by code">
+        <purpose><![CDATA[Pins the SDP §8 Phase 2.5c contract restated in LLR-QFX-02: a diagnostic whose message references the `<plan>` payload but carries `code = broken-trace` produces the same Quick Fix as one citing an HLR/LLR — the dispatcher sees only the code.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+          <trace target="LLR" ref="LLR-QFX-05"/>
+        </traces>
+      </test>
+
+      <test name="source contains no payload element name">
+        <purpose><![CDATA[Pins LLR-QFX-02: a static check on the QuickFixProvider source proves it contains no `<plan>`, `<hlr>`, `<llr>`, `<test>`, `<sdd>`, or `<stp>` token, mechanically enforcing the "never on payload element name" constraint instead of relying on review.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-02"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="test/test_quickfix_acceptance.py" role="acceptance" count="4">
+      <header><![CDATA[Acceptance test for the SDP §8 Phase 2.5c contract: triggering each Finding.code value on the `<plan>` fixture surfaces the correct Quick Fix and applying the fix produces a clean re-lint. Each case mutates a copy of test/doc/Project.xml to introduce exactly one finding code, applies the equivalent text edit (mirroring what vscode.WorkspaceEdit would produce), and asserts the linter is clean afterwards.]]></header>
+
+      <test name="test_broken_trace_quick_fix_clears_finding">
+        <purpose><![CDATA[Pins LLR-QFX-01, LLR-QFX-04, LLR-QFX-05: a malformed HLR ref triggers a `broken-trace` finding; replacing the ref with a valid HLR id (the `WorkspaceEdit.replace` the picker would emit) produces a clean re-lint.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-01"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+          <trace target="LLR" ref="LLR-QFX-05"/>
+        </traces>
+      </test>
+
+      <test name="test_id_format_quick_fix_clears_finding">
+        <purpose><![CDATA[Pins LLR-QFX-01, LLR-QFX-03, LLR-QFX-04: an `<hlr id="HLR-1">` triggers an `id-format` finding; renumbering the id (and any incoming traces) as the next free `HLR-001` produces a clean re-lint.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-01"/>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+
+      <test name="test_missing_template_quick_fix_clears_finding">
+        <purpose><![CDATA[Pins LLR-QFX-01, LLR-QFX-03, LLR-QFX-04: a `<document>` row whose template file is absent triggers a `missing-template` finding; creating the file with the stub content produces a clean re-lint.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-01"/>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+
+      <test name="test_no_test_quick_fix_clears_finding">
+        <purpose><![CDATA[Pins LLR-QFX-01, LLR-QFX-03, LLR-QFX-04: an HLR with no test verifying it triggers a `no-test` warning; appending the stub `<file><test><traces>` block before `</tests>` produces a clean re-lint.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-QFX-01"/>
+          <trace target="LLR" ref="LLR-QFX-03"/>
+          <trace target="LLR" ref="LLR-QFX-04"/>
         </traces>
       </test>
     </file>

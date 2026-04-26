@@ -28,6 +28,19 @@ import {
     PREVIEW_SCHEME,
 } from './preview/MarkdownPreviewProvider';
 import { getConfig, getProjectXmlPath } from './util/paths';
+import {
+    FIX_BROKEN_TRACE,
+    FIX_ID_FORMAT,
+    FIX_MISSING_TEMPLATE,
+    FIX_NO_TEST,
+    QuickFixProvider,
+} from './codeActions/QuickFixProvider';
+import {
+    fixBrokenTrace,
+    fixIdFormat,
+    fixMissingTemplate,
+    fixNoTest,
+} from './commands/quickFixes';
 
 export function activate(context: vscode.ExtensionContext): void {
     const output = vscode.window.createOutputChannel('Project Spec');
@@ -61,6 +74,31 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.languages.registerCodeLensProvider(
             { language: 'xml', scheme: 'file' },
             lensProvider,
+        ),
+    );
+
+    // Phase 2.5c: payload-agnostic Quick Fix table keyed on
+    // Finding.code (broken-trace / id-format / missing-template /
+    // no-test). Registered for any XML document; the provider itself
+    // gates on diag.source === 'projectXml'.
+    const quickFixProvider = new QuickFixProvider();
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider(
+            { language: 'xml', scheme: 'file' },
+            quickFixProvider,
+            { providedCodeActionKinds: QuickFixProvider.providedCodeActionKinds },
+        ),
+        vscode.commands.registerCommand(FIX_BROKEN_TRACE, (args) =>
+            fixBrokenTrace(sidecar, args),
+        ),
+        vscode.commands.registerCommand(FIX_ID_FORMAT, (args) =>
+            fixIdFormat(sidecar, args),
+        ),
+        vscode.commands.registerCommand(FIX_MISSING_TEMPLATE, (args) =>
+            fixMissingTemplate(args),
+        ),
+        vscode.commands.registerCommand(FIX_NO_TEST, (args) =>
+            fixNoTest(args),
         ),
     );
 

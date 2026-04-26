@@ -70,6 +70,22 @@
       {
         "command": "projectXml.codeLens.pickRelated",
         "title": "Project Spec: Pick Related Element"
+      },
+      {
+        "command": "projectXml.fix.replaceTraceRef",
+        "title": "Project Spec: Replace ref with…"
+      },
+      {
+        "command": "projectXml.fix.renumberId",
+        "title": "Project Spec: Renumber as next free id"
+      },
+      {
+        "command": "projectXml.fix.stubTemplate",
+        "title": "Project Spec: Stub the missing template file"
+      },
+      {
+        "command": "projectXml.fix.createStubTest",
+        "title": "Project Spec: Create stub test entry"
       }
     ],
     "menus": {
@@ -94,6 +110,22 @@
         },
         {
           "command": "projectXml.codeLens.pickRelated",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.fix.replaceTraceRef",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.fix.renumberId",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.fix.stubTemplate",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.fix.createStubTest",
           "when": "false"
         }
       ]
