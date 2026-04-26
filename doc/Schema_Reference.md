@@ -41,7 +41,7 @@ generated documents from a single edit point.
 ## 1. Root Element
 
 ```xml
-<project name="Valgrind Parser" short_name="vgp" schema_version="1.4">
+<project name="Valgrind Parser" short_name="vgp" schema_version="1.5">
   <metadata>...</metadata>
   <sdd>...</sdd>
   <stp>...</stp>
@@ -55,7 +55,7 @@ generated documents from a single edit point.
 | --------- | ----------- |
 | `name` | Full project name. |
 | `short_name` | Binary / package name. |
-| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.4`. |
+| `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.5`. |
 
 The XSD root reserves the namespace prefix `ui` (`urn:tracer:ui:v1`)
 for optional UI-only hints (icon, group, color) that consumers such
@@ -903,7 +903,7 @@ outcomes:
         name="project">` `xs:all` block (`minOccurs="0"`).
 2.  **Bump `schema_version`** on the `<project>` root in
     [doc/Project.xml](../doc/Project.xml) (current value is
-    `1.3`; bump to `1.4` for the next change).
+    `1.5`; bump to `1.6` for the next change).
 3.  **Edit [render_doc.py](../tools/render_doc.py):**
     *   Add a `build_<payload>(elem)` function returning a
         `SimpleNamespace` shaped exactly the way you want
@@ -1232,8 +1232,18 @@ The vocabulary is published on every renderable type in
 | `Hlr`     | `hlrs`              | `coverage`, `tracesCount`        |
 | `Llr`     | `llrs`              | `coverage`                       |
 | `Test`    | `tests`             | `tracesCount`                    |
+| `StpFixture` | (form only — no tree node)                        | — |
+| `TestFile`   | (form only — no tree node)                        | — |
 | `Plan`    | `plan`              | —                                |
 | `Plan/item` | `plan/items`      | —                                |
+
+Phase 4 added `<ui:form>` annotations to `StpFixture` and `TestFile`
+so the form panel's add commands (`Project Spec: Add STP Fixture`,
+`Project Spec: Add Test File`) can derive a JSON Schema for them.
+Neither type carries a `<ui:treeNode>` annotation today; STP
+fixtures and test files surface in the tree only as the parents of
+their children (artefacts and tests respectively), so they have no
+standalone tree leaf to decorate.
 
 ### 16.4 Stability
 

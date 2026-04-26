@@ -993,8 +993,53 @@ the Phase 3 `apply_edit` write path.
     displays warnings verbatim and never downgrades them —
     `projectXml.warningsAsErrors` only escalates severity, it never
     suppresses (per [HLR-042](HLRs.md)).
-3.  Marketplace listing assets (icon, screenshots, animated GIF).
-4.  CI to publish `.vsix` on tag.
+3.  **Bundled Python tooling** (per [HLR-060](HLRs.md)). The `.vsix`
+    ships a copy of every Python file required at runtime —
+    `project_io.py`, `render_doc.py`, `lint_project.py`,
+    `project_edit.py`, `project_merge.py`, `project.xsd`, the
+    `templates/` directory, and the `ai/` package — under
+    `dist/python/` inside the extension. A `prepackage` npm script
+    copies the canonical `tools/` tree into `dist/python/` immediately
+    before `vsce package`; the same script removes `dist/python/`
+    from `.vscodeignore` so the bundled copy survives packaging.
+    `getToolsDir()` falls back to `<extensionPath>/dist/python` when
+    no workspace `tools/` is configured or found, so the extension
+    works in any workspace as long as a Python 3.10+ interpreter
+    with `jinja2` (and optionally `lxml`) is on PATH or configured
+    via `projectXml.pythonPath`. Activation is widened from
+    `workspaceContains:doc/Project.xml` to also include
+    `onCommand:projectXml.initProject` and
+    `onCommand:projectXml.scaffoldTools` so the extension can run
+    in an empty workspace.
+4.  **Workspace scaffolder** (per [HLR-061](HLRs.md)). A new
+    `projectXml.scaffoldTools` command — also invoked automatically
+    at the end of a successful `projectXml.initProject` flow when the
+    target workspace lacks a `tools/` directory — recursively copies
+    `<extensionPath>/dist/python/` into the workspace's
+    `<projectXml.toolsDir>` (default `tools/`). Files that already
+    exist in the workspace are skipped unless the user explicitly
+    confirms an overwrite via a modal prompt. After scaffolding the
+    new workspace is self-contained: the CLI (`make validate-xml`,
+    `python3 tools/render_doc.py …`), CI, and other contributors who
+    do not have the extension installed all work without further
+    setup, and the Red Hat XML extension's
+    `xsi:noNamespaceSchemaLocation="tools/project.xsd"` resolves
+    locally.
+5.  **Bundle freshness check** (per [HLR-062](HLRs.md)). The
+    `prepackage` script writes the source `tools/project.xsd`
+    `schema_version` into `dist/python/.bundle_version` at package
+    time. At activation the extension compares that pinned version
+    against the workspace's `tools/project.xsd` (when present) and
+    surfaces a one-shot information notification — never an error —
+    if the workspace's bundled `tools/` is older than the
+    extension's, offering a `Re-scaffold tools/` action that
+    re-invokes `projectXml.scaffoldTools` with overwrite confirmed.
+    The workspace's pin is authoritative for sidecar spawn; the
+    extension never silently rewrites workspace `tools/` files.
+6.  Marketplace listing assets (icon, screenshots, animated GIF).
+7.  CI to publish `.vsix` on tag. The publish workflow runs the
+    `prepackage` script before invoking `vsce package` so the
+    bundled `dist/python/` is present in every shipped `.vsix`.
 
 **AI prompt:**
 > Finish the extension for public release. Surface every
@@ -1005,15 +1050,47 @@ the Phase 3 `apply_edit` write path.
 > warnings`, clickable to open the Problems panel filtered to
 > `Project.xml`; warnings must be displayed verbatim and never
 > hidden, per [HLR-042](HLRs.md) — `projectXml.warningsAsErrors`
-> may escalate severity but must not suppress. Produce Marketplace
-> assets under `tools/vscode-project-xml/media/`: a 128×128 icon,
-> at least three screenshots covering the tree view, a form panel,
-> and the render/preview flow, plus an animated GIF of the
-> Walkthrough end to end. Add a GitHub Actions workflow that
-> builds and publishes the `.vsix` on tag pushes matching
-> `vscode-v*`, using `vsce package` and (optionally) `vsce
-> publish` gated on a repository secret. Do not publish to the
-> Marketplace from this prompt — only wire the CI.
+> may escalate severity but must not suppress.
+>
+> Make the `.vsix` self-contained per HLR-060/061/062. Add an npm
+> `prepackage` script under `tools/vscode-project-xml/` that
+> recursively copies `tools/project_io.py`, `render_doc.py`,
+> `lint_project.py`, `project_edit.py`, `project_merge.py`,
+> `project.xsd`, `templates/`, and `ai/` into
+> `tools/vscode-project-xml/dist/python/` and writes the source
+> XSD's `schema_version` into `dist/python/.bundle_version`;
+> remove `dist/python/` from `.vscodeignore` so the bundled copy
+> survives `vsce package`. Teach `getToolsDir()` in
+> `src/util/paths.ts` to fall back to
+> `context.extensionPath + '/dist/python'` when no workspace
+> `tools/` is configured or found, and widen
+> `activationEvents` to include
+> `onCommand:projectXml.initProject` and
+> `onCommand:projectXml.scaffoldTools`. Add a
+> `projectXml.scaffoldTools` command that recursively copies the
+> extension's bundled `dist/python/` into the workspace's
+> `<projectXml.toolsDir>` (skipping existing files unless the user
+> confirms overwrite via a modal prompt) and have
+> `projectXml.initProject` invoke it automatically at the end of
+> a successful bootstrap when the target workspace lacks a
+> `tools/` directory. At activation, when the workspace contains
+> a `tools/project.xsd`, compare its `schema_version` against
+> `dist/python/.bundle_version` and surface a one-shot information
+> notification — never an error — offering a `Re-scaffold tools/`
+> action when the workspace bundle is older. The workspace's pin
+> remains authoritative; never silently rewrite workspace `tools/`
+> files.
+>
+> Produce Marketplace assets under
+> `tools/vscode-project-xml/media/`: a 128×128 icon, at least
+> three screenshots covering the tree view, a form panel, and the
+> render/preview flow, plus an animated GIF of the Walkthrough
+> end to end. Add a GitHub Actions workflow that builds and
+> publishes the `.vsix` on tag pushes matching `vscode-v*`,
+> running the `prepackage` script before `vsce package` so the
+> bundled `dist/python/` ships in every release; (optionally)
+> `vsce publish` gated on a repository secret. Do not publish to
+> the Marketplace from this prompt — only wire the CI.
 
 ## 9. Risks & Open Questions
 

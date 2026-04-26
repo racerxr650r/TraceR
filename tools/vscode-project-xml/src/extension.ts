@@ -42,7 +42,8 @@ import {
     fixNoTest,
 } from './commands/quickFixes';
 import { FormPanelProvider } from './forms/FormPanelProvider';
-import { addHlr, addLlr, editPayload } from './commands/forms';
+import { addHlr, addLlr, addModule, addStpFixture, addTest, addTestFile, editPayload } from './commands/forms';
+import { initProject } from './commands/initProject';
 
 export function activate(context: vscode.ExtensionContext): void {
     const output = vscode.window.createOutputChannel('Project Spec');
@@ -104,7 +105,9 @@ export function activate(context: vscode.ExtensionContext): void {
         ),
     );
 
-    // Phase 3 form panel + addHlr/addLlr/editPayload commands.
+    // Phase 3 + Phase 4 form panel commands. Each registered command
+    // opens the same FormPanelProvider keyed on a different complex
+    // type from the XSD's `ui_hints_index`.
     const formPanel = new FormPanelProvider(context, sidecar, output);
     context.subscriptions.push(
         vscode.commands.registerCommand('projectXml.addHlr', () =>
@@ -115,6 +118,22 @@ export function activate(context: vscode.ExtensionContext): void {
         ),
         vscode.commands.registerCommand('projectXml.editPayload', (args) =>
             editPayload(formPanel, args),
+        ),
+        // Phase 4 additions:
+        vscode.commands.registerCommand('projectXml.addModule', () =>
+            addModule(sidecar, formPanel),
+        ),
+        vscode.commands.registerCommand('projectXml.addStpFixture', () =>
+            addStpFixture(sidecar, formPanel),
+        ),
+        vscode.commands.registerCommand('projectXml.addTestFile', () =>
+            addTestFile(sidecar, formPanel),
+        ),
+        vscode.commands.registerCommand('projectXml.addTest', () =>
+            addTest(sidecar, formPanel),
+        ),
+        vscode.commands.registerCommand('projectXml.initProject', () =>
+            initProject(sidecar),
         ),
     );
 

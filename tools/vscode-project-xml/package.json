@@ -98,6 +98,84 @@
       {
         "command": "projectXml.editPayload",
         "title": "Project Spec: Edit in Form…"
+      },
+      {
+        "command": "projectXml.initProject",
+        "title": "Project Spec: Initialise Project.xml…"
+      },
+      {
+        "command": "projectXml.addModule",
+        "title": "Project Spec: Add SDD Module…"
+      },
+      {
+        "command": "projectXml.addStpFixture",
+        "title": "Project Spec: Add STP Fixture…"
+      },
+      {
+        "command": "projectXml.addTestFile",
+        "title": "Project Spec: Add Test File…"
+      },
+      {
+        "command": "projectXml.addTest",
+        "title": "Project Spec: Add Test…"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "projectXml.welcome",
+        "title": "Get Started with Project Spec",
+        "description": "Bootstrap a TraceR Project.xml and render your first spec docs in seven steps.",
+        "steps": [
+          {
+            "id": "init",
+            "title": "Initialise Project.xml",
+            "description": "Run **Project Spec: Initialise Project.xml…** to scaffold `doc/Project.xml` and `doc/PVD.md` from the built-in skeleton.\n[Initialise Project.xml](command:projectXml.initProject)",
+            "media": { "markdown": "media/walkthrough/01-init.md" },
+            "completionEvents": ["onCommand:projectXml.initProject"]
+          },
+          {
+            "id": "addHlr",
+            "title": "Add a High-Level Requirement",
+            "description": "Capture what the project must do.\n[Add HLR](command:projectXml.addHlr)",
+            "media": { "markdown": "media/walkthrough/02-add-hlr.md" },
+            "completionEvents": ["onCommand:projectXml.addHlr"]
+          },
+          {
+            "id": "addLlr",
+            "title": "Add a Low-Level Requirement",
+            "description": "Decompose an HLR into an implementable LLR.\n[Add LLR](command:projectXml.addLlr)",
+            "media": { "markdown": "media/walkthrough/03-add-llr.md" },
+            "completionEvents": ["onCommand:projectXml.addLlr"]
+          },
+          {
+            "id": "addModule",
+            "title": "Add an SDD Module",
+            "description": "Describe a code module so the SDD reflects the design.\n[Add SDD Module](command:projectXml.addModule)",
+            "media": { "markdown": "media/walkthrough/04-add-module.md" },
+            "completionEvents": ["onCommand:projectXml.addModule"]
+          },
+          {
+            "id": "addTest",
+            "title": "Register a Test",
+            "description": "Add a `<file>` then a `<test>` so the STP and Traceability docs cite real tests.\n[Add Test File](command:projectXml.addTestFile) · [Add Test](command:projectXml.addTest)",
+            "media": { "markdown": "media/walkthrough/05-add-test.md" },
+            "completionEvents": ["onCommand:projectXml.addTest"]
+          },
+          {
+            "id": "lint",
+            "title": "Lint",
+            "description": "Validate the XML against `tools/project.xsd` and the structural lint rules.\n[Lint](command:projectXml.lint)",
+            "media": { "markdown": "media/walkthrough/06-lint.md" },
+            "completionEvents": ["onCommand:projectXml.lint"]
+          },
+          {
+            "id": "render",
+            "title": "Render All Spec Docs",
+            "description": "Render the PVD/SDD/HLRs/LLRs/STP/Traceability suite.\n[Render All](command:projectXml.renderAll)",
+            "media": { "markdown": "media/walkthrough/07-render.md" },
+            "completionEvents": ["onCommand:projectXml.renderAll"]
+          }
+        ]
       }
     ],
     "menus": {

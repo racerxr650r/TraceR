@@ -331,6 +331,7 @@ class UiHintsIndexTests(unittest.TestCase):
         self.assertEqual(
             set(index.keys()),
             {"Document", "SddModule", "Hlr", "Llr", "Test",
+             "StpFixture", "TestFile",
              "Plan", "Plan/item"},
         )
         # Hlr carries a tree node, two lenses, and a four-field form.
