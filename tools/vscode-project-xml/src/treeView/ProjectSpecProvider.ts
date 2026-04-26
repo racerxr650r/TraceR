@@ -36,6 +36,19 @@ export class ProjectSpecNode extends vscode.TreeItem {
             this.contextValue = 'revealable';
         }
     }
+
+    /**
+     * Phase 5b — mark this node as eligible for the AI tree
+     * context-menu group (HLR-053). The package.json `when` clause
+     * matches `viewItem =~ /aiTargetable/` so the group is hidden on
+     * non-payload nodes (containers, placeholders, the STP root).
+     */
+    markAiTargetable(): void {
+        const base = this.contextValue ?? '';
+        if (!base.includes('aiTargetable')) {
+            this.contextValue = base ? `${base} aiTargetable` : 'aiTargetable';
+        }
+    }
 }
 
 export class ProjectSpecProvider
@@ -110,7 +123,7 @@ function buildTopLevel(
     badges: BadgeIndex | undefined,
 ): ProjectSpecNode[] {
     const hints = project._ui_hints_index;
-    return [
+    const topLevel = [
         buildHlrsNode(project, badges, locatorMeta(hints, 'Hlr', 'hlr', 'id')),
         buildLlrsNode(project, badges, locatorMeta(hints, 'Llr', 'llr', 'id')),
         buildTestsNode(project, locatorMeta(hints, 'Test', 'test', 'name')),
@@ -118,6 +131,44 @@ function buildTopLevel(
         buildStpNode(project),
         ...buildGenericPayloadNodes(project),
     ];
+    decorateAiTargetable(topLevel, hints);
+    return topLevel;
+}
+
+/**
+ * Phase 5b (HLR-053): walk the built tree and mark every leaf whose
+ * underlying XML tag has at least one applicable AI intent. Sources
+ * the eligible tag set from `_ui_hints_index[*].ai_actions` so a new
+ * payload kind that registers AI intents (via `tools/ai/registry.py`
+ * + a `<ui:treeNode/>` annotation) automatically inherits the AI
+ * tree context menu — no TS edit required.
+ */
+function decorateAiTargetable(
+    roots: ProjectSpecNode[],
+    hints: ParsedProject['_ui_hints_index'],
+): void {
+    if (!hints) {
+        return;
+    }
+    const tagsWithAi = new Set<string>();
+    for (const entry of Object.values(hints)) {
+        if (entry.element && entry.ai_actions && entry.ai_actions.length > 0) {
+            tagsWithAi.add(entry.element);
+        }
+    }
+    if (tagsWithAi.size === 0) {
+        return;
+    }
+    const stack: ProjectSpecNode[] = [...roots];
+    while (stack.length > 0) {
+        const node = stack.pop()!;
+        if (node.locator && tagsWithAi.has(node.locator.tag)) {
+            node.markAiTargetable();
+        }
+        if (node.children) {
+            stack.push(...node.children);
+        }
+    }
 }
 
 /**

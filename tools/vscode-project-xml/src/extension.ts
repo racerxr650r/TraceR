@@ -44,6 +44,16 @@ import {
 import { FormPanelProvider } from './forms/FormPanelProvider';
 import { addHlr, addLlr, addModule, addStpFixture, addTest, addTestFile, editPayload } from './commands/forms';
 import { initProject } from './commands/initProject';
+import { AiCapabilityProvider } from './ai/capabilities';
+import { AiClient } from './ai/AiClient';
+import { AiPreviewProvider, PREVIEW_SCHEME as AI_PREVIEW_SCHEME } from './ai/diffPreview';
+import { registerProjectSpecParticipant } from './ai/participant';
+import { registerAiTreeCommands } from './ai/treeMenu';
+import {
+    AI_FIX_SUGGEST_TRACE,
+    AiQuickFixProvider,
+    runAiSuggestTrace,
+} from './ai/quickFix';
 
 export function activate(context: vscode.ExtensionContext): void {
     const output = vscode.window.createOutputChannel('Project Spec');
@@ -102,6 +112,80 @@ export function activate(context: vscode.ExtensionContext): void {
         ),
         vscode.commands.registerCommand(FIX_NO_TEST, (args) =>
             fixNoTest(sidecar, args),
+        ),
+    );
+
+    // Phase 5b — Inline AI assistance (HLR-029..033, HLR-044..045,
+    // HLR-048..053). Capability provider gates every AI surface; the
+    // chat participant, AI tree menu command, and AI Quick Fix variant
+    // re-evaluate when settings, workspace trust, or chat-model
+    // availability change. Deterministic surfaces (above) keep working
+    // when AI is unavailable.
+    const capabilities = new AiCapabilityProvider(output);
+    context.subscriptions.push(capabilities);
+    const aiPreview = new AiPreviewProvider();
+    context.subscriptions.push(aiPreview);
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(
+            AI_PREVIEW_SCHEME,
+            aiPreview,
+        ),
+    );
+    const aiClient = new AiClient(sidecar, capabilities, output);
+
+    // Re-register the chat participant on every capability flip so
+    // `@projectspec` disappears cleanly when no LM is available, the
+    // workspace becomes untrusted, or `projectXml.ai.enabled` is false.
+    let participantDisposable: vscode.Disposable | undefined;
+    const syncParticipant = (): void => {
+        const available = capabilities.state().available;
+        if (available && !participantDisposable) {
+            participantDisposable = registerProjectSpecParticipant({
+                capabilities,
+                aiClient,
+                preview: aiPreview,
+                output,
+            });
+            context.subscriptions.push(participantDisposable);
+        } else if (!available && participantDisposable) {
+            participantDisposable.dispose();
+            participantDisposable = undefined;
+        }
+    };
+    context.subscriptions.push(capabilities.onDidChange(() => syncParticipant()));
+    void capabilities.refresh().then(() => syncParticipant());
+
+    // Schema-driven AI tree-menu command (HLR-053). Single command id;
+    // the visible per-node intent list is derived from
+    // `ui_hints_index[<type>].ai_actions` at call time.
+    registerAiTreeCommands(context, {
+        capabilities,
+        aiClient,
+        sidecar,
+        preview: aiPreview,
+        output,
+    });
+
+    // AI Quick Fix variant on `broken-trace` diagnostics. Provider
+    // returns no actions when AI is unavailable, so the deterministic
+    // "Replace ref with…" entry remains the only Quick Fix.
+    const aiQuickFix = new AiQuickFixProvider(capabilities);
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider(
+            { language: 'xml', scheme: 'file' },
+            aiQuickFix,
+            { providedCodeActionKinds: AiQuickFixProvider.providedCodeActionKinds },
+        ),
+        vscode.commands.registerCommand(AI_FIX_SUGGEST_TRACE, (args) =>
+            runAiSuggestTrace(
+                {
+                    capabilities,
+                    aiClient,
+                    preview: aiPreview,
+                    output,
+                },
+                args,
+            ),
         ),
     );
 
