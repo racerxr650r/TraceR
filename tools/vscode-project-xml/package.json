@@ -86,6 +86,18 @@
       {
         "command": "projectXml.fix.createStubTest",
         "title": "Project Spec: Create stub test entry"
+      },
+      {
+        "command": "projectXml.addHlr",
+        "title": "Project Spec: Add High-Level Requirement…"
+      },
+      {
+        "command": "projectXml.addLlr",
+        "title": "Project Spec: Add Low-Level Requirement…"
+      },
+      {
+        "command": "projectXml.editPayload",
+        "title": "Project Spec: Edit in Form…"
       }
     ],
     "menus": {
@@ -126,6 +138,10 @@
         },
         {
           "command": "projectXml.fix.createStubTest",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.editPayload",
           "when": "false"
         }
       ]
@@ -180,11 +196,18 @@
     "test:unit": "TS_NODE_PROJECT=tsconfig.test.json mocha"
   },
   "devDependencies": {
+    "@rjsf/core": "^5.18.0",
+    "@rjsf/utils": "^5.18.0",
+    "@rjsf/validator-ajv8": "^5.18.0",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.20.0",
     "mocha": "^10.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.0"
   }

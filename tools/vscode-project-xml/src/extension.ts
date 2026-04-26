@@ -41,6 +41,8 @@ import {
     fixMissingTemplate,
     fixNoTest,
 } from './commands/quickFixes';
+import { FormPanelProvider } from './forms/FormPanelProvider';
+import { addHlr, addLlr, editPayload } from './commands/forms';
 
 export function activate(context: vscode.ExtensionContext): void {
     const output = vscode.window.createOutputChannel('Project Spec');
@@ -98,7 +100,21 @@ export function activate(context: vscode.ExtensionContext): void {
             fixMissingTemplate(args),
         ),
         vscode.commands.registerCommand(FIX_NO_TEST, (args) =>
-            fixNoTest(args),
+            fixNoTest(sidecar, args),
+        ),
+    );
+
+    // Phase 3 form panel + addHlr/addLlr/editPayload commands.
+    const formPanel = new FormPanelProvider(context, sidecar, output);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('projectXml.addHlr', () =>
+            addHlr(sidecar, formPanel),
+        ),
+        vscode.commands.registerCommand('projectXml.addLlr', () =>
+            addLlr(sidecar, formPanel),
+        ),
+        vscode.commands.registerCommand('projectXml.editPayload', (args) =>
+            editPayload(formPanel, args),
         ),
     );
 

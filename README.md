@@ -21,7 +21,7 @@ phased VS Code extension roadmap).
 | 2.5   | Schema-driven retrofit: `list_documents` discovery, dynamic `Render <Doc>` commands, `Finding.code` linter contract, `ui:*` per-element hints, coverage status badges, `<plan>` acceptance proof. | ✅ Complete |
 | 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | ✅ Done — Python `_ui_hints_index` + `_nodes` over JSON-RPC; TS shim typed; tree provider auto-projects any `<ui:treeNode/>` payload, lens provider scans schema-declared lens kinds, lint diagnostics resolve schema-declared id tokens. Adding a new payload requires zero TypeScript edits. |
 | 2.5c  | Payload-agnostic Quick Fix table keyed on `Finding.code`. | ✅ Done — `CodeActionProvider` dispatches on `Finding.code` (`broken-trace`, `id-format`, `missing-template`, `no-test`); every fix uses `WorkspaceEdit` text edits, none reference payload element name. |
-| 3     | Form webviews for HLRs / LLRs. | ⏳ Not started |
+| 3     | Form webviews for HLRs / LLRs. | ✅ Done — `tools/project_edit.py` adds `apply_edit` (lxml round-trip + validate-then-write, byte-identical on failure) and a payload-agnostic XSD→JSON-Schema deriver; sidecar exposes `apply_edit` / `form_schema` / `next_free_id`; React + RJSF webview drives `Project Spec: Add HLR` / `Add LLR` / edit-payload; the structural `no-test` Quick Fix routes through `apply_edit`. |
 | 4     | SDD/STP/Test forms + Walkthrough. | ⏳ Not started |
 | 5     | Inline AI assistance (`@projectspec` chat participant). | ⏳ Not started |
 | 5.5   | AI-assisted merge conflict resolution. | ⏳ Not started |
@@ -53,7 +53,7 @@ python3 -m unittest discover -s test -v
 
 The extension lives in
 [`tools/vscode-project-xml/`](tools/vscode-project-xml/) and currently
-ships Phases 1, 2, 2.5, 2.5b, and 2.5c:
+ships Phases 1, 2, 2.5, 2.5b, 2.5c, and 3:
 
 * A **Project Spec** activity-bar view with five top-level nodes
   (HLRs, LLRs, Tests, SDD, STP), each showing live counts and
@@ -89,8 +89,13 @@ ships Phases 1, 2, 2.5, 2.5b, and 2.5c:
 * Auto-refresh of the tree, re-lint, and badge update when
   `doc/Project.xml` is saved.
 
-Write surfaces today are limited to the Quick Fixes above; structural
-payload editing arrives with the Phase 3 form panels.
+Write surfaces: structural payload edits (Add HLR, Add LLR, edit
+existing HLR/LLR, and the `no-test` Quick Fix) all funnel through the
+Phase 3 `apply_edit` validate-then-write path so `doc/Project.xml`
+stays XSD- and lint-clean and round-trips with comments / CDATA /
+attribute order preserved. The remaining `broken-trace`, `id-format`,
+and `missing-template` Quick Fixes are flat text rewrites and stay on
+`vscode.WorkspaceEdit`.
 
 ### Building the extension
 
@@ -172,7 +177,7 @@ tools/
   project.xsd        # canonical schema (reserves urn:tracer:ui:v1)
   PLAN_web_form.md
   templates/         # Jinja2 templates for each spec doc
-  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5 + 2.5b + 2.5c)
+  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5 + 2.5b + 2.5c + 3)
 test/                # unittest suite for the Python tooling
 ```
 
