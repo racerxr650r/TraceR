@@ -18,7 +18,8 @@
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns:ui="urn:tracer:ui:v1"
-           elementFormDefault="qualified">
+           elementFormDefault="qualified"
+           version="1.5">
 
   <!-- ============================================================ -->
   <!-- UI hint vocabulary (urn:tracer:ui:v1)                         -->

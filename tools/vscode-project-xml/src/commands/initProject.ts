@@ -8,9 +8,12 @@
 // surface a clear error and exit; we do NOT attempt to open a
 // folder on the user's behalf (that's destructive and ambiguous).
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ProjectIoClient } from '../sidecar';
+import { getConfig } from '../util/paths';
+import { SCAFFOLD_TOOLS_COMMAND } from './scaffoldTools';
 
 const SHORT_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,15}$/;
 
@@ -110,6 +113,31 @@ export async function initProject(
     await vscode.commands.executeCommand('vscode.open', xmlUri);
     await vscode.commands.executeCommand('markdown.showPreviewToSide', pvdUri);
     await vscode.commands.executeCommand('projectXml.refresh');
+
+    // Phase 6 (LLR-PKG-05, HLR-061): if the new workspace lacks a
+    // tools/ directory, drop the bundled copy in so the CLI, CI, and
+    // contributors without the extension installed all work
+    // immediately. The user already opted into bootstrap, so we
+    // overwrite without re-prompting (the dir didn't exist anyway).
+    const toolsRel = getConfig().get<string>('toolsDir') ?? 'tools';
+    const toolsAbs = path.isAbsolute(toolsRel)
+        ? toolsRel
+        : path.join(folder.uri.fsPath, toolsRel);
+    if (!fs.existsSync(toolsAbs)) {
+        try {
+            await vscode.commands.executeCommand(SCAFFOLD_TOOLS_COMMAND, {
+                overwrite: true,
+                silent: true,
+            });
+        } catch (err) {
+            // Non-fatal — bootstrap succeeded; surface as info, not error.
+            const msg = err instanceof Error ? err.message : String(err);
+            void vscode.window.showWarningMessage(
+                `Project Spec: initialised the project, but scaffolding tools/ failed: ${msg}. ` +
+                'You can re-run "Project Spec: Scaffold tools/ into workspace…" later.',
+            );
+        }
+    }
 
     void vscode.window.showInformationMessage(
         `Project Spec: initialised ${path.basename(result.xml_path)} and ${path.basename(result.pvd_path)}.`,

@@ -1148,6 +1148,58 @@ projection.
 > `vsce publish` gated on a repository secret. Do not publish to
 > the Marketplace from this prompt — only wire the CI.
 
+### Phase 7 - User Documentation and additional polish
+1. Write a user manual with the following sections: Overview,
+   Installation, Getting Started, VS Code Extension,
+   Command Line Tools, and Example Workflow. This document should
+   be in the ./tools directory. 
+2. Convert the Schema_Reference.md into a Developer's Guide,
+   move it to the ./tools directory, and fix up any links to/from
+   other documents. The document should address users that want
+   to create their own generated documents and users that maintain
+   or contribute to this repository. Move the schema to
+   Appendix A of the document. This document should also be in
+   the ./tools directory.
+3. Update the .vsix installation package to include these new
+   documents.
+3. Move the status from the ./README.md to the top of the
+   SDP.md.
+4. Replace the current ./README.md with an overview of the
+   TraceR product. Keep the graphic.
+
+AI Prompt:
+> Write a user manual with the following sections: Overview,
+> Installation, Getting Started, VS Code Extension,
+> Command Line Tools, and Example Workflow. This document should
+> be in the ./tools directory.
+> Convert the Schema_Reference.md into a Developer's Guide,
+> move it to the ./tools directory, and fix up any links to/from
+> other documents. The document should address users that want
+> to create their own generated documents and users that maintain
+> or contribute to this repository. Move the schema to
+> Appendix A of the document. This document should also be in
+> the ./tools directory.
+> Update the .vsix installation package to include these new
+> documents.
+> Move the status from the ./README.md to the top of the
+> SDP.md. Replace the current ./README.md with an overview of the
+> TraceR product. Keep the graphic.
+
+### Phase 8 - Address Lint Warnings and Vulnerabilities
+1. Address the remaining lint warnings.
+2. Scan the third party packages for vulnerabilities and 
+   address any GitHub dependbot issues and clear them on
+   Github.
+3. Create a Known Anomalies Report and perform a security
+   review of the source code and flag any potential issues.
+   In addition perform a safety review of the source code
+   and flag any potential issues.
+
+## Phase 9 - Publish
+1. Create a release tag v1.0.
+2. Publish the package to the market place.
+3. Upload the package to the GitHub project page.
+
 ## 9. Risks & Open Questions
 
 *   **Python discovery.** Need a robust strategy to find Python on

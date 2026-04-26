@@ -18,7 +18,9 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "workspaceContains:doc/Project.xml",
-    "onChatParticipant:tracer.projectspec"
+    "onChatParticipant:tracer.projectspec",
+    "onCommand:projectXml.initProject",
+    "onCommand:projectXml.scaffoldTools"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -131,6 +133,10 @@
       {
         "command": "projectXml.resolveMergeConflicts",
         "title": "Project Spec: Resolve Project.xml merge conflicts…"
+      },
+      {
+        "command": "projectXml.scaffoldTools",
+        "title": "Project Spec: Scaffold tools/ into workspace…"
       }
     ],
     "walkthroughs": [
@@ -278,6 +284,11 @@
           "default": true,
           "description": "Re-run the linter when Project.xml is saved."
         },
+        "projectXml.warningsAsErrors": {
+          "type": "boolean",
+          "default": false,
+          "description": "Escalate lint warnings to error severity in the Problems panel and the status bar (HLR-042). This NEVER suppresses or hides warnings — it only raises their severity. Off by default."
+        },
         "projectXml.previewOnSave": {
           "type": "boolean",
           "default": true,
@@ -354,7 +365,9 @@
     "watch": "node esbuild.config.js --watch",
     "compile": "tsc -p . --noEmit",
     "compile:test": "tsc -p tsconfig.test.json --noEmit",
-    "test:unit": "TS_NODE_PROJECT=tsconfig.test.json mocha"
+    "test:unit": "TS_NODE_PROJECT=tsconfig.test.json mocha",
+    "prepackage": "node scripts/prepackage.js",
+    "package": "npm run prepackage && vsce package"
   },
   "devDependencies": {
     "@rjsf/core": "^5.18.0",

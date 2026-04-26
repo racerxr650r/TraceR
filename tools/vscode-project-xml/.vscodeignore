@@ -4,7 +4,15 @@ src/**
 test/**
 out/**
 node_modules/**
+scripts/**
 **/*.map
 **/tsconfig.json
+**/tsconfig.test.json
 **/esbuild.config.js
 **/.gitignore
+**/.mocharc*
+# Phase 6 (LLR-PKG-01, HLR-060): dist/python/ MUST ship in the .vsix —
+# it carries the bundled sidecar Python files used by the
+# extensionPath fallback and projectXml.scaffoldTools. Do NOT exclude
+# `dist/python/**` here.
+

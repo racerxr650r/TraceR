@@ -57,6 +57,13 @@ generated documents from a single edit point.
 | `short_name` | Binary / package name. |
 | `schema_version` | Version of *this* schema. Bump when the structure changes incompatibly. The current schema is `1.5`. |
 
+The XSD's own `<xs:schema>` root carries a matching `version="1.5"`
+attribute so the Phase 6 packaging script
+([tools/vscode-project-xml/scripts/prepackage.js](../tools/vscode-project-xml/scripts/prepackage.js))
+can pin the bundled tree's `dist/python/.bundle_version` file from a
+single source of truth — keep the two in lockstep when bumping
+either one.
+
 The XSD root reserves the namespace prefix `ui` (`urn:tracer:ui:v1`)
 for optional UI-only hints (icon, group, color) that consumers such
 as the VS Code extension may attach to payload elements via

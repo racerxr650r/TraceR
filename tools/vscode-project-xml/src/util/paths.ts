@@ -10,6 +10,33 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
+/** Phase 6 (LLR-PKG-02): the activated ExtensionContext, captured by
+ *  `setExtensionContext` from `activate()`. Used by `getToolsDir()`
+ *  to fall back to the bundled `<extensionPath>/dist/python` tree
+ *  when the workspace contains no `tools/` directory at the
+ *  configured `projectXml.toolsDir`.
+ *  Tests may leave this unset; the fallback is just skipped. */
+let extensionContext: vscode.ExtensionContext | undefined;
+
+export function setExtensionContext(ctx: vscode.ExtensionContext | undefined): void {
+    extensionContext = ctx;
+}
+
+export function getExtensionContext(): vscode.ExtensionContext | undefined {
+    return extensionContext;
+}
+
+/** Phase 6: the bundled `<extensionPath>/dist/python` directory, when
+ *  the activation captured a context AND the directory exists on
+ *  disk (built by `scripts/prepackage.js`). */
+export function getBundledToolsDir(): string | undefined {
+    if (!extensionContext) {
+        return undefined;
+    }
+    const candidate = path.join(extensionContext.extensionPath, 'dist', 'python');
+    return fs.existsSync(candidate) ? candidate : undefined;
+}
+
 export function getConfig(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('projectXml');
 }
@@ -65,7 +92,19 @@ export function getXsdPath(): string | undefined {
 
 export function getToolsDir(): string | undefined {
     const rel = getConfig().get<string>('toolsDir') ?? 'tools';
-    return resolveAgainstProject(rel);
+    const resolved = resolveAgainstProject(rel);
+    if (resolved && fs.existsSync(path.join(resolved, 'project_io.py'))) {
+        return resolved;
+    }
+    // Phase 6 (LLR-PKG-02): fall back to the bundled copy shipped
+    // inside the .vsix at `<extensionPath>/dist/python`. The
+    // workspace's tools/ remains authoritative whenever it exists,
+    // so this only fires for fresh / empty workspaces.
+    const bundled = getBundledToolsDir();
+    if (bundled) {
+        return bundled;
+    }
+    return resolved;
 }
 
 export function getProjectIoScript(): string | undefined {
