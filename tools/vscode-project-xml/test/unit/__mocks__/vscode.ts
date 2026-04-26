@@ -33,6 +33,12 @@ export class Uri {
     static file(p: string): Uri {
         return new Uri(p);
     }
+    static parse(s: string): Uri {
+        if (s.startsWith('file://')) {
+            return new Uri(s.slice('file://'.length));
+        }
+        return new Uri(s);
+    }
     toString(): string {
         return `file://${this.fsPath}`;
     }
@@ -174,4 +180,76 @@ export class TreeItem {
         public collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
     ) {}
 }
+
+// ---------------- Diagnostics + Code Actions (Phase 2.5c) -----------
+
+export enum DiagnosticSeverity {
+    Error = 0,
+    Warning = 1,
+    Information = 2,
+    Hint = 3,
+}
+
+export class Diagnostic {
+    public source: string | undefined = undefined;
+    public code: string | number | { value: string | number; target: Uri } | undefined = undefined;
+    constructor(
+        public range: Range,
+        public message: string,
+        public severity: DiagnosticSeverity = DiagnosticSeverity.Error,
+    ) {}
+}
+
+export class CodeActionKind {
+    static readonly QuickFix = new CodeActionKind('quickfix');
+    static readonly Refactor = new CodeActionKind('refactor');
+    constructor(public readonly value: string) {}
+}
+
+export class CodeAction {
+    public command: { command: string; title: string; arguments?: unknown[] } | undefined;
+    public diagnostics: Diagnostic[] | undefined;
+    public isPreferred: boolean | undefined;
+    public edit: WorkspaceEdit | undefined;
+    constructor(public title: string, public kind?: CodeActionKind) {}
+}
+
+export interface CodeActionContext {
+    diagnostics: readonly Diagnostic[];
+    only?: CodeActionKind;
+    triggerKind?: number;
+}
+
+export class Selection extends Range {}
+
+export class CancellationTokenSource {
+    public token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }) };
+    cancel(): void { this.token.isCancellationRequested = true; }
+    dispose(): void {}
+}
+
+// ---------------- WorkspaceEdit ------------------------------------
+
+export interface WorkspaceEditOp {
+    kind: 'replace' | 'insert' | 'createFile';
+    uri: Uri;
+    range?: Range;
+    position?: Position;
+    text?: string;
+    options?: { overwrite?: boolean; ignoreIfExists?: boolean };
+}
+
+export class WorkspaceEdit {
+    public readonly ops: WorkspaceEditOp[] = [];
+    replace(uri: Uri, range: Range, text: string): void {
+        this.ops.push({ kind: 'replace', uri, range, text });
+    }
+    insert(uri: Uri, position: Position, text: string): void {
+        this.ops.push({ kind: 'insert', uri, position, text });
+    }
+    createFile(uri: Uri, options?: { overwrite?: boolean; ignoreIfExists?: boolean }): void {
+        this.ops.push({ kind: 'createFile', uri, options });
+    }
+}
+
 

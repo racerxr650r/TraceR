@@ -8,3 +8,6 @@ doc/Traceability.md
 
 # Python bytecode cache
 tools/__pycache__/
+
+# Test bytecode cache
+test/__pycache__/

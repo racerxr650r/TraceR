@@ -6,7 +6,7 @@
 // it in the Problems panel.
 
 import * as vscode from 'vscode';
-import { ProjectIoClient, LintResult, UiHintsIndex } from '../sidecar';
+import { LintFinding, ProjectIoClient, LintResult, UiHintsIndex } from '../sidecar';
 import { getProjectXmlPath, getProjectXmlUri, getXsdPath } from '../util/paths';
 import {
     DEFAULT_ID_SCAN_REGISTRY,
@@ -15,7 +15,13 @@ import {
     rangeForFinding,
 } from '../util/locator';
 
-const SOURCE = 'projectXml';
+export const SOURCE = 'projectXml';
+
+const SEVERITY_BY_KIND: Record<LintFinding['severity'], vscode.DiagnosticSeverity> = {
+    error: vscode.DiagnosticSeverity.Error,
+    warning: vscode.DiagnosticSeverity.Warning,
+    note: vscode.DiagnosticSeverity.Information,
+};
 
 export class LintDiagnosticsProvider implements vscode.Disposable {
     private readonly collection: vscode.DiagnosticCollection;
@@ -74,14 +80,25 @@ export class LintDiagnosticsProvider implements vscode.Disposable {
         }
 
         const diagnostics: vscode.Diagnostic[] = [];
-        for (const msg of result.errors) {
-            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Error, this.idScanRegistry));
-        }
-        for (const msg of result.warnings) {
-            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Warning, this.idScanRegistry));
-        }
-        for (const msg of result.notes) {
-            diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Information, this.idScanRegistry));
+        // Phase 2.5c: prefer the structured `items` list so each
+        // diagnostic carries its `Finding.code` for the
+        // CodeActionProvider to dispatch on. Older sidecars without
+        // `items` fall back to the flat string lists, in which case
+        // diagnostics have no `code` and no Quick Fixes will fire.
+        if (result.items && result.items.length > 0) {
+            for (const item of result.items) {
+                diagnostics.push(makeDiagnosticFromItem(doc, item, this.idScanRegistry));
+            }
+        } else {
+            for (const msg of result.errors) {
+                diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Error, this.idScanRegistry));
+            }
+            for (const msg of result.warnings) {
+                diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Warning, this.idScanRegistry));
+            }
+            for (const msg of result.notes) {
+                diagnostics.push(makeDiagnostic(doc, msg, vscode.DiagnosticSeverity.Information, this.idScanRegistry));
+            }
         }
         this.collection.set(uri, diagnostics);
     }
@@ -125,5 +142,30 @@ function makeDiagnostic(
 ): vscode.Diagnostic {
     const diag = new vscode.Diagnostic(rangeForFinding(doc, message, registry), message, severity);
     diag.source = SOURCE;
+    return diag;
+}
+
+/**
+ * Phase 2.5c: build a diagnostic from a structured `LintFinding`.
+ * The `Finding.code` (when present) is mirrored onto `diag.code` so
+ * `QuickFixProvider` can dispatch on the stable token instead of
+ * re-parsing the message text — the SDP §8 Phase 2.5c contract
+ * (HLR-012, HLR-025).
+ */
+function makeDiagnosticFromItem(
+    doc: vscode.TextDocument,
+    item: LintFinding,
+    registry: IdScanEntry[],
+): vscode.Diagnostic {
+    const severity = SEVERITY_BY_KIND[item.severity] ?? vscode.DiagnosticSeverity.Information;
+    const diag = new vscode.Diagnostic(
+        rangeForFinding(doc, item.message, registry),
+        item.message,
+        severity,
+    );
+    diag.source = SOURCE;
+    if (item.code) {
+        diag.code = item.code;
+    }
     return diag;
 }
