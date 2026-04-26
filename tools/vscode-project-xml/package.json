@@ -127,6 +127,10 @@
       {
         "command": "projectXml.ai.fix.suggestTrace",
         "title": "Project Spec: Suggest correct ref with AI"
+      },
+      {
+        "command": "projectXml.resolveMergeConflicts",
+        "title": "Project Spec: Resolve Project.xml merge conflicts…"
       }
     ],
     "walkthroughs": [
@@ -309,6 +313,16 @@
           "type": "boolean",
           "default": true,
           "description": "Append every accepted/rejected AI step to <workspace>/.edit_doc/ai_history.jsonl for audit (HLR-049). Set to false to disable provenance logging."
+        },
+        "projectXml.merge.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Stage A deterministic three-way structural merge for doc/Project.xml when Git reports a conflict on that file. The merger preserves comments/CDATA/attribute order, unions <trace> rows, auto-resolves disjoint adds, and reallocates colliding ids; residual conflicts are surfaced for Stage B (HLR-063)."
+        },
+        "projectXml.merge.aiResidualResolution": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use the AI layer (merge.* intents) to suggest resolutions for residual conflicts surfaced by the Stage A merger. Suggestions are badged '✨ AI suggestion' in the merge editor; the user always picks the final region (HLR-068). Forced false when projectXml.ai.enabled is false (HLR-034)."
         }
       }
     },
@@ -320,15 +334,16 @@
         "description": "TraceR's schema-aware AI ghostwriter for Project.xml and PVD.md.",
         "isSticky": true,
         "commands": [
-          { "name": "draft-hlr",       "description": "Draft an HLR with AI" },
-          { "name": "draft-llr",       "description": "Draft an LLR with AI" },
-          { "name": "draft-test",      "description": "Draft a test with AI" },
-          { "name": "draft-module",    "description": "Draft an SDD module with AI" },
-          { "name": "draft-pvd",       "description": "Draft a PVD section with AI" },
-          { "name": "expand",          "description": "Expand an HLR into LLRs (or an LLR into tests)" },
-          { "name": "review",          "description": "Review an item for advisory findings" },
-          { "name": "suggest-traces",  "description": "Suggest correct trace targets" },
-          { "name": "gap-fill",        "description": "Propose fixes for outstanding coverage gaps" }
+          { "name": "draft-hlr",         "description": "Draft an HLR with AI" },
+          { "name": "draft-llr",         "description": "Draft an LLR with AI" },
+          { "name": "draft-test",        "description": "Draft a test with AI" },
+          { "name": "draft-module",      "description": "Draft an SDD module with AI" },
+          { "name": "draft-pvd",         "description": "Draft a PVD section with AI" },
+          { "name": "expand",            "description": "Expand an HLR into LLRs (or an LLR into tests)" },
+          { "name": "review",            "description": "Review an item for advisory findings" },
+          { "name": "suggest-traces",    "description": "Suggest correct trace targets" },
+          { "name": "gap-fill",          "description": "Propose fixes for outstanding coverage gaps" },
+          { "name": "resolve-conflicts", "description": "Resolve a Git merge conflict on doc/Project.xml" }
         ]
       }
     ]

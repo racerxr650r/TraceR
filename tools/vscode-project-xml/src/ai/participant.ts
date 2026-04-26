@@ -91,6 +91,17 @@ async function handleTurn(
         stream.markdown(helpMessage());
         return {};
     }
+    // Phase 5.5: `/resolve-conflicts` is a headless command that
+    // delegates to MergeConflictResolver via its registered command.
+    if (slash === 'resolve-conflicts') {
+        stream.progress('Resolving Project.xml merge conflicts…');
+        await vscode.commands.executeCommand('projectXml.resolveMergeConflicts');
+        stream.markdown(
+            'Triggered **Project Spec: Resolve Project.xml merge conflicts…**. ' +
+                'See the Project Spec output channel for per-region results.',
+        );
+        return {};
+    }
     const userPrompt = (request.prompt || '').trim();
     const explicitTarget = parseTargetFlag(userPrompt);
     const intent = intentForSlash(slash, explicitTarget?.type);
@@ -202,6 +213,13 @@ async function renderOutcome(
             stream.markdown(
                 'No language model is available. Install a chat model ' +
                     'extension (e.g. GitHub Copilot Chat) and try again.',
+            );
+            return {};
+        }
+        case 'merge_resolved': {
+            stream.markdown(
+                `**Merge suggestion** \`${intent.id}\` produced a candidate; ` +
+                    'the resolver applies it via the merge editor.',
             );
             return {};
         }

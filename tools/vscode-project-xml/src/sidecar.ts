@@ -135,6 +135,38 @@ export class ProjectIoClient implements vscode.Disposable {
         );
     }
 
+    /**
+     * Phase 5.5 (HLR-063..069): Stage A deterministic three-way merge
+     * over `doc/Project.xml`. The sidecar never writes; the caller is
+     * responsible for opening the merge editor with `mergedXml` and
+     * driving residual conflicts through Stage B (AI or manual).
+     *
+     * `base` may be null/empty when the Git merge base is unavailable;
+     * the sidecar then returns `{ refused: true, refusal: "..." }`
+     * (HLR-034) instead of raising.
+     */
+    async mergeThreeWay(params: MergeThreeWayParams): Promise<MergeThreeWayResult> {
+        return this.request<MergeThreeWayResult>(
+            'merge_three_way',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
+    /**
+     * Phase 5.5: substitute a Stage-B resolution payload (from a
+     * `merge.*` AI intent or a manual edit) back into the merged
+     * tree. The sidecar still does not write; the merge editor is
+     * the only commit surface (per SDP §5.9).
+     */
+    async applyMergeResolution(
+        params: ApplyMergeResolutionParams,
+    ): Promise<ApplyMergeResolutionResult> {
+        return this.request<ApplyMergeResolutionResult>(
+            'apply_merge_resolution',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
     private async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
         const proc = this.ensureStarted();
         const id = this.nextId++;
@@ -647,6 +679,7 @@ export type AiResponseKind =
     | 'rejected'
     | 'advisory'
     | 'draft_pvd'
+    | 'merge_resolved'
     | 'no-model';
 
 /** Shape returned by `ai_request`. Matches `pipeline.StepResult.to_dict`. */
@@ -675,3 +708,79 @@ export interface AiRequestResult {
     /** Echo of the parsed model JSON when present. */
     response?: Record<string, unknown>;
 }
+
+// ---------- Phase 5.5: merge_three_way / apply_merge_resolution -------
+
+export type MergeConflictKind =
+    | 'body'
+    | 'modify_delete'
+    | 'id_collision'
+    | 'trace'
+    | 'schema_bump';
+
+/** A residual structural conflict surfaced by `merge_three_way`. */
+export interface MergeConflict {
+    kind: MergeConflictKind;
+    /** XPath-ish container of the conflicting payload (e.g.
+     *  `/hlrs/section[@number='1']/hlr[@id='HLR-001']`). */
+    container: string;
+    /** Stable identifier of the conflicting item (e.g. `HLR-001`,
+     *  `tools/foo.py`, or `schema_version` for `kind='schema_bump'`). */
+    key: string;
+    /** Complex-type name of the payload (e.g. `"Hlr"`). */
+    type: string;
+    /** Serialised XML for the three sides; null when missing on
+     *  that branch (modify-vs-delete). */
+    base: string | null;
+    ours: string | null;
+    theirs: string | null;
+    /** For `kind='id_collision'`: the auto-allocated id the merger
+     *  proposes for the theirs side. */
+    rename_to?: string;
+    /** Optional human-readable note from the merger (e.g. divergent
+     *  child tags). */
+    note?: string;
+}
+
+export interface MergeLintSummary {
+    errors: string[];
+    warnings: string[];
+    notes: string[];
+    ok: boolean;
+}
+
+export interface MergeThreeWayParams {
+    /** Pre-conflict ancestor XML; pass null/empty when the Git merge
+     *  base is unavailable — the sidecar refuses cleanly (HLR-034). */
+    base: string | null;
+    ours: string;
+    theirs: string;
+    xsd_path?: string;
+}
+
+export interface MergeThreeWayResult {
+    merged_xml: string;
+    residual_conflicts: MergeConflict[];
+    lint: MergeLintSummary;
+    /** Number of conflicts the merger auto-resolved structurally
+     *  (disjoint adds, trace unions, one-sided edits, etc.). */
+    auto_resolved: number;
+    /** True when the merger refused to run; `refusal` carries the
+     *  human-readable reason. */
+    refused: boolean;
+    refusal?: string;
+}
+
+export interface ApplyMergeResolutionParams {
+    merged_xml: string;
+    conflict: MergeConflict;
+    /** Stage-B payload — schema depends on the intent that produced
+     *  it (e.g. `{ merged_xml: string }` for `merge.body`,
+     *  `{ schema_version: string }` for `merge.schema_bump`). */
+    resolution: Record<string, unknown>;
+}
+
+export interface ApplyMergeResolutionResult {
+    merged_xml: string;
+}
+

@@ -16,7 +16,7 @@
 // `test/test_ai_registry.py` and the unit test for this file exercise
 // the matching.
 
-export type IntentKind = 'authoring' | 'pvd' | 'advisory';
+export type IntentKind = 'authoring' | 'pvd' | 'advisory' | 'merge';
 
 export interface IntentSpec {
     id: string;
@@ -39,6 +39,13 @@ export const INTENTS: readonly IntentSpec[] = [
     { id: 'review.item',        label: 'Review with AI',               kind: 'advisory',  targets: ['Hlr', 'Llr', 'Test', 'SddModule'], slash: 'review' },
     { id: 'suggest.traces',     label: 'Suggest traces with AI',       kind: 'authoring', targets: ['Hlr', 'Llr', 'Test'],               slash: 'suggest-traces' },
     { id: 'gap.fix',            label: 'Fix coverage gap with AI',     kind: 'authoring', targets: ['Hlr', 'Llr'],                       slash: 'gap-fill' },
+    // Phase 5.5 (HLR-063..069): merge conflict resolution. All four
+    // share the `/resolve-conflicts` slash; the resolver picks the
+    // right intent per residual conflict kind.
+    { id: 'merge.body',         label: 'AI suggestion for body conflict',         kind: 'merge', targets: ['Hlr', 'Llr', 'Test', 'SddModule'], slash: 'resolve-conflicts' },
+    { id: 'merge.trace',        label: 'AI suggestion for trace conflict',        kind: 'merge', targets: ['Traces'],                          slash: 'resolve-conflicts' },
+    { id: 'merge.rename',       label: 'AI suggestion for id collision',          kind: 'merge', targets: ['Hlr', 'Llr'],                      slash: 'resolve-conflicts' },
+    { id: 'merge.schema_bump',  label: 'AI suggestion for schema_version bump',   kind: 'merge', targets: ['Project'],                         slash: 'resolve-conflicts' },
 ];
 
 const BY_ID = new Map<string, IntentSpec>(INTENTS.map((i) => [i.id, i]));

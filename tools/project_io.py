@@ -127,6 +127,10 @@ from ai.pipeline import (
 )
 from ai.provenance import append_record as _ai_append_record
 from ai.registry import get_intent as _ai_get_intent
+from project_merge import (
+    merge_three_way as _merge_three_way,
+    apply_resolution as _merge_apply_resolution,
+)
 
 # JSON-RPC error codes (https://www.jsonrpc.org/specification#error_object).
 PARSE_ERROR = -32700
@@ -416,6 +420,47 @@ def _method_ai_request(params: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _method_merge_three_way(params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 5.5 — Stage A deterministic structural merger (HLR-034).
+
+    Inputs are the three blob bodies from ``git show :1:`` / ``:2:`` /
+    ``:3:`` (XML strings). ``base`` may be null/empty to signal an
+    unavailable merge base; the merger refuses cleanly rather than
+    silently picking a side.
+    """
+    base = params.get("base")
+    ours = params.get("ours")
+    theirs = params.get("theirs")
+    if not isinstance(ours, str) or not ours.strip():
+        raise ValueError("merge_three_way requires non-empty string 'ours'")
+    if not isinstance(theirs, str) or not theirs.strip():
+        raise ValueError("merge_three_way requires non-empty string 'theirs'")
+    if base is not None and not isinstance(base, str):
+        raise ValueError("merge_three_way 'base' must be a string or null")
+    xsd_path = _as_path(params.get("xsd_path"), PROJECT_XSD)
+    result = _merge_three_way(base, ours, theirs, xsd_path=xsd_path)
+    return result.to_dict()
+
+
+def _method_apply_merge_resolution(params: dict[str, Any]) -> dict[str, Any]:
+    """Substitute a Stage-B resolution payload (manual or AI) into the
+    in-memory merged XML and return the new merged XML string. The
+    sidecar never writes the merged file: the merge editor is the only
+    commit surface (per SDP §5.9).
+    """
+    merged_xml = params.get("merged_xml")
+    if not isinstance(merged_xml, str) or not merged_xml.strip():
+        raise ValueError("apply_merge_resolution requires string 'merged_xml'")
+    conflict = params.get("conflict")
+    if not isinstance(conflict, dict):
+        raise ValueError("apply_merge_resolution requires 'conflict' object")
+    resolution = params.get("resolution")
+    if not isinstance(resolution, dict):
+        raise ValueError("apply_merge_resolution requires 'resolution' object")
+    new_xml = _merge_apply_resolution(merged_xml, conflict, resolution)
+    return {"merged_xml": new_xml}
+
+
 METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "lint": _method_lint,
     "render": _method_render,
@@ -427,6 +472,8 @@ METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "form_schema": _method_form_schema,
     "next_free_id": _method_next_free_id,
     "ai_request": _method_ai_request,
+    "merge_three_way": _method_merge_three_way,
+    "apply_merge_resolution": _method_apply_merge_resolution,
 }
 
 

@@ -54,6 +54,7 @@ import {
     AiQuickFixProvider,
     runAiSuggestTrace,
 } from './ai/quickFix';
+import { registerResolveMergeCommand } from './commands/resolveMerge';
 
 export function activate(context: vscode.ExtensionContext): void {
     const output = vscode.window.createOutputChannel('Project Spec');
@@ -187,6 +188,13 @@ export function activate(context: vscode.ExtensionContext): void {
                 args,
             ),
         ),
+    );
+
+    // Phase 5.5: AI-assisted merge conflict resolution.
+    context.subscriptions.push(
+        registerResolveMergeCommand({
+            sidecar, capabilities, aiClient, output,
+        }),
     );
 
     // Phase 3 + Phase 4 form panel commands. Each registered command

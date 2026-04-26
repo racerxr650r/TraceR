@@ -25,7 +25,7 @@ phased VS Code extension roadmap).
 | 4     | SDD/STP/Test forms + Walkthrough. | ✅ Done — `FormPanelProvider` widened to any complex type carrying a `<ui:form>` annotation; `<ui:form>` added to `StpFixture` and `TestFile`; new commands `Project Spec: Add SDD Module / Add STP Fixture / Add Test File / Add Test`; `Project Spec: Initialise Project.xml…` bootstraps a brand-new project from an empty workspace via the sidecar's `init_project`; seven-step **Get Started with Project Spec** Walkthrough makes the bootstrap-to-first-render flow discoverable from VS Code's Get Started page. Schema bumped to `1.5`. |
 | 5a    | Inline AI assistance — Python grounding & pipeline. | ✅ Done — `tools/ai/{registry,context,pipeline,translators,provenance}.py` with 10 registered intents (`draft.{module,hlr,llr,test,pvd}`, `expand.hlr_to_llrs`, `expand.llr_to_tests`, `review.item`, `suggest.traces`, `gap.fix`); per-intent system prompts under `tools/ai/intents/` and Draft-07 JSON Schemas under `tools/ai/schemas/`; sidecar `ai_request` JSON-RPC method (stateless `prepare`/`evaluate`/`run` so the TS layer owns `vscode.lm.*` per HLR-045); deterministic translators emit `apply_edit`-shaped JSON Patches; PVD ghostwriting prompt with clarifying-question rules (HLR-052); provenance JSONL at `<workspace>/.edit_doc/ai_history.jsonl` (HLR-049); `apply_edit` gains `dry_run` for diff-preview; `parse_ui_hints_index` projects `ai_actions` per `<ui:treeNode/>` payload (HLR-053). New JSON-RPC error code `-32020 NO_LANGUAGE_MODEL`. 123 unittests green. |
 | 5b    | Inline AI assistance — TypeScript surfaces. | ✅ Done — `@projectspec` chat participant (`vscode.chat.createChatParticipant`) with slash commands `/draft-hlr`, `/draft-llr`, `/draft-test`, `/draft-module`, `/draft-pvd`, `/expand`, `/review`, `/suggest-traces`, `/gap-fill`; schema-driven AI tree context-menu entries projected from `ui_hints_index.ai_actions`; AI Quick Fix variant on `broken-trace`; diff-preview-and-apply with timestamped backup under `.edit_doc/backups/`; settings UI for `projectXml.ai.{enabled,modelFamily,maxTokens,autoApplyValidated,historyLog}`; graceful degradation per HLR-044/045 — when `vscode.lm.selectChatModels` returns no models, the workspace is untrusted, or `projectXml.ai.enabled` is false, every AI surface is hidden cleanly while every deterministic surface (tree, diagnostics, lenses, form panels, render, Stage A merge) remains fully functional. |
-| 5.5   | AI-assisted merge conflict resolution. | ⏳ Not started |
+| 5.5   | AI-assisted merge conflict resolution. | ✅ Done — `tools/project_merge.py` deterministic Stage A three-way merger (lxml-based, preserves comments / CDATA / attribute order; unions disjoint adds and `<traces>` rows; reallocates colliding ids; recomputes `<metadata>/<counts>`; refuses cleanly when the Git merge base is unavailable per HLR-034); sidecar JSON-RPC methods `merge_three_way` and `apply_merge_resolution`; four `merge.*` AI intents (`merge.body`, `merge.trace`, `merge.rename`, `merge.schema_bump`) with `kind="merge"` skipping the `apply_edit` path; `projectXml.resolveMergeConflicts` command + `MergeConflictResolver` (Git extension API to detect MERGE state, three-way blob fetch via `git show :1/:2/:3`, per-region "✨ AI suggestion" badging, accept/reject in the merge editor — never writes automatically per SDP §5.9); `@projectspec /resolve-conflicts` slash command; per-region provenance to `.edit_doc/ai_history.jsonl` (sha-1 of base/ours/theirs + intent + rationale); settings `projectXml.merge.{enabled,aiResidualResolution}` (the latter forced off when `projectXml.ai.enabled=false`). |
 | 6     | Marketplace polish. | ⏳ Not started — includes self-contained `.vsix` (bundled `dist/python/` sidecar copy), `Scaffold tools/ into workspace…` command, automatic scaffolding from `initProject` in empty workspaces, and a bundled-vs-workspace freshness notification (HLR-060 / HLR-061 / HLR-062). |
 
 ## CLI tooling
@@ -154,6 +154,13 @@ ln -s /path/to/TraceR /tmp/tracer-edh
 | `projectXml.autoLintOnChange`| `true`              | Re-lint on save. |
 | `projectXml.previewOnSave`   | `true`              | Refresh the Markdown preview when `Project.xml` is saved. |
 | `projectXml.showCoverageBadges` | `true`           | Show ❌ / ⚠ status badges on HLR/LLR tree leaves. |
+| `projectXml.ai.enabled`      | `true`              | Enable AI surfaces (chat participant, AI tree menu, AI Quick Fix). Setting to `false` hides every AI surface cleanly while keeping deterministic surfaces (tree, lint, lenses, forms, render, Stage A merge) functional. |
+| `projectXml.ai.modelFamily`  | _(empty)_           | Optional language-model family selector (e.g. `gpt-4o`); empty means no constraint. |
+| `projectXml.ai.maxTokens`    | `8000`              | Token budget for the AI grounding bundle. |
+| `projectXml.ai.autoApplyValidated` | `false`       | When `true`, validated AI patches skip the diff-preview gate. |
+| `projectXml.ai.historyLog`   | `true`              | Append every AI step to `<workspace>/.edit_doc/ai_history.jsonl`. |
+| `projectXml.merge.enabled`   | `true`              | Enable Stage A deterministic three-way structural merge for `doc/Project.xml` (Phase 5.5, HLR-063). |
+| `projectXml.merge.aiResidualResolution` | `true`   | Use `merge.*` AI intents to suggest resolutions for residual conflicts; badged ✨ AI suggestion in the merge editor. Forced `false` when `projectXml.ai.enabled=false` (HLR-034). |
 
 ### Acceptance checks
 
@@ -187,10 +194,13 @@ tools/
   render_doc.py      # Project.xml → Markdown via Jinja2
   lint_project.py    # XSD + semantic linter (emits Finding.code)
   project_io.py      # JSON-RPC 2.0 server over stdio
+  project_edit.py    # apply_edit / form_schema / next_free_id (Phase 3)
+  project_merge.py   # Stage A deterministic three-way merger (Phase 5.5)
   project.xsd        # canonical schema (reserves urn:tracer:ui:v1)
   PLAN_web_form.md
   templates/         # Jinja2 templates for each spec doc
-  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5 + 2.5b + 2.5c + 3 + 4)
+  ai/                # AI registry + intents + schemas + pipeline (Phase 5a)
+  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5 + 2.5b + 2.5c + 3 + 4 + 5a + 5b + 5.5)
 test/                # unittest suite for the Python tooling
 ```
 

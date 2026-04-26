@@ -3668,6 +3668,150 @@ authoritative for the sidecar spawn at all times.]]></text>
       </llr>
     </function>
 
+    <function number="28"
+              title="Structured three-way merger ([tools/project_merge.py](../tools/project_merge.py), [tools/vscode-project-xml/src/merge/MergeConflictResolver.ts](../tools/vscode-project-xml/src/merge/MergeConflictResolver.ts))"
+              name="merge"
+              source="tools/project_merge.py">
+      <intro><![CDATA[Phase 5.5 (HLR-034..036): the deterministic Stage A merger
+plus the AI-assisted Stage B residual resolver. The Python
+side preserves comments, CDATA, attribute order; unions
+disjoint adds and `<traces>` rows; reallocates colliding ids;
+and emits residual `Conflict` records the TS resolver feeds
+through the `merge.*` AI intents. The merge editor remains
+the sole commit surface — neither layer ever writes to
+`doc/Project.xml` automatically (per SDP §5.9).]]></intro>
+
+      <llr id="LLR-MRG-01">
+        <text><![CDATA[`merge_three_way(base, ours, theirs, *, xsd_path)` in
+`tools/project_merge.py` shall accept either filesystem paths
+or in-memory XML (`str`/`bytes`) for each of the three sides,
+shall preserve XML comments, CDATA sections, and attribute
+order across the merge (via `lxml.etree`), and shall return a
+`MergeResult` with `merged_xml`, `residual_conflicts`, `lint`,
+`auto_resolved`, and (when applicable) `refused`/`refusal`.
+When `base` is `None` or empty the function shall not raise —
+it shall return `refused=True` with a human-readable
+`refusal` string so the resolver can degrade gracefully
+(HLR-034).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-034" name="Deterministic Structural Merge (Stage A)"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-02">
+        <text><![CDATA[The merger shall walk a fixed container registry covering
+`hlrs/section/hlr@id`, `llrs/function/llr@id`, `tests/file/test@name`,
+`sdd/modules/module@path`, and `stp/fixture@id`. For each
+container it shall: union additions whose keys do not collide;
+auto-resolve one-sided edits and one-sided deletes; emit a
+`body` conflict for two-sided body edits; emit a
+`modify_delete` conflict when one side modifies and the
+other deletes; emit an `id_collision` conflict (with a
+proposed `rename_to`) when both sides add a different
+payload under the same key; and emit a `trace` conflict when
+field-level merge cannot reconcile divergent `<traces>`
+children. `<traces>` rows shall be unioned by the
+`(target, ref)` tuple in all auto-resolved cases.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-034" name="Deterministic Structural Merge (Stage A)"/>
+          <trace target="HLR" ref="HLR-035" name="Residual Conflict Reporting"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-03">
+        <text><![CDATA[After each merge the function shall recompute
+`<metadata>/<counts>` (`hlrs`, `llrs`, `tests`, `modules`,
+`fixtures`) from the merged tree so the per-document totals
+remain truthful regardless of which side last edited the
+counts block. A divergent `project/@schema_version` shall
+become a `schema_bump` residual conflict; a one-sided bump
+shall be promoted automatically.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-034" name="Deterministic Structural Merge (Stage A)"/>
+          <trace target="HLR" ref="HLR-035" name="Residual Conflict Reporting"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-04">
+        <text><![CDATA[`apply_resolution(merged_xml, conflict, resolution)` shall
+substitute a Stage-B payload (an AI `merge.*` intent response
+or a manual edit) back into the merged tree by locating the
+container via the `Conflict.container` XPath-ish address and
+replacing the matching element (or, for `schema_bump`,
+overwriting the `project/@schema_version` attribute). The
+function shall remain a pure transform — it shall never
+write to disk; the merge editor commits the final bytes
+(SDP §5.9).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-035" name="Residual Conflict Reporting"/>
+          <trace target="HLR" ref="HLR-036" name="Merge Editor Integration"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-05">
+        <text><![CDATA[`tools/project_io.py` shall expose `merge_three_way` and
+`apply_merge_resolution` JSON-RPC methods registered in the
+single `METHODS` table. Both methods shall be reachable when
+`projectXml.ai.enabled=false` so Stage A always runs;
+neither method shall raise on a missing/empty `base` —
+the refusal payload shall be returned as a successful
+result (HLR-034). Neither method shall write to
+`doc/Project.xml`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-034" name="Deterministic Structural Merge (Stage A)"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-06">
+        <text><![CDATA[`tools/ai/registry.py` shall declare four merge intents —
+`merge.body`, `merge.trace`, `merge.rename`,
+`merge.schema_bump` — each with `kind="merge"` and slash
+`resolve-conflicts`. `tools/ai/pipeline.py` shall return
+`AiResult(kind="merge_resolved", response=<parsed JSON>)`
+for any intent of kind `"merge"` from both `run()` and
+`evaluate()`, skipping the JSON-Patch translator and
+`apply_edit` write entirely.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-035" name="Residual Conflict Reporting"/>
+          <trace target="HLR" ref="HLR-036" name="Merge Editor Integration"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-07">
+        <text><![CDATA[`tools/vscode-project-xml/src/merge/MergeConflictResolver.ts`
+shall, on the `projectXml.resolveMergeConflicts` command and
+the `@projectspec /resolve-conflicts` slash command,
+(a) detect a Git MERGE state on `doc/Project.xml` via
+`vscode.extensions.getExtension('vscode.git').exports.getAPI(1)`,
+(b) read the `:1`/`:2`/`:3` blobs via `git show`,
+(c) call the sidecar's `merge_three_way`, (d) when
+`projectXml.merge.aiResidualResolution` is on AND
+`projectXml.ai.enabled` is on, drive each residual through
+the matching `merge.*` intent and substitute via
+`apply_merge_resolution`, and (e) present the merged
+candidate to the user. The resolver shall never write to
+`doc/Project.xml` without an explicit user accept gesture
+(HLR-036).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-036" name="Merge Editor Integration"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-MRG-08">
+        <text><![CDATA[For every AI-suggested residual resolution the resolver
+shall append exactly one record to
+`<workspace>/.edit_doc/ai_history.jsonl` capturing
+`intent`, `conflict_kind`, `conflict_key`, sha-1 hashes of
+`base`/`ours`/`theirs`, the model rationale (when present),
+and the model id; provenance writes shall be best-effort
+and shall not block the resolution flow.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-035" name="Residual Conflict Reporting"/>
+          <trace target="HLR" ref="HLR-036" name="Merge Editor Integration"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
@@ -4993,6 +5137,140 @@ authoritative for the sidecar spawn at all times.]]></text>
         <purpose><![CDATA[Pins LLR-BOOT-04: each `completionEvents: ['onCommand:projectXml.X']` entry refers to a command that is also declared under `contributes.commands`, so VS Code can mark the step done when the command runs.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BOOT-04"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="test/test_project_merge.py" role="unit" count="17">
+      <test name="test_disjoint_adds_union">
+        <purpose><![CDATA[Pins LLR-MRG-02: when each branch adds a non-overlapping HLR to the same `<hlrs>/<section>`, the merger unions both adds with zero residual conflicts and `auto_resolved >= 1`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-02"/>
+          <trace target="HLR" ref="HLR-034"/>
+        </traces>
+      </test>
+
+      <test name="test_traces_unioned_by_target_ref">
+        <purpose><![CDATA[Pins LLR-MRG-02: `<trace target ref>` rows added on both sides survive the merge, with no duplicates of pre-existing rows; `<traces>` are keyed by `(target, ref)`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-02"/>
+        </traces>
+      </test>
+
+      <test name="test_renames_theirs_side">
+        <purpose><![CDATA[Pins LLR-MRG-02: when both branches add a different payload under the same id, the merger keeps `ours` at the original id and emits one `id_collision` residual conflict whose `rename_to` allocates the next free id for the theirs side.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-02"/>
+          <trace target="HLR" ref="HLR-035"/>
+        </traces>
+      </test>
+
+      <test name="test_both_edited_body">
+        <purpose><![CDATA[Pins LLR-MRG-02: two-sided body edits surface as exactly one `body` residual conflict carrying the serialised ours/theirs XML for Stage B (no double-counting from the field-level merge fallback).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-02"/>
+          <trace target="HLR" ref="HLR-035"/>
+        </traces>
+      </test>
+
+      <test name="test_one_sided_body_change_takes_winner">
+        <purpose><![CDATA[Pins LLR-MRG-02: when only one branch edits a body (the other matches base) the merger auto-resolves to the changed side with no residual conflict.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-02"/>
+        </traces>
+      </test>
+
+      <test name="test_modify_delete_surfaces_conflict">
+        <purpose><![CDATA[Pins LLR-MRG-02: a payload modified on one side and deleted on the other produces a `modify_delete` residual conflict.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-02"/>
+          <trace target="HLR" ref="HLR-035"/>
+        </traces>
+      </test>
+
+      <test name="test_no_base_refuses">
+        <purpose><![CDATA[Pins LLR-MRG-01: when `base` is `None` the merger refuses cleanly with `refused=True` and a `refusal` string mentioning the missing merge base, satisfying HLR-034's graceful-degradation requirement.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-01"/>
+          <trace target="HLR" ref="HLR-034"/>
+        </traces>
+      </test>
+
+      <test name="test_empty_base_refuses">
+        <purpose><![CDATA[Pins LLR-MRG-01: an empty-string `base` is treated identically to `None` (refusal payload, no exception).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-01"/>
+          <trace target="HLR" ref="HLR-034"/>
+        </traces>
+      </test>
+
+      <test name="test_three_way_schema_divergence_is_conflict">
+        <purpose><![CDATA[Pins LLR-MRG-03: when ours/theirs disagree on `project/@schema_version` and both differ from base, the merger emits a `schema_bump` residual conflict for Stage B.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-03"/>
+          <trace target="HLR" ref="HLR-035"/>
+        </traces>
+      </test>
+
+      <test name="test_one_sided_schema_bump_promoted">
+        <purpose><![CDATA[Pins LLR-MRG-03: a one-sided `schema_version` bump is auto-resolved to the higher value with no residual conflict.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-03"/>
+        </traces>
+      </test>
+
+      <test name="test_counts_match_merged_tree">
+        <purpose><![CDATA[Pins LLR-MRG-03: the merged tree's `<metadata>/<counts>` block reflects the union of payloads (e.g. 3 HLRs after a disjoint-add merge), independent of which side last touched the counts.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-03"/>
+          <trace target="HLR" ref="HLR-034"/>
+        </traces>
+      </test>
+
+      <test name="test_apply_body_resolution">
+        <purpose><![CDATA[Pins LLR-MRG-04: `apply_resolution` substitutes a Stage-B `merged_xml` payload back into the merged tree, replacing the conflicting payload element in place.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-04"/>
+          <trace target="HLR" ref="HLR-036"/>
+        </traces>
+      </test>
+
+      <test name="test_apply_schema_bump_resolution">
+        <purpose><![CDATA[Pins LLR-MRG-04: `apply_resolution` of a `schema_bump` conflict overwrites `project/@schema_version` with the user-chosen value.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-04"/>
+          <trace target="HLR" ref="HLR-036"/>
+        </traces>
+      </test>
+
+      <test name="test_methods_registered">
+        <purpose><![CDATA[Pins LLR-MRG-05: the JSON-RPC `METHODS` table contains both `merge_three_way` and `apply_merge_resolution`, so the sidecar dispatcher exposes them without if/elif edits.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-05"/>
+        </traces>
+      </test>
+
+      <test name="test_merge_three_way_handler">
+        <purpose><![CDATA[Pins LLR-MRG-05: the `_method_merge_three_way` handler accepts `{base, ours, theirs, xsd_path}` and returns a dict containing `merged_xml`, `residual_conflicts`, `lint`, and `refused=false` for a clean merge.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-05"/>
+          <trace target="HLR" ref="HLR-034"/>
+        </traces>
+      </test>
+
+      <test name="test_no_base_is_refusal_not_error">
+        <purpose><![CDATA[Pins LLR-MRG-05: the JSON-RPC handler returns `refused=true` (instead of raising) when `base` is `None`, so the resolver can degrade per HLR-034.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-05"/>
+          <trace target="HLR" ref="HLR-034"/>
+        </traces>
+      </test>
+
+      <test name="test_four_merge_intents_registered">
+        <purpose><![CDATA[Pins LLR-MRG-06: the AI registry exposes exactly the four merge intents (`merge.body`, `merge.trace`, `merge.rename`, `merge.schema_bump`), all `kind="merge"`, each with both schema and prompt files on disk.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-06"/>
+          <trace target="HLR" ref="HLR-036"/>
         </traces>
       </test>
     </file>
