@@ -27,7 +27,10 @@ import {
     MarkdownPreviewProvider,
     PREVIEW_SCHEME,
 } from './preview/MarkdownPreviewProvider';
-import { getConfig, getProjectXmlPath } from './util/paths';
+import { getConfig, getProjectXmlPath, setExtensionContext } from './util/paths';
+import { checkBundledToolsFreshness } from './util/freshness';
+import { LintStatusBar } from './statusBar';
+import { registerScaffoldToolsCommand } from './commands/scaffoldTools';
 import {
     FIX_BROKEN_TRACE,
     FIX_ID_FORMAT,
@@ -57,6 +60,7 @@ import {
 import { registerResolveMergeCommand } from './commands/resolveMerge';
 
 export function activate(context: vscode.ExtensionContext): void {
+    setExtensionContext(context);
     const output = vscode.window.createOutputChannel('Project Spec');
     context.subscriptions.push(output);
 
@@ -72,6 +76,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const diagnostics = new LintDiagnosticsProvider(sidecar, output);
     context.subscriptions.push(diagnostics);
+
+    // Phase 6 (HLR-042): status bar showing n errors / m warnings
+    // for Project.xml. Subscribed to lint runs below.
+    const statusBar = new LintStatusBar();
+    context.subscriptions.push(statusBar);
+
+    // Phase 6 (LLR-PKG-04, HLR-061): scaffold the bundled tools/
+    // tree into the workspace.
+    registerScaffoldToolsCommand(context);
 
     const previewProvider = new MarkdownPreviewProvider(sidecar, output);
     context.subscriptions.push(previewProvider);
@@ -252,6 +265,7 @@ export function activate(context: vscode.ExtensionContext): void {
             previewProvider.markStale();
             const result = await diagnostics.run();
             treeProvider.setBadges(buildBadgeIndex(result?.items));
+            statusBar.update(result);
             await syncDynamicRenderCommands(
                 sidecar, previewProvider, dynamicRenderCommands, context, output,
             );
@@ -259,6 +273,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('projectXml.lint', async () => {
             const result = await diagnostics.run();
             treeProvider.setBadges(buildBadgeIndex(result?.items));
+            statusBar.update(result);
             if (result) {
                 const e = result.errors.length;
                 const w = result.warnings.length;
@@ -296,6 +311,7 @@ export function activate(context: vscode.ExtensionContext): void {
             if (getConfig().get<boolean>('autoLintOnChange', true)) {
                 void diagnostics.run().then((result) => {
                     treeProvider.setBadges(buildBadgeIndex(result?.items));
+                    statusBar.update(result);
                 });
             }
             if (getConfig().get<boolean>('previewOnSave', true)) {
@@ -313,7 +329,14 @@ export function activate(context: vscode.ExtensionContext): void {
     // Initial population.
     void diagnostics.run().then((result) => {
         treeProvider.setBadges(buildBadgeIndex(result?.items));
+        statusBar.update(result);
     });
+
+    // Phase 6 (LLR-PKG-07, HLR-062): one-shot freshness check
+    // comparing the bundled .bundle_version against the workspace's
+    // tools/project.xsd schema_version. Never blocks activation;
+    // never escalates to a warning or error.
+    void checkBundledToolsFreshness(output);
 }
 
 export function deactivate(): void {

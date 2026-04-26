@@ -97,6 +97,11 @@ const state: WorkspaceState = {
     config: {},
 };
 
+// ---------------- workspace + configuration change events ----------
+
+type ConfigChangeListener = (e: { affectsConfiguration: (key: string) => boolean }) => void;
+const configChangeListeners: ConfigChangeListener[] = [];
+
 export const workspace = {
     get workspaceFolders(): WorkspaceFolder[] | undefined {
         return state.folders;
@@ -104,7 +109,127 @@ export const workspace = {
     getConfiguration(_section?: string): FakeWorkspaceConfiguration {
         return new FakeWorkspaceConfiguration(state.config);
     },
+    onDidChangeConfiguration(listener: ConfigChangeListener): Disposable {
+        configChangeListeners.push(listener);
+        return {
+            dispose(): void {
+                const i = configChangeListeners.indexOf(listener);
+                if (i >= 0) {
+                    configChangeListeners.splice(i, 1);
+                }
+            },
+        };
+    },
 };
+
+// ---------------- status bar / window / commands -------------------
+
+export enum StatusBarAlignment {
+    Left = 1,
+    Right = 2,
+}
+
+export class MarkdownString {
+    public value = '';
+    public isTrusted = false;
+    appendMarkdown(s: string): MarkdownString {
+        this.value += s;
+        return this;
+    }
+}
+
+export interface StatusBarItem {
+    text: string;
+    name?: string;
+    tooltip?: string | MarkdownString;
+    command?: string | { command: string; title: string };
+    backgroundColor?: ThemeColor;
+    show(): void;
+    hide(): void;
+    dispose(): void;
+}
+
+export class FakeStatusBarItem implements StatusBarItem {
+    public text = '';
+    public name?: string;
+    public tooltip?: string | MarkdownString;
+    public command?: string | { command: string; title: string };
+    public backgroundColor?: ThemeColor;
+    public visible = false;
+    show(): void { this.visible = true; }
+    hide(): void { this.visible = false; }
+    dispose(): void { this.visible = false; }
+}
+
+interface WindowMessageRecord {
+    kind: 'info' | 'warning' | 'error';
+    message: string;
+    items: string[];
+}
+const windowState = {
+    messages: [] as WindowMessageRecord[],
+    /** Next answer to return from any show*Message call. */
+    nextChoice: undefined as string | undefined,
+    statusBarItems: [] as FakeStatusBarItem[],
+};
+
+export const window = {
+    createStatusBarItem(_alignment?: StatusBarAlignment, _priority?: number): FakeStatusBarItem {
+        const item = new FakeStatusBarItem();
+        windowState.statusBarItems.push(item);
+        return item;
+    },
+    createOutputChannel(_name: string): FakeOutputChannel {
+        return new FakeOutputChannel();
+    },
+    showInformationMessage(message: string, ...items: unknown[]): Promise<string | undefined> {
+        const labels = items.filter((i): i is string => typeof i === 'string');
+        windowState.messages.push({ kind: 'info', message, items: labels });
+        return Promise.resolve(windowState.nextChoice);
+    },
+    showWarningMessage(message: string, ...items: unknown[]): Promise<string | undefined> {
+        const labels: string[] = [];
+        for (const item of items) {
+            if (typeof item === 'string') {
+                labels.push(item);
+            }
+            // Skip the modal options bag: { modal: true, ... }
+        }
+        windowState.messages.push({ kind: 'warning', message, items: labels });
+        return Promise.resolve(windowState.nextChoice);
+    },
+    showErrorMessage(message: string, ...items: unknown[]): Promise<string | undefined> {
+        const labels = items.filter((i): i is string => typeof i === 'string');
+        windowState.messages.push({ kind: 'error', message, items: labels });
+        return Promise.resolve(windowState.nextChoice);
+    },
+};
+
+const commandRegistry = new Map<string, (...args: unknown[]) => unknown>();
+const commandInvocations: Array<{ command: string; args: unknown[] }> = [];
+
+export const commands = {
+    registerCommand(id: string, handler: (...args: unknown[]) => unknown): Disposable {
+        commandRegistry.set(id, handler);
+        return {
+            dispose(): void {
+                const current = commandRegistry.get(id);
+                if (current === handler) {
+                    commandRegistry.delete(id);
+                }
+            },
+        };
+    },
+    executeCommand(id: string, ...args: unknown[]): Promise<unknown> {
+        commandInvocations.push({ command: id, args });
+        const handler = commandRegistry.get(id);
+        if (!handler) {
+            return Promise.resolve(undefined);
+        }
+        return Promise.resolve(handler(...args));
+    },
+};
+
 
 export interface OutputChannel {
     appendLine(value: string): void;
@@ -137,9 +262,37 @@ export const __test = {
     reset(): void {
         state.folders = undefined;
         state.config = {};
+        configChangeListeners.length = 0;
+        windowState.messages.length = 0;
+        windowState.nextChoice = undefined;
+        windowState.statusBarItems.length = 0;
+        commandRegistry.clear();
+        commandInvocations.length = 0;
     },
     folder(fsPath: string, name = 'fixture', index = 0): WorkspaceFolder {
         return { uri: Uri.file(fsPath), name, index };
+    },
+    /** Set the answer the next show*Message call will resolve with. */
+    setNextChoice(choice: string | undefined): void {
+        windowState.nextChoice = choice;
+    },
+    /** All show*Message calls captured since the last reset. */
+    messages(): ReadonlyArray<{ kind: 'info' | 'warning' | 'error'; message: string; items: string[] }> {
+        return windowState.messages;
+    },
+    statusBarItems(): ReadonlyArray<FakeStatusBarItem> {
+        return windowState.statusBarItems;
+    },
+    commandInvocations(): ReadonlyArray<{ command: string; args: unknown[] }> {
+        return commandInvocations;
+    },
+    fireConfigChange(affected: ReadonlyArray<string>): void {
+        const event = {
+            affectsConfiguration: (key: string) => affected.includes(key),
+        };
+        for (const l of [...configChangeListeners]) {
+            l(event);
+        }
     },
 };
 

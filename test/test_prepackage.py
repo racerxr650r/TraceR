@@ -1,0 +1,102 @@
+"""Phase 6 (LLR-PKG-01, LLR-PKG-06): tests for the extension
+`prepackage` script that bundles the Python sidecar tree into
+`tools/vscode-project-xml/dist/python/`.
+
+These tests run the real `node scripts/prepackage.js` against the
+checked-in `tools/` source so we catch breakage of the bundle
+contract end-to-end (file set, .bundle_version, .vscodeignore).
+"""
+from __future__ import annotations
+
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from _paths import REPO_ROOT, PROJECT_XSD
+
+EXT_ROOT = REPO_ROOT / "tools" / "vscode-project-xml"
+DIST_PY = EXT_ROOT / "dist" / "python"
+
+
+@pytest.fixture(scope="module")
+def run_prepackage() -> Path:
+    """Invoke `node scripts/prepackage.js` and return the dist/python path."""
+    if not shutil.which("node"):
+        pytest.skip("node is not installed; cannot exercise prepackage.js")
+    proc = subprocess.run(
+        ["node", "scripts/prepackage.js"],
+        cwd=str(EXT_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        f"prepackage.js failed: rc={proc.returncode}\n"
+        f"stdout={proc.stdout}\nstderr={proc.stderr}"
+    )
+    return DIST_PY
+
+
+def test_prepackage_writes_required_python_files(run_prepackage: Path) -> None:
+    # LLR-PKG-01: every Python file the sidecar spawns must ship in
+    # dist/python/ so the .vsix is fully self-contained (HLR-060).
+    for name in (
+        "project_io.py",
+        "render_doc.py",
+        "lint_project.py",
+        "project_edit.py",
+        "project_merge.py",
+        "project.xsd",
+    ):
+        assert (run_prepackage / name).is_file(), f"missing bundled {name}"
+
+
+def test_prepackage_writes_template_and_ai_dirs(run_prepackage: Path) -> None:
+    # LLR-PKG-01: the templates/ and ai/ packages must come along too.
+    assert (run_prepackage / "templates").is_dir()
+    assert (run_prepackage / "ai").is_dir()
+    # Sanity: at least one Jinja2 template + the ai package marker.
+    assert any((run_prepackage / "templates").glob("*.j2"))
+    assert (run_prepackage / "ai" / "__init__.py").is_file()
+
+
+def test_prepackage_writes_bundle_version(run_prepackage: Path) -> None:
+    # LLR-PKG-06: .bundle_version carries the bundled XSD's
+    # `version` attribute (the Project.xml schema_version baseline
+    # the bundled XSD accepts) for the activation freshness check.
+    pinned = (run_prepackage / ".bundle_version").read_text(encoding="utf8").strip()
+    assert pinned, ".bundle_version must be a non-empty single line"
+
+    xsd_text = PROJECT_XSD.read_text(encoding="utf8")
+    # The XSD root element MUST carry version="X.Y" so prepackage
+    # has a single source of truth for the bundle pin.
+    assert 'version="' in xsd_text.split("<xs:schema", 1)[1].split(">", 1)[0]
+    # And the pin in dist/ must match the source XSD's version.
+    import re
+    match = re.search(r"<xs:schema\b[^>]*\sversion\s*=\s*\"([^\"]+)\"", xsd_text)
+    assert match is not None, "tools/project.xsd must have version=\"X.Y\" on xs:schema"
+    assert pinned == match.group(1), (
+        f"bundled .bundle_version ({pinned}) does not match source XSD ({match.group(1)})"
+    )
+
+
+def test_vscodeignore_does_not_exclude_bundled_python() -> None:
+    # LLR-PKG-01 final clause: `.vscodeignore` must NOT exclude
+    # `dist/python/**`, otherwise vsce package would drop the bundle.
+    text = (EXT_ROOT / ".vscodeignore").read_text(encoding="utf8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("!"):
+            continue
+        # Crude but effective: any glob that would match dist/python/
+        # would either be `dist/**`, `dist/python/**`, or similar.
+        assert not stripped.startswith("dist/python"), (
+            f".vscodeignore line `{stripped}` would drop the bundled sidecar"
+        )
+        assert stripped not in {"dist", "dist/", "dist/**", "dist/**/*"}, (
+            f".vscodeignore line `{stripped}` would drop the bundled sidecar"
+        )

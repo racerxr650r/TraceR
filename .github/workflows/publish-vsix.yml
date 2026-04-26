@@ -1,0 +1,79 @@
+name: Publish VS Code Extension
+
+# Phase 6 (HLR-060, LLR-PKG-01): build a fully-bundled .vsix when a
+# tag of the form `vscode-vX.Y.Z` is pushed. The `prepackage` step
+# must run BEFORE `vsce package` so the bundled sidecar Python tree
+# (dist/python/) ships inside the .vsix.
+#
+# Publishing to the Marketplace is gated on `secrets.VSCE_PAT`; if
+# the secret is unset, the workflow stops at the artifact upload
+# step. This keeps the manual gate explicit — the maintainer rotates
+# the PAT and decides when to flip the publish switch.
+
+on:
+  push:
+    tags:
+      - 'vscode-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/vscode-project-xml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tools/vscode-project-xml/package-lock.json
+
+      - name: Setup Python
+        # The bundled tree includes Python files lint_project.py,
+        # render_doc.py, etc. We don't run them in CI, but having
+        # Python on PATH lets a future smoke-test step shell out
+        # without an extra setup-python.
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Bundle sidecar tree (prepackage)
+        run: npm run prepackage
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Verify TypeScript compile
+        run: npm run compile
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Package .vsix
+        run: npx --yes @vscode/vsce package --no-dependencies
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-project-xml-vsix
+          path: tools/vscode-project-xml/*.vsix
+          if-no-files-found: error
+
+      - name: Publish to Marketplace
+        # Gated on the VSCE_PAT secret; if unset, the step is
+        # skipped and the .vsix is available as an artifact only.
+        if: ${{ env.VSCE_PAT != '' && startsWith(github.ref, 'refs/tags/vscode-v') }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --no-dependencies --pat "$VSCE_PAT"
