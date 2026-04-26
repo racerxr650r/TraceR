@@ -7,7 +7,7 @@
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="TraceR" short_name="TR" schema_version="1.4"
+<project name="TraceR" short_name="TR" schema_version="1.5"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../tools/project.xsd">
   <metadata>
@@ -1911,6 +1911,21 @@ from a separately-maintained checklist.]]></text>
           <trace target="SDD" ref="19"/>
         </traces>
       </hlr>
+
+      <hlr id="HLR-059" name="Project Bootstrap from Empty Workspace">
+        <text><![CDATA[The extension shall provide a `Project Spec: Initialise
+Project.xml…` command that, given a project name,
+`short_name`, and author collected via input prompts,
+invokes the sidecar's `init_project` method to scaffold
+`doc/Project.xml` and `doc/PVD.md` from the renderer's
+built-in skeleton. The flow shall work in an otherwise-empty
+workspace and shall refuse to overwrite existing files
+unless the user explicitly confirms an overwrite.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+          <trace target="SDD" ref="19"/>
+        </traces>
+      </hlr>
     </section>
 
     <section number="7" title="AI Authoring Pipeline">
@@ -3304,6 +3319,127 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
       </llr>
     </function>
 
+    <function number="25"
+              title="Form variants for SDD/STP/Test payloads ([tools/vscode-project-xml/src/forms/FormPanelProvider.ts](../tools/vscode-project-xml/src/forms/FormPanelProvider.ts))"
+              name="formvar"
+              source="tools/vscode-project-xml/src/forms/FormPanelProvider.ts">
+      <intro><![CDATA[Phase 4 generalises the Phase 3 form panel from `Hlr | Llr`
+to every complex type that carries a `<ui:form>` annotation
+in `tools/project.xsd`. The XSD additions for `StpFixture`
+and `TestFile` plus the schema-driven attribute/child split
+in `buildOperations` mean the JSON Patch shape for any new
+payload is a schema change, not a TypeScript change.]]></intro>
+
+      <llr id="LLR-FRM-05">
+        <text><![CDATA[`FormPayloadKind` shall be widened from the closed Phase 3
+union (`'Hlr' | 'Llr'`) to `string`, accepting any complex-
+type name returned by the sidecar's `ui_hints_index` (e.g.
+`SddModule`, `StpFixture`, `TestFile`, `Test`). The form
+deriver in `derive_form_schema` is already payload-agnostic;
+widening the consumer type is what unlocks the call sites.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-06">
+        <text><![CDATA[`buildOperations(params, formData, fields?)` shall consult
+the schema-derived `fields` array — `kind === 'attr'` for
+attributes, `kind === 'child'` for child elements — to decide
+whether each form key becomes an `@attr` JSON Patch member or
+a child element body. The Phase 3 `id`/`name` heuristic shall
+remain as a fallback when `fields` is omitted so existing
+callers keep working unchanged.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-07">
+        <text><![CDATA[`tools/project.xsd` shall publish `<ui:form>` annotations on
+`StpFixture` (attrs `name` required, `source` optional) and
+`TestFile` (attrs `path` required, `role` and `count`
+optional) so the form deriver can produce a JSON Schema for
+each. Neither type carries a `<ui:treeNode>` annotation
+because the existing tree projection already surfaces their
+contents (artefacts, individual `<test>` entries) under their
+parent groups.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="26"
+              title="Phase 4 add commands and project bootstrap ([tools/vscode-project-xml/src/commands/forms.ts](../tools/vscode-project-xml/src/commands/forms.ts))"
+              name="bootstrap"
+              source="tools/vscode-project-xml/src/commands/forms.ts">
+      <intro><![CDATA[Four new add commands (`addModule`, `addStpFixture`,
+`addTestFile`, `addTest`) plus the empty-workspace
+bootstrap command (`projectXml.initProject`) round out the
+"no hand-written XML on the critical path" surface for
+SDD modules, STP fixtures, test files, individual tests,
+and brand-new projects. A seven-step Walkthrough makes the
+flow discoverable from VS Code's Get Started page.]]></intro>
+
+      <llr id="LLR-BOOT-01">
+        <text><![CDATA[`projectXml.addModule` shall append a new `<module>` under
+`/sdd/modules/`, `projectXml.addStpFixture` shall append a
+new `<fixture>` under `/stp/integration_environment/`, and
+`projectXml.addTestFile` shall append a new `<file>` under
+`/tests/`. Each command shall open the same
+`FormPanelProvider` keyed on the corresponding XSD complex
+type — no per-payload TypeScript beyond the append-path
+constant.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BOOT-02">
+        <text><![CDATA[`projectXml.addTest` shall present a `vscode.QuickPick` over
+every existing `<tests>/<file>` element and shall append the
+new `<test>` to the picked file's path via the JSON Patch
+`/tests/file[path=<picked>]/test/-`. When no `<file>`
+elements exist the command shall surface a warning that
+points the user at `addTestFile` rather than silently
+failing.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BOOT-03">
+        <text><![CDATA[`projectXml.initProject` shall collect `name`, `short_name`
+(validated against `/^[a-z][a-z0-9_-]{0,15}$/`), and `author`
+(default `TBD`) via `vscode.window.showInputBox` and shall
+invoke the sidecar's `init_project` method. On success the
+command shall open the new `Project.xml` in the editor, the
+new `PVD.md` in side-by-side preview, and shall refresh the
+Project Spec tree. On a "file exists" error the command
+shall offer a modal Overwrite prompt and re-call with
+`force: true` on confirmation.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-059" name="Project Bootstrap from Empty Workspace"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-BOOT-04">
+        <text><![CDATA[`tools/vscode-project-xml/package.json` shall declare a
+`contributes.walkthroughs[]` entry with id
+`projectXml.welcome` and exactly seven steps in this order:
+`init`, `addHlr`, `addLlr`, `addModule`, `addTest`, `lint`,
+`render`. Each step's `completionEvents` shall reference the
+matching `onCommand:projectXml.*` event so VS Code marks
+the step done as soon as the user runs the command. Every
+command referenced from a `completionEvents` entry shall be
+declared under `contributes.commands`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-028" name="Guided Authoring Walkthrough"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
@@ -4541,7 +4677,7 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
       </test>
     </file>
 
-    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="5">
+    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="12">
       <header><![CDATA[Phase 3 tests for the pure `buildOperations` helper exported from FormPanelProvider. Pins the JSON Patch shape the form panel posts to the sidecar without needing the VS Code webview API.]]></header>
 
       <test name="emits a single add op with @attr keys when in add mode">
@@ -4576,6 +4712,59 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
         <purpose><![CDATA[Pins LLR-FRM-03: missing both addressing modes is a programmer error that throws synchronously rather than producing an empty patch.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-FRM-03"/>
+        </traces>
+      </test>
+
+      <test name="treats SddModule path/title as attributes and the rest as children">
+        <purpose><![CDATA[Pins LLR-FRM-06: when the schema-derived `fields` list marks `path` and `title` as `kind:'attr'`, the form-submission patch lifts them into `@path` / `@title` while keeping `purpose` and `responsibility` as child element bodies.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+          <trace target="LLR" ref="LLR-FRM-05"/>
+        </traces>
+      </test>
+
+      <test name="treats StpFixture name/source as attributes">
+        <purpose><![CDATA[Pins LLR-FRM-06 and LLR-FRM-07: the `<ui:form>` block on `StpFixture` declares `name` and `source` as attributes and the helper's add-mode patch reflects that.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+          <trace target="LLR" ref="LLR-FRM-07"/>
+        </traces>
+      </test>
+
+      <test name="treats TestFile path/role/count as attributes">
+        <purpose><![CDATA[Pins LLR-FRM-07: the `<ui:form>` block on `TestFile` declares `path`, `role`, and `count` as attributes; the helper emits all three under the `@`-prefix convention.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-07"/>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+        </traces>
+      </test>
+
+      <test name="treats Test name as attribute and purpose as child body">
+        <purpose><![CDATA[Pins LLR-FRM-06: the `Test` complex type's `name` is an attribute while `purpose` and `traces` are children; the schema-driven split surfaces all three correctly inside the same `add` op.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+          <trace target="LLR" ref="LLR-BOOT-02"/>
+        </traces>
+      </test>
+
+      <test name="falls back to the id/name heuristic when no fields are supplied">
+        <purpose><![CDATA[Pins LLR-FRM-06: callers that omit the `fields` argument retain the Phase 3 `id`/`name`-as-attribute behaviour so existing HLR/LLR call sites keep working unchanged.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+        </traces>
+      </test>
+
+      <test name="declares one walkthrough with seven steps in the documented order">
+        <purpose><![CDATA[Pins LLR-BOOT-04: the `contributes.walkthroughs[]` block declares exactly one walkthrough (`projectXml.welcome`) whose step ids appear in the order `init, addHlr, addLlr, addModule, addTest, lint, render`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-04"/>
+        </traces>
+      </test>
+
+      <test name="every walkthrough step references an existing command via completionEvents">
+        <purpose><![CDATA[Pins LLR-BOOT-04: each `completionEvents: ['onCommand:projectXml.X']` entry refers to a command that is also declared under `contributes.commands`, so VS Code can mark the step done when the command runs.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-04"/>
         </traces>
       </test>
     </file>

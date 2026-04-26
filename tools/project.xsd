@@ -449,6 +449,14 @@
   </xs:complexType>
 
   <xs:complexType name="StpFixture">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:form>
+          <ui:field attr="name"   kind="text" required="true"/>
+          <ui:field attr="source" kind="text" required="false"/>
+        </ui:form>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="artefact" type="StpArtefact" minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence>
@@ -612,6 +620,15 @@
   </xs:complexType>
 
   <xs:complexType name="TestFile">
+    <xs:annotation>
+      <xs:appinfo>
+        <ui:form>
+          <ui:field attr="path"  kind="text" required="true"/>
+          <ui:field attr="role"  kind="text" required="false"/>
+          <ui:field attr="count" kind="text" required="false"/>
+        </ui:form>
+      </xs:appinfo>
+    </xs:annotation>
     <xs:sequence>
       <xs:element name="header" type="MdText" minOccurs="0"/>
       <xs:element name="test"   type="Test"   minOccurs="0" maxOccurs="unbounded"/>

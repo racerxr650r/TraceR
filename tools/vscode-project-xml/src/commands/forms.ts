@@ -1,13 +1,14 @@
 // Phase 3 commands: addHlr, addLlr, editPayload.
 //
-// `addHlr` / `addLlr` open a blank form keyed on the Hlr / Llr UI
-// hint entry and let apply_edit allocate the new element under the
-// section/function the user picks. `editPayload` re-opens an
-// existing node in edit mode so the same form code services both
-// add and edit flows.
+// Phase 4 extends the same machinery to SDD modules, STP fixtures,
+// test files, and individual <test> elements. Every command opens
+// the same `FormPanelProvider`, just keyed on a different
+// complex-type name from the XSD's `ui_hints_index`. The form
+// derivation, JSON-Patch generation, and validate-then-write
+// contract are payload-agnostic.
 
 import * as vscode from 'vscode';
-import { FormPanelProvider } from '../forms/FormPanelProvider';
+import { FormPanelProvider, FormPayloadKind } from '../forms/FormPanelProvider';
 import { ProjectIoClient } from '../sidecar';
 
 /** Open the form in add mode for a new HLR. */
@@ -102,7 +103,7 @@ export async function addLlr(
 export async function editPayload(
     formPanel: FormPanelProvider,
     args?: {
-        type?: 'Hlr' | 'Llr';
+        type?: FormPayloadKind;
         basePath?: string;
         formData?: Record<string, unknown>;
         title?: string;
@@ -119,6 +120,84 @@ export async function editPayload(
         title: args.title ?? `Edit ${args.type}`,
         initial: args.formData ?? {},
         basePath: args.basePath,
+    });
+}
+
+
+// --- Phase 4: SDD module / test file / <test> / STP fixture forms ---
+
+/** Phase 4: add a new <module> under <sdd>/<modules>. */
+export async function addModule(
+    _sidecar: ProjectIoClient,
+    formPanel: FormPanelProvider,
+): Promise<void> {
+    await formPanel.open({
+        type: 'SddModule',
+        title: 'New SDD Module',
+        initial: {
+            path: '',
+            title: '',
+            purpose: '',
+            responsibility: '',
+        },
+        appendPath: '/sdd/modules/module/-',
+    });
+}
+
+/** Phase 4: add a new <fixture> under <stp>/<integration_environment>. */
+export async function addStpFixture(
+    _sidecar: ProjectIoClient,
+    formPanel: FormPanelProvider,
+): Promise<void> {
+    await formPanel.open({
+        type: 'StpFixture',
+        title: 'New STP Fixture',
+        initial: { name: '', source: '' },
+        appendPath: '/stp/integration_environment/fixture/-',
+    });
+}
+
+/** Phase 4: add a new <file> under <tests>. */
+export async function addTestFile(
+    _sidecar: ProjectIoClient,
+    formPanel: FormPanelProvider,
+): Promise<void> {
+    await formPanel.open({
+        type: 'TestFile',
+        title: 'New Test File',
+        initial: { path: '', role: 'unit' },
+        appendPath: '/tests/file/-',
+    });
+}
+
+/** Phase 4: add a new <test> under an existing <tests>/<file>. */
+export async function addTest(
+    sidecar: ProjectIoClient,
+    formPanel: FormPanelProvider,
+): Promise<void> {
+    const files = await fetchTestFiles(sidecar);
+    if (!files.length) {
+        void vscode.window.showWarningMessage(
+            'Project Spec: no <file> elements under <tests>. Add one first via Add Test File.',
+        );
+        return;
+    }
+    const pick = await vscode.window.showQuickPick(
+        files.map((f) => ({
+            label: f.path,
+            description: `${f.testCount} test(s)`,
+            file: f,
+        })),
+        { placeHolder: 'Pick the test file the new <test> belongs to' },
+    );
+    if (!pick) {
+        return;
+    }
+    await formPanel.open({
+        type: 'Test',
+        title: `New Test (in ${pick.file.path})`,
+        initial: { name: '', purpose: '' },
+        appendPath: `/tests/file[path=${pick.file.path}]/test/-`,
     });
 }
 
@@ -155,4 +234,20 @@ async function fetchFunctions(sidecar: ProjectIoClient): Promise<FunctionSummary
         title: String((f as Record<string, unknown>).title ?? ''),
         name: String((f as Record<string, unknown>).name ?? ''),
     })).filter((f) => f.number.length > 0 && f.name.length > 0);
+}
+
+interface TestFileSummary {
+    path: string;
+    testCount: number;
+}
+
+async function fetchTestFiles(sidecar: ProjectIoClient): Promise<TestFileSummary[]> {
+    const parsed = await sidecar.parseToJson();
+    const files = (parsed as { tests?: Array<Record<string, unknown>> }).tests ?? [];
+    return files
+        .map((f) => ({
+            path: String(f.path ?? ''),
+            testCount: Array.isArray(f.tests) ? f.tests.length : 0,
+        }))
+        .filter((f) => f.path.length > 0);
 }

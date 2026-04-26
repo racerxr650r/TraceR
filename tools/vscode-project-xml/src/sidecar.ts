@@ -92,6 +92,21 @@ export class ProjectIoClient implements vscode.Disposable {
         );
     }
 
+    /**
+     * Phase 4 (HLR-005): bootstrap a brand-new project. Wraps the
+     * sidecar's `init_project` JSON-RPC method (which itself wraps
+     * `render_doc.init_project`). Writes a skeleton `Project.xml`
+     * and a populated `PVD.md` to the configured paths and returns
+     * their resolved locations. Refuses to overwrite existing files
+     * unless `force=true`.
+     */
+    async initProject(params: InitProjectParams): Promise<InitProjectResult> {
+        return this.request<InitProjectResult>(
+            'init_project',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
     private async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
         const proc = this.ensureStarted();
         const id = this.nextId++;
@@ -325,6 +340,29 @@ export interface NextFreeIdParams {
     /** Required when kind === 'llr' (the function/section prefix). */
     function?: string;
     xml_path?: string;
+}
+
+// ---------- Phase 4: init_project --------------------------------------
+
+export interface InitProjectParams {
+    name: string;
+    short_name: string;
+    /** Defaults to `"TBD"` on the Python side. */
+    author?: string;
+    /** Workspace-absolute path. Defaults to the renderer's `PROJECT_XML`. */
+    xml_path?: string;
+    pvd_path?: string;
+    pvd_template?: string;
+    /** When true, overwrite existing files; default false (refuse). */
+    force?: boolean;
+}
+
+export interface InitProjectResult {
+    xml_path: string;
+    pvd_path: string;
+    /** Files that already existed and were overwritten (only populated
+     *  when the call passed `force=true`). */
+    existing: string[];
 }
 
 /**

@@ -22,7 +22,7 @@ phased VS Code extension roadmap).
 | 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | ✅ Done — Python `_ui_hints_index` + `_nodes` over JSON-RPC; TS shim typed; tree provider auto-projects any `<ui:treeNode/>` payload, lens provider scans schema-declared lens kinds, lint diagnostics resolve schema-declared id tokens. Adding a new payload requires zero TypeScript edits. |
 | 2.5c  | Payload-agnostic Quick Fix table keyed on `Finding.code`. | ✅ Done — `CodeActionProvider` dispatches on `Finding.code` (`broken-trace`, `id-format`, `missing-template`, `no-test`); every fix uses `WorkspaceEdit` text edits, none reference payload element name. |
 | 3     | Form webviews for HLRs / LLRs. | ✅ Done — `tools/project_edit.py` adds `apply_edit` (lxml round-trip + validate-then-write, byte-identical on failure) and a payload-agnostic XSD→JSON-Schema deriver; sidecar exposes `apply_edit` / `form_schema` / `next_free_id`; React + RJSF webview drives `Project Spec: Add HLR` / `Add LLR` / edit-payload; the structural `no-test` Quick Fix routes through `apply_edit`. |
-| 4     | SDD/STP/Test forms + Walkthrough. | ⏳ Not started |
+| 4     | SDD/STP/Test forms + Walkthrough. | ✅ Done — `FormPanelProvider` widened to any complex type carrying a `<ui:form>` annotation; `<ui:form>` added to `StpFixture` and `TestFile`; new commands `Project Spec: Add SDD Module / Add STP Fixture / Add Test File / Add Test`; `Project Spec: Initialise Project.xml…` bootstraps a brand-new project from an empty workspace via the sidecar's `init_project`; seven-step **Get Started with Project Spec** Walkthrough makes the bootstrap-to-first-render flow discoverable from VS Code's Get Started page. Schema bumped to `1.5`. |
 | 5     | Inline AI assistance (`@projectspec` chat participant). | ⏳ Not started |
 | 5.5   | AI-assisted merge conflict resolution. | ⏳ Not started |
 | 6     | Marketplace polish. | ⏳ Not started |
@@ -53,7 +53,7 @@ python3 -m unittest discover -s test -v
 
 The extension lives in
 [`tools/vscode-project-xml/`](tools/vscode-project-xml/) and currently
-ships Phases 1, 2, 2.5, 2.5b, 2.5c, and 3:
+ships Phases 1, 2, 2.5, 2.5b, 2.5c, 3, and 4:
 
 * A **Project Spec** activity-bar view with five top-level nodes
   (HLRs, LLRs, Tests, SDD, STP), each showing live counts and
@@ -96,6 +96,18 @@ stays XSD- and lint-clean and round-trips with comments / CDATA /
 attribute order preserved. The remaining `broken-trace`, `id-format`,
 and `missing-template` Quick Fixes are flat text rewrites and stay on
 `vscode.WorkspaceEdit`.
+
+Phase 4 widens the form panel to **every** complex type that carries
+a `<ui:form>` annotation in `tools/project.xsd` — adding a new
+payload kind to the form surface is now a schema change, not a
+TypeScript change. Out of the box that means `Project Spec: Add SDD
+Module / Add STP Fixture / Add Test File / Add Test`. Brand-new
+projects bootstrap from an empty workspace via `Project Spec:
+Initialise Project.xml…`, which prompts for `name` / `short_name` /
+`author` and asks the sidecar to scaffold `doc/Project.xml` and
+`doc/PVD.md`. The seven-step **Get Started with Project Spec**
+Walkthrough makes the bootstrap-to-first-render flow discoverable
+from VS Code's Get Started page.
 
 ### Building the extension
 
@@ -177,7 +189,7 @@ tools/
   project.xsd        # canonical schema (reserves urn:tracer:ui:v1)
   PLAN_web_form.md
   templates/         # Jinja2 templates for each spec doc
-  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5 + 2.5b + 2.5c + 3)
+  vscode-project-xml/  # VS Code extension (Phases 1 + 2 + 2.5 + 2.5b + 2.5c + 3 + 4)
 test/                # unittest suite for the Python tooling
 ```
 

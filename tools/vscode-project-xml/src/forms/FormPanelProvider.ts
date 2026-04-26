@@ -27,10 +27,17 @@ import {
     FormSchemaResult,
     ParsedNodesIndex,
     ProjectIoClient,
+    UiFormField,
 } from '../sidecar';
 import { getProjectXmlPath } from '../util/paths';
 
-export type FormPayloadKind = 'Hlr' | 'Llr';
+/**
+ * Phase 3 shipped HLR/LLR; Phase 4 widens this to any complex-type
+ * name in the XSD's `ui_hints_index` (e.g. `"SddModule"`, `"Test"`,
+ * `"TestFile"`, `"StpFixture"`). Anything the sidecar's
+ * `form_schema` can derive is fair game.
+ */
+export type FormPayloadKind = string;
 
 export interface OpenFormParams {
     /** Which UI hint complex type we're editing. */
@@ -132,7 +139,7 @@ export class FormPanelProvider {
                     return;
                 }
                 if (msg?.type === 'submit') {
-                    await this.onSubmit(panel, params, msg.formData);
+                    await this.onSubmit(panel, params, derived.fields, msg.formData);
                     return;
                 }
                 if (msg?.type === 'cancel') {
@@ -147,9 +154,10 @@ export class FormPanelProvider {
     private async onSubmit(
         panel: vscode.WebviewPanel,
         params: OpenFormParams,
+        fields: UiFormField[],
         formData: Record<string, unknown>,
     ): Promise<void> {
-        const operations = buildOperations(params, formData);
+        const operations = buildOperations(params, formData, fields);
         if (!operations.length) {
             panel.webview.postMessage({
                 type: 'result',
@@ -220,13 +228,21 @@ export class FormPanelProvider {
  * - Edit mode (has basePath): one `replace` per attribute and one
  *   `replace` per child element body (text/CDATA), plus a wholesale
  *   `<traces>` rewrite when the trace list changed.
+ *
+ * `fields` comes from the sidecar's `form_schema` derivation — each
+ * entry's `kind` distinguishes attribute (`'attr'`) from child
+ * element (`'child'`). When omitted (legacy callers / tests), we
+ * fall back to the Phase 3 hard-coded `id`/`name` heuristic so the
+ * existing HLR/LLR contract is unaffected.
  */
 export function buildOperations(
     params: OpenFormParams,
     formData: Record<string, unknown>,
+    fields?: ReadonlyArray<UiFormField>,
 ): EditOperation[] {
+    const lookup = makeAttributeLookup(fields);
     if (params.basePath) {
-        return buildReplaceOperations(params.basePath, formData);
+        return buildReplaceOperations(params.basePath, formData, lookup);
     }
     if (!params.appendPath) {
         throw new Error('OpenFormParams must supply either basePath or appendPath');
@@ -234,13 +250,14 @@ export function buildOperations(
     return [{
         op: 'add',
         path: params.appendPath,
-        value: toElementSpec(formData),
+        value: toElementSpec(formData, lookup),
     }];
 }
 
 function buildReplaceOperations(
     basePath: string,
     formData: Record<string, unknown>,
+    isAttribute: (key: string) => boolean,
 ): EditOperation[] {
     const ops: EditOperation[] = [];
     for (const [key, value] of Object.entries(formData)) {
@@ -273,7 +290,10 @@ function buildReplaceOperations(
     return ops;
 }
 
-function toElementSpec(formData: Record<string, unknown>): Record<string, unknown> {
+function toElementSpec(
+    formData: Record<string, unknown>,
+    isAttribute: (key: string) => boolean,
+): Record<string, unknown> {
     const spec: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(formData)) {
         if (value === undefined) {
@@ -320,12 +340,31 @@ function tracesToList(value: unknown): Array<Record<string, string>> {
     return out;
 }
 
-// Convention mirroring the ui:form hints in the XSD. `id`, `name`,
-// `target`, `ref` are attributes on Hlr / Llr / Trace; everything
-// else is a child element's text body.
-function isAttribute(key: string): boolean {
-    return key === 'id' || key === 'name';
+// Schema-driven attribute predicate. The Phase 3 fallback (`id` /
+// `name`) keeps existing tests and any callers that don't pass a
+// hint registry working as before.
+function makeAttributeLookup(
+    fields: ReadonlyArray<UiFormField> | undefined,
+): (key: string) => boolean {
+    if (!fields || fields.length === 0) {
+        return (key) => key === 'id' || key === 'name';
+    }
+    const attrs = new Set<string>();
+    for (const f of fields) {
+        if (f.kind === 'attr') {
+            attrs.add(f.target);
+        }
+    }
+    return (key) => attrs.has(key);
 }
+
+function isAttribute(_key: string): boolean {
+    // Retained as a no-op anchor so older imports keep building; the
+    // real logic now lives in `makeAttributeLookup` and is threaded
+    // through `buildOperations`. New code should not call this.
+    return false;
+}
+void isAttribute;
 
 
 

@@ -7,7 +7,7 @@
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
   shape, then regenerate the markdown specs with `render_doc.py`.
 -->
-<project name="TraceR Integration Test Fixture" short_name="trft" schema_version="1.4"
+<project name="TraceR Integration Test Fixture" short_name="trft" schema_version="1.5"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../../tools/project.xsd">
   <metadata>
