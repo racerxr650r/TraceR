@@ -217,37 +217,166 @@ include:
 
 ### Inline coverage hints
 
-Above each requirement and test in `Project.xml`, TraceR shows tiny
-inline hints — things like "2 LLRs / 4 tests" above a high-level
-requirement, or "Traced from HLR-001" above a test. Click any hint
-to jump to the related items.
+With `doc/Project.xml` open in the editor, look just above each
+`<hlr>`, `<llr>`, and `<test>` element. TraceR draws a row of small
+clickable hints — things like *"2 LLRs / 4 tests"* over a
+high-level requirement, or *"Traced from HLR-001"* over a test.
+
+To use them:
+
+1.  Open `doc/Project.xml`.
+2.  Scroll to any HLR, LLR, or test. The hints appear as a thin
+    grey line above the element.
+3.  **Click a hint** to jump to the related items. If there's only
+    one related item, the cursor jumps straight there. If there
+    are several, a quick-pick list opens — pick one to jump.
+
+What each hint means:
+
+* **Coverage** (on `<hlr>` and `<llr>`) — counts how many
+  downstream items trace back to this requirement (LLRs and tests
+  for an HLR; tests for an LLR). Click to pick which downstream
+  item to open.
+* **Traces count** (on `<hlr>` and `<test>`) — counts incoming
+  traces from the items above. Click to pick which upstream item
+  to open.
+
+The hints update automatically as you save. If you don't see them,
+check that **Editor: Code Lens** is enabled in VS Code Settings
+(`editor.codeLens` = `true`) — inline hints are implemented as
+VS Code code lenses.
 
 ### Render and preview
 
-* **Project Spec: Render and Preview** opens a side-by-side preview
-  of the affected document. The preview is in-memory and never
-  overwrites the file on disk.
-* **Project Spec: Render All** rewrites every generated document
-  on disk in one go.
-* You also get one **Render <DocName>** command per document.
+TraceR ships two rendering commands. Both live under the
+**Project Spec:** prefix in the Command Palette
+(`Ctrl/Cmd+Shift+P`).
 
-If you have **Preview on Save** enabled (the default), the side
-preview keeps itself in sync as you edit.
+#### Preview a single document (no files written)
+
+Use this while you're iterating — nothing on disk changes.
+
+1.  Make sure you have a workspace open with `doc/Project.xml` in
+    it. (Either of the two surfaces below also works without
+    `Project.xml` open in the editor, but the workspace itself
+    must contain it.)
+2.  Open the Command Palette: **View → Command Palette…**, or
+    `Ctrl+Shift+P` (Linux/Windows) / `Cmd+Shift+P` (macOS).
+3.  Type **`Project Spec: Render & Preview`** and press Enter.
+4.  A picker drops down titled *"Project Spec: render & preview"*
+    with the placeholder *"Choose a generated document to
+    preview"*. It lists every generated document declared in
+    `Project.xml`, showing:
+    * the document id on the left (e.g. `SDD`, `HLRs`, `LLRs`,
+      `STP`, `Traceability`),
+    * the document title in the middle,
+    * the on-disk path it would write to on the right.
+5.  Pick one and press Enter.
+6.  TraceR renders the document in memory and opens it in VS
+    Code's built-in Markdown preview, in a pane to the right of
+    the editor. The address bar of that preview shows a
+    `tracer-preview:` URL — that's how you can tell it's the
+    in-memory render, not the file on disk.
+7.  **Tip:** with **`projectXml.previewOnSave`** turned on (the
+    default), every time you save `doc/Project.xml` the open
+    preview re-renders against the new content. Just keep the
+    preview open in a side pane while you edit.
+
+If you want to refresh the preview manually without saving, click
+the small refresh icon (↻) at the top of the preview tab, or
+re-run **Render & Preview** for the same document.
+
+If a render fails (for example, a template has an error), TraceR
+shows the error in a notification toast and writes the details to
+the **Project Spec** output channel — see *Where to look when
+things go wrong* below.
+
+#### Write all five documents to disk
+
+Use this before you commit, so the rendered Markdown files in your
+diff match the current `Project.xml`.
+
+1.  Open the Command Palette (`Ctrl/Cmd+Shift+P`).
+2.  Type **`Project Spec: Render All Documents`** and press Enter.
+3.  A progress notification appears in the bottom-right of the
+    window saying *"Project Spec: rendering all documents"*. It
+    cycles through each document id as it renders.
+4.  When the render finishes:
+    * On success, you'll see *"Project Spec: rendered N documents."*
+      The five files under `doc/` (`SDD.md`, `HLRs.md`, `LLRs.md`,
+      `STP.md`, `Traceability.md`) are now refreshed on disk.
+    * If anything failed, you'll see an error notification listing
+      which document ids failed. Click the **Project Spec** entry
+      in the *Output* panel (**View → Output**, then pick
+      *Project Spec* from the dropdown) for the line-by-line log.
+5.  Open the Source Control view to see the rendered files in your
+    diff alongside `Project.xml` and commit them together.
+
+There is no menu shortcut for these commands by default. If you
+use them often, bind them to a keyboard shortcut via **File →
+Preferences → Keyboard Shortcuts** (search for
+`projectXml.renderAndPreview` or `projectXml.renderAll`).
+
+#### Where to look when things go wrong
+
+* **Notification toasts** appear in the bottom-right corner. Click
+  one to see the full message.
+* The **Project Spec** output channel logs every render
+  attempt — open it via **View → Output**, then pick
+  *Project Spec* from the dropdown on the right side of the panel.
+* The **Problems panel** (**View → Problems**, or
+  `Ctrl/Cmd+Shift+M`) shows lint findings against `Project.xml`
+  itself; if a render fails because the project file is invalid,
+  the underlying problem is usually listed there.
 
 ### Forms
 
-Adding a new requirement, test, design module, or fixture pops up
-a form. Behind the scenes, TraceR:
+Forms are the easiest way to add new items. Each form is generated
+from the schema, so the fields you see always match what the
+project file expects.
 
-1.  Applies your edit to a working copy.
-2.  Re-validates the result and re-runs the lint check.
-3.  Saves the file **only if the result is clean** — comments,
-    indentation, and ordering are preserved exactly.
-4.  Shows you the problems if it isn't clean, and leaves the file
-    untouched.
+**To add a new item:**
 
-If the file is open with unsaved changes, TraceR will ask you to
-save or discard before applying the form.
+1.  Open the **Project Spec** view in the activity bar.
+2.  Right-click the appropriate category in the tree and pick the
+    matching **Add…** command. The available commands are:
+
+    | Right-click on…   | Pick…                  | Adds                                  |
+    | ----------------- | ---------------------- | ------------------------------------- |
+    | **HLRs**          | **Add HLR…**           | A new high-level requirement          |
+    | **LLRs**          | **Add LLR…**           | A new low-level requirement           |
+    | **SDD**           | **Add SDD Module…**    | A new design module                   |
+    | **STP**           | **Add STP Fixture…**   | A new test fixture                    |
+    | **Tests**         | **Add Test File…**     | A new source file containing tests    |
+    | a test file       | **Add Test…**          | A new test inside that file           |
+
+    The same commands are also available from the Command Palette
+    under their **Project Spec:** prefix.
+
+3.  A form panel opens beside the editor. The first ID field is
+    pre-filled with the next free ID (e.g. `HLR-007`,
+    `LLR-MOD-03`).
+4.  Fill in the fields. Required fields are marked. Markdown is
+    supported in description fields.
+5.  Click **Submit**. TraceR validates the change against the
+    schema and runs the linter:
+    * If everything's clean, the change is written to
+      `Project.xml`, comments and ordering are preserved, and the
+      tree refreshes.
+    * If the result has errors, nothing is written. The form shows
+      what went wrong so you can correct it.
+
+If `Project.xml` is open with unsaved changes when you submit,
+TraceR will ask you to save or discard those changes first —
+adding a new item only works against a clean copy on disk.
+
+**To edit an existing item with a form:**
+
+1.  Right-click the item in the tree.
+2.  Pick **Edit in Form…**.
+3.  The same form opens, pre-populated with the current values.
+    Submit to apply the change (validated and lint-checked just
+    like an add).
 
 ### AI assistance (optional)
 
