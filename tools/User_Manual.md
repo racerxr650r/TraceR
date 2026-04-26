@@ -2,478 +2,396 @@
 
 ## Overview
 
-TraceR turns a single `doc/Project.xml` file — the **single source
-of truth** for your project's design, requirements, and verification
-artefacts — into a fully-linked stack of specification documents:
+TraceR helps you keep your project's design, requirements, and tests
+honest — and traceable to each other — without juggling a stack of
+hand-edited Word documents.
 
-*   [`doc/SDD.md`](../doc/SDD.md) — Software Design Document
-*   [`doc/HLRs.md`](../doc/HLRs.md) — High-Level Requirements
-*   [`doc/LLRs.md`](../doc/LLRs.md) — Low-Level Requirements
-*   [`doc/STP.md`](../doc/STP.md) — Software Test Plan
-*   [`doc/Traceability.md`](../doc/Traceability.md) — Traceability
-    Matrix (SDD → HLR → LLR → Test forward and reverse)
+You write your project once, in a single file (`doc/Project.xml`),
+and TraceR turns it into a fully linked set of specification
+documents:
 
-Above the generated stack sits the hand-authored
-[`doc/PVD.md`](../doc/PVD.md) — the Product Vision Document.
+* **Software Design Document** (`doc/SDD.md`)
+* **High-Level Requirements** (`doc/HLRs.md`)
+* **Low-Level Requirements** (`doc/LLRs.md`)
+* **Software Test Plan** (`doc/STP.md`)
+* **Traceability Matrix** (`doc/Traceability.md`) — shows which
+  requirement maps to which test, in both directions.
 
-TraceR ships two surfaces against this single source of truth:
+You get TraceR in two flavors, and both work from the same project
+file:
 
-1.  **A VS Code extension** (the day-to-day authoring surface) that
-    contributes a structured *Project Spec* tree view, lint
-    diagnostics in the Problems panel, code lenses with coverage
-    summaries, schema-driven form panels for every payload, a
-    seven-step Get Started Walkthrough, an `@projectspec` chat
-    participant for AI-assisted authoring, and an AI-assisted
-    three-way merge resolver for `doc/Project.xml`.
-2.  **A Python command-line toolchain** (the same engine the
-    extension shells out to) that you can run on its own from a
-    shell, a Makefile, or CI without any IDE installed.
+1.  **A VS Code extension.** This is the day-to-day experience: a
+    side panel that lists your requirements and tests, instant
+    error checking, click-through links between everything,
+    fill-in-the-blank forms for adding new items, and (optionally)
+    AI assistance for drafting and reviewing.
+2.  **A small set of command-line tools.** The same engine,
+    runnable from a terminal or a build script. Useful for
+    continuous-integration checks, one-off renders, or just
+    working without an editor open.
 
-Both surfaces share the same backend logic and the same XSD; if it
-lints clean from the CLI it lints clean in the editor, and vice
-versa.
-
-> **Where to read more.** The full schema, template-author guide,
-> and contributor reference live in the
-> [Developer's Guide](Developers_Guide.md). The phased delivery
-> roadmap and per-phase acceptance criteria live in
-> [`doc/SDP.md`](../doc/SDP.md). The product vision and success
-> metrics live in [`doc/PVD.md`](../doc/PVD.md).
+If your project lints clean from the command line, it lints clean
+in the editor — and vice versa.
 
 ## Installation
 
-### System prerequisites
+### What you need
 
-You need a Python 3.10+ interpreter with [Jinja2](https://pypi.org/project/Jinja2/)
-on PATH. [lxml](https://pypi.org/project/lxml/) (or the `xmllint`
-binary from `libxml2-utils`) is optional but recommended for strict
-XSD validation; the linter degrades gracefully when neither is
-present. For the VS Code extension you also need Node.js 20 LTS and
-VS Code 1.90+.
+* **Python 3.10 or newer**, with the `Jinja2` package installed.
+* *Optional but recommended:* the `lxml` Python package (or the
+  `xmllint` tool from `libxml2-utils`). These give you stricter
+  validation. TraceR still works without them.
+* For the VS Code extension: **VS Code 1.90 or newer** and **Node.js
+  20 LTS**.
 
-The full per-platform setup (apt, dnf, pacman, Homebrew) is in
-[`doc/SDP.md` §0 *Required Tools for Development*](../doc/SDP.md).
+On most systems:
+
+```bash
+# Python packages
+pip install jinja2 lxml
+
+# (Optional) xmllint on Debian/Ubuntu
+sudo apt install libxml2-utils
+```
 
 ### Installing the VS Code extension
 
-The shipped `.vsix` ships a copy of the entire Python toolchain
-under `dist/python/` so the extension works in any workspace as
-long as a Python 3.10+ interpreter is on PATH.
+The shipped `.vsix` file already includes a copy of TraceR's Python
+tools, so the extension works in any folder as long as Python 3.10+
+is on your PATH.
 
-```bash
-# 1. Install the Red Hat XML extension (required dependency).
-code --install-extension redhat.vscode-xml
+1.  Install the prerequisite XML extension from Red Hat:
 
-# 2. Install the TraceR extension from a local .vsix.
-code --install-extension tracer-project-xml-<version>.vsix
-```
+    ```bash
+    code --install-extension redhat.vscode-xml
+    ```
 
-When the VS Code Marketplace listing is published, replace step 2
-with `code --install-extension <publisher>.tracer-project-xml`.
+2.  Install TraceR from the `.vsix`:
 
-The first time you open a workspace that has no `tools/` directory,
-the extension offers a **Project Spec: Scaffold tools/ into
-workspace…** command that copies its bundled Python tree into your
-workspace, so the CLI, CI, and other contributors who do not have
-the extension installed all work without further setup.
+    ```bash
+    code --install-extension tracer-project-xml-<version>.vsix
+    ```
 
-### Installing the CLI by itself
+The first time you open an empty folder, the extension can scaffold
+the `tools/` directory for you (see *Getting Started* below), so
+your teammates and your CI server can use the command-line tools
+even if they don't have the extension installed.
 
-Clone the repository and add `tools/` to your PATH (or invoke the
-scripts by absolute path). Inside a virtual environment:
+### Installing the command-line tools by themselves
+
+If you only want the command-line tools (for example, on a build
+server), clone the repository and use a Python virtual environment:
 
 ```bash
 git clone https://github.com/racerxr650r/TraceR.git
 cd TraceR
 python3 -m venv .venv && source .venv/bin/activate
-pip install jinja2 lxml pytest
+pip install jinja2 lxml
 ```
 
-The CLI does not require the extension. Conversely the extension
-does not require a checkout — its bundled `dist/python/` provides
-everything the sidecar spawns.
+You don't need the extension for the CLI, and you don't need the
+CLI for the extension.
 
 ## Getting Started
 
-### Bootstrapping a brand-new project
+### Starting a brand-new project
 
-The fastest path is the **Get Started with Project Spec** Walkthrough
+The easiest path is the **Get Started with Project Spec** walkthrough
 inside VS Code:
 
-1.  Open an empty workspace folder.
-2.  Run **Help → Get Started → Project Spec**, or use the Command
-    Palette (Ctrl/Cmd+Shift+P) and pick
-    **Project Spec: Show Walkthrough**.
-3.  Step through the seven cards: scaffold `tools/`, initialise
-    `doc/Project.xml`, add an HLR, add an LLR, add a Test, lint, and
-    render.
+1.  Open an empty folder in VS Code.
+2.  Pick **Help → Get Started → Project Spec**, or press
+    `Ctrl/Cmd+Shift+P` and run **Project Spec: Show Walkthrough**.
+3.  Follow the seven cards in order. They will:
+    1.  Drop the `tools/` directory into your folder.
+    2.  Create a starter `doc/Project.xml`.
+    3.  Walk you through adding your first high-level requirement.
+    4.  …and your first low-level requirement.
+    5.  …and your first test.
+    6.  Run the lint check.
+    7.  Render all five spec documents.
 
-Each card links to the relevant command. By the end you have a
-populated `doc/Project.xml`, a populated `doc/PVD.md`, and all five
-spec documents rendered under `doc/`.
+By the end you have a working project and all five spec documents
+under `doc/`.
 
-The same outcome is available headlessly from the CLI:
+If you'd rather do it from the command line:
 
 ```bash
 python3 tools/render_doc.py --init \
     --name "MyProject" \
     --short-name MP \
     --author "Me" \
-    --xml doc/Project.xml \
-    --pvd-out doc/PVD.md
-python3 tools/render_doc.py --all   # renders SDD/HLRs/LLRs/STP/Traceability
-python3 tools/lint_project.py
+    --xml doc/Project.xml
+
+python3 tools/render_doc.py --all   # renders all five spec docs
+python3 tools/lint_project.py        # checks for problems
 ```
 
 ### Editing an existing project
 
-Open the workspace in VS Code; the *Project Spec* activity-bar icon
-opens the structural tree. From there:
+Open the folder in VS Code. The **Project Spec** icon appears in
+the activity bar (the strip on the far left). Click it to open the
+Project Spec view. From there you can:
 
-*   Right-click any leaf → **Reveal in Project.xml** to jump to the
-    element in the XML.
-*   Right-click any payload node → **Add HLR / Add LLR / Add Test
-    /…** to open a form panel.
-*   Right-click any payload node → **Draft / Expand / Review /
-    Suggest traces / Fix gap with AI** to invoke a grounded AI
-    intent (when a language model is available — see
-    [VS Code Extension → AI surfaces](#ai-surfaces) below).
-*   Save `doc/Project.xml` → diagnostics, badges, and the side
-    Markdown preview update on the fly.
+* **Click any item** in the tree to jump straight to it in
+  `Project.xml`.
+* **Right-click a category** (HLRs, LLRs, Tests, …) and pick
+  **Add HLR**, **Add LLR**, **Add Test**, etc. A form appears;
+  fill it in and submit.
+* **Right-click any item** and use the AI menu (when AI is
+  available) to draft, expand, review, or fix coverage gaps.
+* **Save** the file. TraceR re-checks for problems and updates the
+  side preview.
 
-### Anatomy of a TraceR repository
+### What lives where
 
 ```
 doc/
-  PVD.md             # Product Vision Document (hand-authored)
-  SDP.md             # Software Development Plan (phased roadmap)
-  Project.xml        # single source of truth (XSD-validated)
-  SDD.md             # generated
-  HLRs.md            # generated
-  LLRs.md            # generated
-  STP.md             # generated
-  Traceability.md    # generated
+  Project.xml         <- the one file you actually edit
+  SDD.md              <- generated, do not edit
+  HLRs.md             <- generated, do not edit
+  LLRs.md             <- generated, do not edit
+  STP.md              <- generated, do not edit
+  Traceability.md     <- generated, do not edit
 tools/
-  User_Manual.md       # this document
-  Developers_Guide.md  # schema reference + template-author guide
-  render_doc.py        # Project.xml → Markdown via Jinja2
-  lint_project.py      # XSD + semantic linter (emits Finding.code)
-  project_io.py        # JSON-RPC 2.0 sidecar over stdio
-  project_edit.py      # apply_edit / form_schema / next_free_id
-  project_merge.py     # Stage A deterministic three-way merger
-  project.xsd          # canonical schema (reserves urn:tracer:ui:v1)
-  templates/           # Jinja2 templates for each generated doc
-  ai/                  # AI registry + intents + schemas + pipeline
-  vscode-project-xml/  # the VS Code extension source
-test/                  # unittest suite for the Python tooling
+  User_Manual.md      <- this document
+  Developers_Guide.md <- for template authors and contributors
+  …command-line tools and templates…
 ```
 
-The five generated `*.md` files are **never** edited by hand — they
-are rebuilt from `doc/Project.xml` by the renderer. See the
-[Developer's Guide](Developers_Guide.md) for the schema and the
-template-author rules.
+The five generated `*.md` files are rebuilt from `Project.xml`
+every time you render. If you edit them by hand your changes will
+be overwritten — change `Project.xml` instead.
 
 ## VS Code Extension
 
-The extension contributes a *Project Spec* activity-bar view, lint
-diagnostics, code lenses, form panels, a Walkthrough, an AI chat
-participant, and an AI-assisted merge resolver. All of them are
-**schema-driven** — adding a new payload kind to
-[project.xsd](project.xsd) (with `<ui:treeNode>` / `<ui:lens>` /
-`<ui:form>` annotations) wires up the tree, lenses, and form panel
-without any TypeScript edits.
+When the extension is active, you get the following surfaces. They
+all stay in sync with `doc/Project.xml`.
 
 ### The Project Spec tree
 
-The activity-bar tree has top-level nodes for every payload that
-declares a `<ui:treeNode>` annotation in the XSD. Out of the box:
+The activity-bar tree groups your project by category:
 
-*   **HLRs** — every `<hlr>` grouped by `<section>`.
-*   **LLRs** — every `<llr>` grouped by `<function>`.
-*   **Tests** — every `<test>`, grouped by source file.
-*   **SDD** — every SDD module.
-*   **STP** — Software Test Plan fixtures.
+* **HLRs** — High-Level Requirements, grouped by section.
+* **LLRs** — Low-Level Requirements, grouped by function or module.
+* **Tests** — your tests, grouped by source file.
+* **SDD** — design document modules.
+* **STP** — Software Test Plan fixtures.
 
-Each leaf carries:
+Each item shows its ID and name. A small badge appears on items
+with problems:
 
-*   The element's `id` and `name`.
-*   An optional decoration sourced from per-element `ui:icon` /
-    `ui:color` attributes (purely cosmetic — the extension passes
-    these through, the renderer ignores them).
-*   A coverage status badge: ❌ when any error finding cites it,
-    ⚠ when only warnings do (gated on
-    `projectXml.showCoverageBadges`).
+* ❌ — at least one error refers to this item.
+* ⚠ — at least one warning refers to this item.
 
-### Lint diagnostics
+Click any item to reveal it in `Project.xml`.
 
-`tools/project_io.py lint` runs automatically on save (gated on
-`projectXml.autoLintOnChange`). Findings appear in the Problems
-panel, anchored to the offending element's range in
-`doc/Project.xml`. Each finding carries a stable `code` field
-(`broken-trace`, `id-format`, `missing-template`, `no-test`); the
-*Quick Fix* lightbulb dispatches on the `code`, never on element
-name. See
-[Developer's Guide §15 *Linter Contract*](Developers_Guide.md#15-linter-contract-finding-findingsitems-code-values).
+### Problems and the status bar
 
-The status bar shows a live `n errors / m warnings` count. Click it
-to focus the Problems panel filtered to `Project.xml`.
-`projectXml.warningsAsErrors` raises severity but **never**
-suppresses warnings.
+TraceR re-checks `Project.xml` every time you save. Anything it
+doesn't like shows up in the **Problems** panel, anchored to the
+exact line. Common problems include:
 
-### Code lenses
+* A trace that points at a requirement or section ID that doesn't
+  exist.
+* An ID that doesn't follow the expected pattern (for example,
+  `HLR-1` instead of `HLR-001`).
+* A requirement that has no test.
+* A document declared in the metadata but missing its template
+  file.
 
-Above every `<hlr>`, `<llr>`, and `<test>` in `doc/Project.xml`:
-
-*   **Coverage** — counts of downstream LLRs / tests, click-through
-    to each.
-*   **Traces count** — counts of incoming `<traces>`, click-through
-    to each upstream item.
-
-The lens kinds (`coverage`, `tracesCount`) are declared via
-`<ui:lens kind="..."/>` in the XSD; new payload kinds opt in by
-adding the same annotation.
-
-### Render and preview
-
-*   **Project Spec: Render and Preview** opens the rendered
-    Markdown for the affected document in a side preview pane. The
-    preview is served from an in-memory virtual document
-    (`tracer-preview:/<doc-id>.md`) and **never** writes a file
-    under `doc/`.
-*   **Project Spec: Render All** regenerates every `<metadata>
-    <document>` entry to its `output=` path.
-*   One **Project Spec: Render `<DocId>`** command per
-    `<metadata><document>` entry — discovered at activation, so
-    adding a new generated document just requires a new
-    `<document>` row and a template under
-    [templates/](templates/).
-
-`projectXml.previewOnSave` (default `true`) keeps the side preview
-in sync with the file you are editing.
-
-### Form panels
-
-For every complex type that carries a `<ui:form>` annotation in
-[project.xsd](project.xsd), the extension contributes an **Add**
-command that opens a webview with a form derived from the schema:
-
-*   `Project Spec: Add HLR` / `Add LLR`
-*   `Project Spec: Add SDD Module`
-*   `Project Spec: Add STP Fixture`
-*   `Project Spec: Add Test File` / `Add Test`
-
-Form submissions go through the sidecar's `apply_edit` JSON-RPC
-method, which:
-
-1.  Applies the edit to a working copy of the parsed XML.
-2.  Validates the result against the XSD and runs `lint_project.lint`.
-3.  Writes back **only on a clean result**, via `lxml`, so
-    comments, CDATA, attribute order, and whitespace are preserved.
-4.  Returns the diagnostics on failure, leaving `doc/Project.xml`
-    byte-identical to its pre-call state.
-
-When the file is open with unsaved changes, the extension prompts
-you to save or discard before applying the patch.
+The status bar at the bottom of the window shows a live count of
+errors and warnings. Click it to jump to the Problems panel.
 
 ### Quick Fixes
 
-The Problems panel's lightbulb offers fixes keyed on the lint
-finding's `code`:
+When the cursor is on a problem, a lightbulb appears. Quick Fixes
+include:
 
-| Code               | Quick Fix |
-|--------------------|-----------|
-| `broken-trace`     | Replace ref… (id picker populated from the parsed tree). |
-| `id-format`        | Renumber as the next free `HLR-NNN` / `LLR-XXX-NN`. |
-| `missing-template` | Stub the missing `.j2` file. |
-| `no-test`          | Insert a stub `<test>` block. |
+| Problem                | What the Quick Fix does                          |
+| ---------------------- | ------------------------------------------------ |
+| Broken trace           | Replace the bad ID using a picker.               |
+| Wrong ID format        | Renumber as the next free ID.                    |
+| Missing template file  | Stub a starter template for you.                 |
+| Requirement with no test | Insert a starter `<test>` block.               |
 
-Flat text rewrites use `vscode.WorkspaceEdit`; structural rewrites
-(currently only `no-test`) route through the `apply_edit` write
-path.
+### Inline coverage hints
 
-### AI surfaces
+Above each requirement and test in `Project.xml`, TraceR shows tiny
+inline hints — things like "2 LLRs / 4 tests" above a high-level
+requirement, or "Traced from HLR-001" above a test. Click any hint
+to jump to the related items.
 
-When `vscode.lm.selectChatModels()` returns at least one model and
-`projectXml.ai.enabled` is `true` and the workspace is trusted, the
-extension contributes:
+### Render and preview
 
-*   The **`@projectspec` chat participant** with the slash commands
-    `/draft-hlr`, `/draft-llr`, `/draft-test`, `/draft-module`,
-    `/draft-pvd`, `/expand`, `/review`, `/suggest-traces`,
-    `/gap-fill`, and (Phase 5.5) `/resolve-conflicts`.
-*   **Right-click AI menu items** on every Project Spec tree node,
-    derived from each payload's `<ui:treeNode>` `aiActions`
-    projection — *not* hard-coded per element kind. A new payload
-    that carries the annotation inherits the applicable AI menu
-    automatically.
-*   An **AI-suggest variant** of the `broken-trace` Quick Fix.
-*   A **diff-preview-and-apply** flow: every accepted AI edit
-    writes a timestamped backup under `.edit_doc/backups/`, appends
-    a provenance entry to `.edit_doc/ai_history.jsonl`, and only
-    then applies the patch.
+* **Project Spec: Render and Preview** opens a side-by-side preview
+  of the affected document. The preview is in-memory and never
+  overwrites the file on disk.
+* **Project Spec: Render All** rewrites every generated document
+  on disk in one go.
+* You also get one **Render <DocName>** command per document.
 
-When no model is available, the workspace is untrusted, or
-`projectXml.ai.enabled` is `false`, every AI surface hides itself
-cleanly and the deterministic surfaces (tree, diagnostics, lenses,
-form panels, render, Stage A merge) keep working unchanged. This
-graceful-degradation contract is the
-[PVD §7.1](../doc/PVD.md) baseline.
+If you have **Preview on Save** enabled (the default), the side
+preview keeps itself in sync as you edit.
 
-### Merge conflict resolution
+### Forms
 
-When `doc/Project.xml` is conflicted, **Project Spec: Resolve Merge
-Conflicts** opens the Stage A deterministic three-way merger over
-`:1:` / `:2:` / `:3:` blobs from `git show`, presents the merged
-result in VS Code's three-way merge editor, and (when AI is
-available) badges per-region resolutions with ✨. The extension
-**never** writes the merged file automatically — the merge editor
-is the only commit surface. Settings:
-`projectXml.merge.enabled` (default `true`),
-`projectXml.merge.aiResidualResolution` (default `true`, forced
-`false` when `projectXml.ai.enabled` is `false`).
+Adding a new requirement, test, design module, or fixture pops up
+a form. Behind the scenes, TraceR:
 
-### Settings reference
+1.  Applies your edit to a working copy.
+2.  Re-validates the result and re-runs the lint check.
+3.  Saves the file **only if the result is clean** — comments,
+    indentation, and ordering are preserved exactly.
+4.  Shows you the problems if it isn't clean, and leaves the file
+    untouched.
 
-| Key | Default | Meaning |
-| --- | ------- | ------- |
-| `projectXml.xmlPath`         | `doc/Project.xml`   | Workspace-relative path to Project.xml. |
-| `projectXml.xsdPath`         | `tools/project.xsd` | Workspace-relative path to project.xsd. |
-| `projectXml.toolsDir`        | `tools`             | Directory containing `project_io.py`; falls back to `<extensionPath>/dist/python` when absent. |
-| `projectXml.pythonPath`      | _(empty)_           | Override the Python interpreter (defaults to `python3` / `python`). |
-| `projectXml.autoLintOnChange`| `true`              | Re-lint on save. |
-| `projectXml.warningsAsErrors`| `false`             | Escalate lint warnings to error severity in the Problems panel and the status bar. NEVER suppresses warnings — only raises severity. |
-| `projectXml.previewOnSave`   | `true`              | Refresh the Markdown preview when `Project.xml` is saved. |
-| `projectXml.showCoverageBadges` | `true`           | Show ❌ / ⚠ status badges on HLR/LLR tree leaves. |
-| `projectXml.ai.enabled`      | `true`              | Enable AI surfaces. Setting to `false` hides every AI surface cleanly. |
-| `projectXml.ai.modelFamily`  | _(empty)_           | Optional language-model family selector (e.g. `gpt-4o`); empty means no constraint. |
-| `projectXml.ai.maxTokens`    | `8000`              | Token budget for the AI grounding bundle. |
-| `projectXml.ai.autoApplyValidated` | `false`       | When `true`, validated AI patches skip the diff-preview gate. |
-| `projectXml.ai.historyLog`   | `true`              | Append every AI step to `<workspace>/.edit_doc/ai_history.jsonl`. |
-| `projectXml.merge.enabled`   | `true`              | Enable Stage A deterministic three-way structural merge for `doc/Project.xml`. |
-| `projectXml.merge.aiResidualResolution` | `true`   | Use `merge.*` AI intents to suggest resolutions for residual conflicts. Forced `false` when `projectXml.ai.enabled` is `false`. |
+If the file is open with unsaved changes, TraceR will ask you to
+save or discard before applying the form.
+
+### AI assistance (optional)
+
+When a language model is available in VS Code and AI is enabled in
+settings, you also get:
+
+* The **`@projectspec`** chat participant, with slash commands like
+  `/draft-hlr`, `/draft-llr`, `/draft-test`, `/expand`, `/review`,
+  `/suggest-traces`, and `/gap-fill`.
+* **AI items** in the right-click menu of every Project Spec tree
+  node, so you can draft or expand from the tree itself.
+* A diff-preview-and-apply step on every AI suggestion: nothing
+  ever lands in your file without you accepting the diff first.
+  Each accepted change is also backed up to `.edit_doc/backups/`
+  for safety.
+
+If no model is available — or if you turn AI off — every AI
+surface disappears cleanly and the rest of the extension keeps
+working exactly as before.
+
+### Resolving merge conflicts
+
+If two branches edit `Project.xml` and Git can't merge them on its
+own, run **Project Spec: Resolve Merge Conflicts**. TraceR will:
+
+1.  Auto-merge the disjoint changes (different sections, different
+    requirements added on each side, different traces, …).
+2.  Open VS Code's three-way merge editor on whatever's left.
+3.  When AI is on, badge per-region suggestions with a ✨.
+
+TraceR never writes the merged file automatically — you commit
+the result from the merge editor like any other merge.
+
+### Useful settings
+
+These live under **Settings → Extensions → Project Spec**:
+
+| Setting                         | Default            | What it does                                                                 |
+| ------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
+| `projectXml.xmlPath`            | `doc/Project.xml`  | Path to the project file.                                                    |
+| `projectXml.autoLintOnChange`   | `true`             | Re-check on save.                                                            |
+| `projectXml.warningsAsErrors`   | `false`            | Treat warnings as errors in Problems and the status bar.                     |
+| `projectXml.previewOnSave`      | `true`             | Refresh the side preview when the file is saved.                             |
+| `projectXml.showCoverageBadges` | `true`             | Show ❌ / ⚠ badges on tree items.                                            |
+| `projectXml.ai.enabled`         | `true`             | Turn AI surfaces on or off.                                                  |
+| `projectXml.ai.modelFamily`     | _(empty)_          | Optional preferred model family (e.g. `gpt-4o`).                             |
+| `projectXml.ai.autoApplyValidated` | `false`         | Skip the diff-preview step for AI patches that already passed validation.    |
+| `projectXml.merge.enabled`      | `true`             | Enable structural merge for `Project.xml`.                                   |
+| `projectXml.merge.aiResidualResolution` | `true`     | Use AI to suggest resolutions for residual merge conflicts.                  |
 
 ## Command Line Tools
 
-Every CLI script under [`tools/`](.) accepts `--help`. The most
-common entry points:
+The tools live in the `tools/` directory. Every script accepts
+`--help`. Here are the ones you'll use most often.
 
-### `render_doc.py` — generate the spec docs
+### `render_doc.py` — generate the spec documents
 
 ```bash
-# Render every <metadata><document> entry to its `output=` path.
+# Regenerate every spec document.
 python3 tools/render_doc.py --all
 
-# Render a single document by id (the second positional argument
-# selects the <metadata><document id="..."> entry).
+# Regenerate just one document by name.
 python3 tools/render_doc.py tools/templates/HLRs.md.j2 HLRs --out doc/HLRs.md
 
-# Bootstrap a brand-new Project.xml + PVD.md.
+# Bootstrap a brand-new project.
 python3 tools/render_doc.py --init \
     --name "MyProject" --short-name MP --author "Me" \
-    --xml doc/Project.xml --pvd-out doc/PVD.md
+    --xml doc/Project.xml
 ```
 
-### `lint_project.py` — XSD + semantic linter
+### `lint_project.py` — check for problems
 
 ```bash
 python3 tools/lint_project.py
 ```
 
-Returns exit 0 on a clean run; non-zero on any error finding.
-Warnings do not fail the run unless `--warnings-as-errors` is
-passed. The structured findings (`Finding.code`) feed both the CLI
-report and the VS Code diagnostics surface; see
-[Developer's Guide §15](Developers_Guide.md#15-linter-contract-finding-findingsitems-code-values).
+Exits with status `0` if everything is clean, non-zero if there
+are any errors. Warnings are reported but don't fail the run
+unless you pass `--warnings-as-errors`.
 
-### `project_io.py` — JSON-RPC 2.0 sidecar over stdio
+### `Makefile` — common tasks
 
-```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"lint","params":{}}' \
-    | python3 tools/project_io.py
-```
-
-The VS Code extension spawns this script as a long-running child
-and dispatches over JSON-RPC. Methods include `lint`, `render`,
-`render_all`, `parse_to_json`, `list_documents`, `apply_edit`,
-`form_schema`, `next_free_id`, `init_project`, `merge_three_way`,
-`apply_merge_resolution`, and `ai_request`. Method signatures are
-documented in [`tools/project_io.py`](project_io.py).
-
-### `project_merge.py` — three-way structural merger
-
-Invoked indirectly via the sidecar's `merge_three_way` method. The
-deterministic Stage A merger preserves comments, CDATA, attribute
-order, and whitespace; unions disjoint additions and `<traces>`
-rows; reallocates colliding ids on the new side; and refuses
-cleanly when the Git merge base is unavailable
-(rebase-in-progress, octopus merge, cherry-pick without a base) so
-the user never silently loses content.
-
-### `tools/Makefile`
-
-Convenience targets for CI and local checking:
+The `tools/Makefile` ties the most common operations together:
 
 ```bash
-make -C tools render        # full re-render with drift check
-make -C tools lint          # python3 tools/lint_project.py
-make -C tools validate-xml  # XSD validation only
-make -C tools test          # unittest suite
+make -C tools render        # re-render and check for drift
+make -C tools lint          # run the linter
+make -C tools validate-xml  # validate against the schema only
+make -C tools test          # run the test suite
 make -C tools ci            # render + lint + validate + test
 ```
 
+This is what you'd normally wire into a continuous-integration
+workflow.
+
 ## Example Workflow
 
-A typical end-to-end flow on an existing TraceR repository:
+Here's what a typical day with TraceR looks like once a project is
+already set up.
 
-1.  **Pull and open in VS Code.**
+1.  **Pull and open the project.**
 
     ```bash
     git pull
     code .
     ```
 
-    The Project Spec activity-bar icon appears once
-    `doc/Project.xml` is detected.
+    The **Project Spec** icon appears in the activity bar.
 
-2.  **Add a new HLR.** Right-click *HLRs* in the tree →
-    **Add HLR**. Fill the form (id is pre-allocated to the next
-    free `HLR-NNN`); on save the extension validates and writes the
-    XML, the rendered `HLRs.md` preview updates, and the
-    Traceability matrix re-renders.
+2.  **Add a new requirement.** Right-click **HLRs** in the tree →
+    **Add HLR**. The form pre-fills the next free ID. Fill in the
+    name and description, then submit. TraceR validates the change
+    and saves the file.
 
-3.  **Drive its LLR(s) with AI.** Right-click the new HLR →
-    **Expand with AI** (or `@projectspec /expand` in the chat
-    pane). The AI proposes a candidate set of LLRs with HLR traces
-    pre-populated; each candidate is XSD- and lint-validated before
-    it is shown. Accept the diff preview to apply.
+3.  **Break it down into low-level requirements.** Right-click the
+    new HLR. If AI is available, pick **Expand with AI** — TraceR
+    drafts a few candidate LLRs, with traces back to the parent
+    HLR pre-filled. Review the diff and accept what looks right.
+    Otherwise, pick **Add LLR** and fill the form yourself.
 
-4.  **Add tests.** Either right-click an LLR → **Add Test**, or use
-    `@projectspec /draft-test` in chat. Tests automatically inherit
-    the LLR's traces.
+4.  **Add tests.** Right-click an LLR → **Add Test**, or ask the
+    AI for `@projectspec /draft-test`. Tests inherit the LLR's
+    traces automatically.
 
-5.  **Lint and render.** Save the file. The status bar shows
-    `0 errors / 0 warnings`; the side preview reflects the new
-    content. From the CLI:
+5.  **Render and review.** Save the file. The Problems panel
+    should show `0 errors / 0 warnings`. The side preview shows
+    the freshly rendered HLRs document. From a terminal you can
+    also run:
 
     ```bash
     python3 tools/lint_project.py
     make -C tools render
     ```
 
-6.  **Commit.** The five generated `*.md` files appear in the diff
-    alongside `doc/Project.xml`; commit all together. The
-    `prepackage` step that ships the `.vsix` runs in the GitHub
-    Actions workflow on `vscode-v*` tag pushes — no manual step.
+6.  **Commit.** The five generated `*.md` files appear in the
+    diff alongside `Project.xml`. Commit them together so reviewers
+    see the rendered result.
 
-7.  **Resolve a merge conflict (optional).** When two branches both
-    edit `doc/Project.xml`, run **Project Spec: Resolve Merge
-    Conflicts**. The Stage A merger unions the disjoint additions
-    automatically; residual semantic conflicts (same body edited on
-    both sides) are presented in the merge editor with AI
-    suggestions badged ✨ — accept or reject per region; nothing is
-    written until you commit the merge editor's result.
+7.  **Handle a merge conflict.** If a teammate edits
+    `Project.xml` at the same time, run **Project Spec: Resolve
+    Merge Conflicts** when Git complains. TraceR auto-merges the
+    disjoint changes; whatever's left lands in the merge editor
+    for you to decide.
 
-For deeper coverage of any of these steps, the
-[Developer's Guide](Developers_Guide.md) documents the schema,
-the renderer's data surface, the linter contract, and the recipe
-for adding a brand-new generated document.
+That's the loop. For deeper details — the schema, the linter's
+problem codes, how to add a new kind of generated document —
+see the [Developer's Guide](Developers_Guide.md).

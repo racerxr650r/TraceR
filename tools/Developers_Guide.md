@@ -48,11 +48,6 @@ The five generated documents are:
 *   [doc/STP.md](../doc/STP.md) — Software Test Plan
 *   [doc/Traceability.md](../doc/Traceability.md) — Traceability Matrix
 
-Sitting **above** the generated stack is the hand-authored
-[doc/PVD.md](../doc/PVD.md) (Product Vision Document). It is *not*
-generated; a starter template is provided at
-[templates/PVD.md.template](../tools/templates/PVD.md.template).
-
 Together with the per-test annotations under [test/](../test/), the
 file holds enough structured information to regenerate any of the five
 generated documents from a single edit point.
@@ -188,7 +183,7 @@ add the field to the relevant `build_*` function in
 ## 13. Adding a New Generated Document
 
 A new document is added by editing data and templates only. From
-[doc/SPD.md](../doc/SPD.md) Phase 2.5 onwards, the VS Code
+Phase 2.5 onwards, the VS Code
 extension picks up the new tree node, render command, and Markdown
 preview automatically; no TypeScript change is required.
 
@@ -242,7 +237,7 @@ outcomes:
 
 Every generated document needs a matching `<document>` entry under
 `<metadata>`. Without it, the renderer's `project.metadata` lookup
-fails, the linter flags the absence, and (from SPD Phase 2.5) the
+fails, the linter flags the absence, and (from Phase 2.5) the
 VS Code extension does not contribute a render command for the
 new document.
 
@@ -297,7 +292,7 @@ Matrix afterwards if your new document or payload introduced any
 
 If the project has a `Makefile` target that batch-regenerates all
 documents, add the new render line there alongside the existing
-five. From SPD Phase 2.5 onwards the VS Code extension's
+five. From Phase 2.5 onwards the VS Code extension's
 `Render All` command enumerates `<metadata><document>` entries
 automatically; you do not need to teach it about the new id.
 
@@ -311,7 +306,7 @@ automatically; you do not need to teach it about the new id.
     `tools/templates/<id>.md.j2` path) is missing from disk; it
     no longer carries a hard-coded list of “standard” ids.
 *   Not the VS Code extension's TypeScript code: the schema-driven
-    surfaces (`SPD` Phase 2.5) discover new documents and payloads
+    surfaces (Phase 2.5) discover new documents and payloads
     via `<metadata><document>` and `xs:appinfo` UI hints in the
     XSD. The only TypeScript change ever needed is for **bespoke
     visualisations** that go beyond a generic tree node, form, or
@@ -1251,7 +1246,7 @@ reference.
 ### 10.1 Bootstrapping a new project
 
 For a brand-new project the renderer can create the initial
-`doc/Project.xml` skeleton plus a substituted `doc/PVD.md`:
+`doc/Project.xml` skeleton:
 
 ```bash
 python3 tools/render_doc.py --init \
@@ -1260,12 +1255,10 @@ python3 tools/render_doc.py --init \
 
 This writes `doc/Project.xml` (a valid schema-1.1 skeleton with empty
 `<sdd>`, `<stp>`, `<hlrs>`, `<llrs>`, `<tests>` payloads and a fully
-populated `<metadata>` block) and `doc/PVD.md` (the
-[templates/PVD.md.template](../tools/templates/PVD.md.template) with the title,
-short name, date, and author placeholders substituted). Both files are
-refused if they already exist; pass `--force` to overwrite. From there
-the workflow is: edit `doc/PVD.md`, then start populating
-`doc/Project.xml` and regenerating the five spec documents above.
+populated `<metadata>` block). The file is refused if it already
+exists; pass `--force` to overwrite. From there the workflow is to
+start populating `doc/Project.xml` and regenerating the five spec
+documents above.
 
 ### 10.2 Validation
 

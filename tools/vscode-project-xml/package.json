@@ -4,7 +4,16 @@
   "description": "Structured authoring, validation, and traceability views for TraceR's doc/Project.xml.",
   "version": "0.1.0",
   "publisher": "tracer",
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/racerxr650r/TraceR.git",
+    "directory": "tools/vscode-project-xml"
+  },
+  "homepage": "https://github.com/racerxr650r/TraceR",
+  "bugs": {
+    "url": "https://github.com/racerxr650r/TraceR/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
