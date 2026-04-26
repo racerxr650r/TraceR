@@ -25,7 +25,7 @@ phased VS Code extension roadmap).
 | 4     | SDD/STP/Test forms + Walkthrough. | ✅ Done — `FormPanelProvider` widened to any complex type carrying a `<ui:form>` annotation; `<ui:form>` added to `StpFixture` and `TestFile`; new commands `Project Spec: Add SDD Module / Add STP Fixture / Add Test File / Add Test`; `Project Spec: Initialise Project.xml…` bootstraps a brand-new project from an empty workspace via the sidecar's `init_project`; seven-step **Get Started with Project Spec** Walkthrough makes the bootstrap-to-first-render flow discoverable from VS Code's Get Started page. Schema bumped to `1.5`. |
 | 5     | Inline AI assistance (`@projectspec` chat participant). | ⏳ Not started |
 | 5.5   | AI-assisted merge conflict resolution. | ⏳ Not started |
-| 6     | Marketplace polish. | ⏳ Not started |
+| 6     | Marketplace polish. | ⏳ Not started — includes self-contained `.vsix` (bundled `dist/python/` sidecar copy), `Scaffold tools/ into workspace…` command, automatic scaffolding from `initProject` in empty workspaces, and a bundled-vs-workspace freshness notification (HLR-060 / HLR-061 / HLR-062). |
 
 ## CLI tooling
 

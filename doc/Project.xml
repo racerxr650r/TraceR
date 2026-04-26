@@ -833,6 +833,37 @@ for the authoritative list and defaults).]]></responsibility>
 surfaces are off until the workspace is trusted; the
 deterministic surfaces (tree, diagnostics, lenses, forms,
 render, Stage A merge) keep working in untrusted mode.]]></responsibility>
+        <responsibility><![CDATA[Phase 6: ship a self-contained copy of every Python file
+the sidecar spawns at runtime —
+`project_io.py`, `render_doc.py`, `lint_project.py`,
+`project_edit.py`, `project_merge.py`, `project.xsd`, the
+`templates/` directory, and the `ai/` package — under
+`dist/python/` inside the `.vsix`. An npm `prepackage`
+script copies `tools/` into `dist/python/` immediately
+before `vsce package` and writes the source XSD's
+`schema_version` into `dist/python/.bundle_version`. The
+`.vscodeignore` excludes source directories but explicitly
+keeps `dist/python/` so the bundle survives packaging.
+[`getToolsDir()`](../tools/vscode-project-xml/src/util/paths.ts)
+falls back to `<extensionPath>/dist/python` when the
+workspace contains no configured `tools/` (HLR-060).]]></responsibility>
+        <responsibility><![CDATA[Phase 6: provide a `projectXml.scaffoldTools` command —
+also chained automatically from the success path of
+`projectXml.initProject` when the target workspace lacks a
+`tools/` directory — that recursively copies the bundled
+`dist/python/` into the workspace's `<projectXml.toolsDir>`,
+skipping pre-existing files unless the user confirms
+overwrite via a single modal. After scaffolding the new
+workspace is self-contained: the CLI, CI, and contributors
+without the extension all work without further setup
+(HLR-061). At activation, when both the workspace's
+`tools/project.xsd` and the bundled
+`dist/python/.bundle_version` are present, compare their
+`schema_version` values and surface a one-shot
+information notification — never an error, never blocking
+— offering `Re-scaffold tools/` when the workspace bundle
+is older than the extension's. The workspace `tools/`
+remains authoritative for sidecar spawn (HLR-062).]]></responsibility>
         <interfaces title_suffix="(activation)">
           <interface title="Activation events"><![CDATA[`workspaceContains:doc/Project.xml` is the sole activation
 event. The extension is dormant in workspaces that do not
@@ -1024,6 +1055,14 @@ directory, and the Python interpreter from the active
 workspace and `projectXml.*` settings; surface
 `describeWorkspaceState()` for the sidecar's startup
 diagnostics.]]></responsibility>
+        <responsibility><![CDATA[Phase 6: when the workspace contains no configured
+`<projectXml.toolsDir>` directory, `getToolsDir()` falls
+back to `<extensionPath>/dist/python` — the bundled copy
+shipped inside the `.vsix` (HLR-060). The fallback applies
+only when that bundled directory exists on disk; if neither
+the workspace nor the bundle resolve, the existing "Could
+not find tools" error remains. The workspace's `tools/`
+always wins when both are present.]]></responsibility>
         <responsibility><![CDATA[`locator.ts` — given an `(elementName, idAttr, idValue)`
 triple, scan the open `Project.xml` text buffer (or the
 on-disk file) and return a `vscode.Range` for the matching
@@ -1924,6 +1963,67 @@ unless the user explicitly confirms an overwrite.]]></text>
         <traces>
           <trace target="SDD" ref="11"/>
           <trace target="SDD" ref="19"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-060" name="Self-Contained Extension Package">
+        <text><![CDATA[The shipped `.vsix` shall include a self-contained copy of
+every Python file the extension spawns at runtime —
+`project_io.py`, `render_doc.py`, `lint_project.py`,
+`project_edit.py`, `project_merge.py`, `project.xsd`, the
+`templates/` directory, and the `ai/` package — under
+`dist/python/` inside the extension. The extension's
+`getToolsDir()` resolver shall fall back to the bundled
+`<extensionPath>/dist/python` directory when the workspace
+contains no `tools/` directory at the configured
+`projectXml.toolsDir`, so a freshly-installed extension
+works in any workspace that has a Python 3.10+ interpreter
+on `projectXml.pythonPath` (or PATH) without requiring a
+checkout of the TraceR repository.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-061" name="Workspace Tools Scaffolder">
+        <text><![CDATA[The extension shall provide a `Project Spec: Scaffold tools/
+into workspace…` command that recursively copies the bundled
+`<extensionPath>/dist/python/` tree into the workspace's
+`<projectXml.toolsDir>` (default `tools/`). Files that
+already exist in the workspace shall be skipped unless the
+user explicitly confirms overwrite via a modal prompt. The
+`projectXml.initProject` flow shall invoke this command
+automatically at the end of a successful bootstrap when the
+target workspace lacks a `tools/` directory, so that after
+init the new workspace is self-contained — the CLI
+(`make validate-xml`, `python3 tools/render_doc.py …`), CI,
+and contributors who do not have the extension installed
+shall all work without further setup, and the Red Hat XML
+extension's `xsi:noNamespaceSchemaLocation="tools/project.xsd"`
+shall resolve locally.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+          <trace target="SDD" ref="19"/>
+        </traces>
+      </hlr>
+
+      <hlr id="HLR-062" name="Bundled Tools Freshness Notification">
+        <text><![CDATA[The extension's package step shall write the source
+`tools/project.xsd` `schema_version` value into
+`dist/python/.bundle_version` so the bundled copy carries a
+pinned schema version. At activation, when the workspace
+contains a `tools/project.xsd`, the extension shall compare
+the workspace XSD's `schema_version` against the bundled
+pin and shall surface a one-shot information notification —
+never an error or a blocking modal — when the workspace
+bundle is older than the extension's, offering a
+`Re-scaffold tools/` action that re-invokes
+`projectXml.scaffoldTools` with overwrite confirmed. The
+workspace's `tools/` shall remain authoritative for sidecar
+spawn; the extension shall never silently rewrite workspace
+`tools/` files.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
         </traces>
       </hlr>
     </section>
@@ -3436,6 +3536,134 @@ command referenced from a `completionEvents` entry shall be
 declared under `contributes.commands`.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-028" name="Guided Authoring Walkthrough"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="27"
+              title="Phase 6 packaging and tools scaffolder ([tools/vscode-project-xml/scripts/prepackage.js](../tools/vscode-project-xml/scripts/prepackage.js), [tools/vscode-project-xml/src/util/paths.ts](../tools/vscode-project-xml/src/util/paths.ts), [tools/vscode-project-xml/src/commands/scaffoldTools.ts](../tools/vscode-project-xml/src/commands/scaffoldTools.ts))"
+              name="packaging"
+              source="tools/vscode-project-xml/">
+      <intro><![CDATA[Phase 6 turns the extension from a "checkout-bound" tool
+into a self-contained `.vsix` that works in any workspace.
+A `prepackage` build step bundles every Python file the
+sidecar spawns into `dist/python/` inside the extension; a
+new `projectXml.scaffoldTools` command (also chained from
+`projectXml.initProject`) drops a copy into the workspace's
+`tools/`, so brand-new repositories are immediately
+self-contained for CLI, CI, and contributors who do not
+have the extension installed.]]></intro>
+
+      <llr id="LLR-PKG-01">
+        <text><![CDATA[The `tools/vscode-project-xml/package.json` `scripts.prepackage`
+entry shall recursively copy `tools/project_io.py`,
+`render_doc.py`, `lint_project.py`, `project_edit.py`,
+`project_merge.py`, `project.xsd`, the `templates/`
+directory, and the `ai/` package (when present) from the
+TraceR `tools/` source tree into
+`tools/vscode-project-xml/dist/python/`. The script shall
+overwrite any pre-existing `dist/python/` so each package
+build starts from a clean copy. The
+`tools/vscode-project-xml/.vscodeignore` file shall not
+exclude `dist/python/`, so the bundled tree survives
+`vsce package`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-02">
+        <text><![CDATA[`getToolsDir()` in
+`tools/vscode-project-xml/src/util/paths.ts` shall, when no
+workspace folder contains the configured
+`<projectXml.toolsDir>` (default `tools/`), fall back to
+`context.extensionUri.fsPath + '/dist/python'`. The
+fallback shall apply only when the bundled directory exists
+on disk; if neither the workspace nor the bundle resolve,
+the existing "Could not find tools" error shall remain.
+`getProjectIoPath()` and the sidecar spawn shall use the
+returned path as `cwd` unchanged.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-03">
+        <text><![CDATA[`tools/vscode-project-xml/package.json` `activationEvents`
+shall include `onCommand:projectXml.initProject` and
+`onCommand:projectXml.scaffoldTools` in addition to the
+existing `workspaceContains:doc/Project.xml` trigger so the
+extension activates and the bootstrap / scaffold flows are
+runnable in an otherwise-empty workspace.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
+          <trace target="HLR" ref="HLR-061" name="Workspace Tools Scaffolder"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-04">
+        <text><![CDATA[`projectXml.scaffoldTools` shall recursively copy every
+file under `<extensionPath>/dist/python/` into the workspace
+folder's `<projectXml.toolsDir>` (default `tools/`),
+preserving the relative directory layout. Files that
+already exist in the workspace shall be skipped by default;
+when at least one such file is found, the command shall
+present a single `vscode.window.showWarningMessage` modal
+with `Overwrite all`, `Skip existing`, and `Cancel`
+choices, and shall honour the user's selection. The command
+shall surface a single status notification on completion
+listing the count of files written, skipped, and
+overwritten.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-061" name="Workspace Tools Scaffolder"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-05">
+        <text><![CDATA[`projectXml.initProject` shall, on the success path of the
+sidecar's `init_project` call, check whether the target
+workspace folder contains a `<projectXml.toolsDir>`
+directory. When absent, it shall invoke
+`projectXml.scaffoldTools` automatically (no further
+prompt — the user has already opted into bootstrap) so the
+new workspace is self-contained immediately after init.
+When present, it shall not touch the existing `tools/`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-061" name="Workspace Tools Scaffolder"/>
+          <trace target="HLR" ref="HLR-059" name="Project Bootstrap from Empty Workspace"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-06">
+        <text><![CDATA[The `prepackage` script shall read the source
+`tools/project.xsd` and write the value of its
+`xs:schema/@version`-equivalent attribute (the
+`Project.xml` `schema_version` baseline the bundled XSD
+accepts) into `tools/vscode-project-xml/dist/python/.bundle_version`
+as a single line of plain UTF-8 text. The file shall ship
+inside the `.vsix` alongside the bundled `project.xsd`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-062" name="Bundled Tools Freshness Notification"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-07">
+        <text><![CDATA[At extension activation, when the workspace contains a
+`<projectXml.toolsDir>/project.xsd` and the bundled
+`dist/python/.bundle_version` exists, the extension shall
+parse both `schema_version` values and, when the bundled
+version is strictly greater than the workspace's, surface
+exactly one
+`vscode.window.showInformationMessage(..., 'Re-scaffold tools/', 'Dismiss')`
+notification per session offering to re-run
+`projectXml.scaffoldTools` with overwrite confirmed. The
+notification shall never escalate to a warning or error,
+shall never block activation, and shall not appear at all
+when the bundled version is equal to or older than the
+workspace's. The workspace's `tools/` shall remain
+authoritative for the sidecar spawn at all times.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-062" name="Bundled Tools Freshness Notification"/>
         </traces>
       </llr>
     </function>

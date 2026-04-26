@@ -351,6 +351,17 @@ adopted.
     remains opt-in per project. Gated by a real user with a
     requirements-to-phasing question that GitHub Projects / Jira /
     a hand-written `PLAN.md` cannot answer.
+*   **Self-contained extension distribution.** Today the VS Code
+    extension assumes its host workspace already contains the
+    TraceR `tools/` Python sidecar (`render_doc.py`,
+    `lint_project.py`, `project_io.py`, `project.xsd`,
+    `templates/`, `ai/`). For Marketplace-grade install the `.vsix`
+    will ship a self-contained copy of those files inside the
+    extension and the bootstrap flow will scaffold them into a new
+    workspace's `tools/` so brand-new repositories are immediately
+    usable from the CLI, from CI, and by contributors who do not
+    have the extension installed. Pinned by HLR-060 / HLR-061 /
+    HLR-062 and delivered in [SDP](SDP.md) Phase 6.
 
 Anything not listed here is not on the roadmap and would require an
 explicit vision update.
