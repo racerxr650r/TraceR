@@ -59,6 +59,39 @@ export class ProjectIoClient implements vscode.Disposable {
         return this.request<RenderResult>('render', params as unknown as Record<string, unknown>);
     }
 
+    /**
+     * Phase 3 write surface (HLR-018, HLR-019). Apply a list of
+     * JSON-Patch-like operations to `doc/Project.xml`. The on-disk
+     * file is byte-identical to its pre-call state when validation
+     * fails; the structured findings are returned to the caller.
+     */
+    async applyEdit(params: ApplyEditParams): Promise<ApplyEditResult> {
+        return this.request<ApplyEditResult>(
+            'apply_edit',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
+    /**
+     * Phase 3: derive a JSON Schema + RJSF uiSchema for a complex
+     * type's UI form (payload-agnostic; keyed on the complex-type
+     * name like `"Hlr"` or `"Llr"`).
+     */
+    async formSchema(params: FormSchemaParams): Promise<FormSchemaResult> {
+        return this.request<FormSchemaResult>(
+            'form_schema',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
+    /** Phase 3 (HLR-005): allocate the next free HLR-NNN / LLR-XXX-NN id. */
+    async nextFreeId(params: NextFreeIdParams): Promise<{ id: string }> {
+        return this.request<{ id: string }>(
+            'next_free_id',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
     private async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
         const proc = this.ensureStarted();
         const id = this.nextId++;
@@ -245,6 +278,53 @@ export interface RenderParams {
 export interface RenderResult {
     output: string;
     out_path: string | null;
+}
+
+// ---------- Phase 3: apply_edit / form_schema / next_free_id ----------
+
+/** A single JSON-Patch-like operation accepted by `apply_edit`. */
+export interface EditOperation {
+    op: 'replace' | 'add' | 'remove';
+    path: string;
+    value?: unknown;
+}
+
+export interface ApplyEditParams {
+    operations: EditOperation[];
+    xml_path?: string;
+    xsd_path?: string;
+    /** When true (the default), the write only happens if the post-edit
+     *  candidate produces zero error-severity findings. */
+    expect_clean?: boolean;
+}
+
+export interface ApplyEditResult {
+    ok: boolean;
+    written: boolean;
+    findings: LintResult;
+    operations_applied: number;
+}
+
+export interface FormSchemaParams {
+    /** Complex-type name, e.g. `"Hlr"` or `"Llr"`. */
+    type: string;
+    /** Snapshot of ids to populate `ref:HLR` / `ref:LLR` / `ref:SDD` selectors. */
+    refs?: Record<string, string[]>;
+    xsd_path?: string;
+}
+
+export interface FormSchemaResult {
+    schema: Record<string, unknown>;
+    uiSchema: Record<string, unknown>;
+    fields: UiFormField[];
+    type: string;
+}
+
+export interface NextFreeIdParams {
+    kind: 'hlr' | 'llr';
+    /** Required when kind === 'llr' (the function/section prefix). */
+    function?: string;
+    xml_path?: string;
 }
 
 /**

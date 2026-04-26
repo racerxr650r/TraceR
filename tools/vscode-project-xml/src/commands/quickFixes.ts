@@ -17,7 +17,6 @@ import {
     parseIdFormat,
     parseMissingTemplate,
     parseNoTest,
-    stubTestFragment,
     templateStubContent,
 } from '../codeActions/fixes';
 import * as path from 'path';
@@ -119,33 +118,81 @@ export async function fixMissingTemplate(args: FixArgs): Promise<void> {
 }
 
 // ---------------------------------------------------------------------
-// no-test — append a `<file><test/></file>` block before `</tests>`.
+// no-test — append a `<file><test/></file>` block to <tests>.
+//
+// Phase 3: this is the structural Quick Fix in the table — it adds a
+// new <test> element rather than rewriting flat text. We route it
+// through ProjectIoClient.applyEdit() so the new element passes
+// through the XSD + linter validation gate before the file is
+// rewritten (HLR-018, HLR-019). The other three fixes
+// (broken-trace, id-format, missing-template) stay on WorkspaceEdit
+// because they only mutate flat text and are usable on dirty buffers.
 // ---------------------------------------------------------------------
 
-export async function fixNoTest(args: FixArgs): Promise<void> {
+export async function fixNoTest(
+    sidecar: ProjectIoClient,
+    args: FixArgs,
+): Promise<void> {
     const info = parseNoTest(args.message);
     if (!info) {
         return;
     }
-    const uri = asUri(args);
-    let doc: vscode.TextDocument;
-    try {
-        doc = await vscode.workspace.openTextDocument(uri);
-    } catch {
-        return;
-    }
-    const text = doc.getText();
-    const close = text.indexOf('</tests>');
-    if (close < 0) {
-        await vscode.window.showWarningMessage(
-            'Project Spec: <tests> section not found in Project.xml.',
+    // Honour the dirty-buffer prompt (HLR-018 — never write through stale state).
+    const xmlPath = getProjectXmlPath();
+    if (xmlPath) {
+        const open = vscode.workspace.textDocuments.find(
+            (d) => d.uri.fsPath === xmlPath && d.isDirty,
         );
-        return;
+        if (open) {
+            const choice = await vscode.window.showWarningMessage(
+                'Project.xml has unsaved changes in the editor. Save before applying the fix?',
+                { modal: true },
+                'Save and Continue',
+                'Cancel',
+            );
+            if (choice !== 'Save and Continue') {
+                return;
+            }
+            await open.save();
+        }
     }
-    const fragment = stubTestFragment(info) + '\n  ';
-    const edit = new vscode.WorkspaceEdit();
-    edit.insert(uri, doc.positionAt(close), fragment);
-    await vscode.workspace.applyEdit(edit);
+
+    const testName = `test_${info.targetId.toLowerCase().replace(/-/g, '_')}_smoke`;
+    const filePath = `test/test_${info.targetId.toLowerCase().replace(/-/g, '_')}.py`;
+    try {
+        const result = await sidecar.applyEdit({
+            operations: [{
+                op: 'add',
+                path: '/tests/file/-',
+                value: {
+                    '@path': filePath,
+                    test: {
+                        '@name': testName,
+                        purpose: `Cover ${info.target} ${info.targetId}.`,
+                        traces: {
+                            trace: [{ '@target': info.target, '@ref': info.targetId }],
+                        },
+                    },
+                },
+            }],
+        });
+        if (!result.written) {
+            const errs = (result.findings.errors ?? []).join('\n') ||
+                'unknown validation failure';
+            void vscode.window.showWarningMessage(
+                `Project Spec: stub test was rejected by the validator and the file was not changed.\n${errs}`,
+            );
+            return;
+        }
+        // Refresh tree + diagnostics so the user sees the new test
+        // entry and the lint warning clears.
+        await vscode.commands.executeCommand('projectXml.refresh');
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        void vscode.window.showErrorMessage(
+            `Project Spec: apply_edit failed: ${message}`,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------

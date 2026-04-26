@@ -23,6 +23,18 @@ lint_project.py as JSON-RPC methods:
   * init_project(name, short_name, author?, xml_path?, pvd_path?,
                  pvd_template?, force?=False)
         -> {"xml_path": "...", "pvd_path": "...", "existing": [...]}
+  * apply_edit(operations, xml_path?, xsd_path?, expect_clean?=True)
+        -> {"ok": bool, "written": bool, "findings": {...},
+            "operations_applied": int}
+        Phase 3 write surface (HLR-018, HLR-019). The on-disk file is
+        byte-identical to its pre-call state when validation fails.
+  * form_schema(type, xsd_path?, refs?)
+        -> {"schema": {...}, "uiSchema": {...}, "fields": [...],
+            "type": "..."}
+        Derive a JSON Schema + RJSF uiSchema for the form webview.
+  * next_free_id(kind, function?, xml_path?)
+        -> {"id": "HLR-NNN" | "LLR-XXX-NN"}
+        Allocate the next-free id (HLR-005)..
 
 Wire format
 -----------
@@ -78,6 +90,12 @@ from lint_project import (
     DEFAULT_XML as LINT_DEFAULT_XML,
     DEFAULT_XSD as LINT_DEFAULT_XSD,
     lint as _lint,
+)
+from project_edit import (
+    apply_edit as _apply_edit,
+    derive_form_schema as _derive_form_schema,
+    next_free_hlr_id as _next_free_hlr_id,
+    next_free_llr_id as _next_free_llr_id,
 )
 
 # JSON-RPC error codes (https://www.jsonrpc.org/specification#error_object).
@@ -194,6 +212,65 @@ def _method_init_project(params: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _method_apply_edit(params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 3 write surface (HLR-018, HLR-019). Applies a list of
+    JSON-Patch-like operations to ``Project.xml``, validates the
+    candidate against the XSD + linter, and only writes the file on a
+    clean result. The on-disk file is byte-identical to its pre-call
+    state when validation fails.
+    """
+    operations = params.get("operations")
+    if operations is None:
+        raise ValueError("apply_edit requires 'operations'")
+    if not isinstance(operations, list):
+        raise ValueError("'operations' must be a list")
+    xml_path = _as_path(params.get("xml_path"), PROJECT_XML)
+    xsd_path = _as_path(params.get("xsd_path"), PROJECT_XSD)
+    expect_clean = params.get("expect_clean", True)
+    if not isinstance(expect_clean, bool):
+        raise ValueError("'expect_clean' must be a boolean")
+    result = _apply_edit(
+        operations,
+        xml_path=xml_path,
+        xsd_path=xsd_path,
+        expect_clean=expect_clean,
+    )
+    return result.to_dict()
+
+
+def _method_form_schema(params: dict[str, Any]) -> dict[str, Any]:
+    """Derive a JSON Schema + uiSchema for the form webview from the
+    XSD subtree bound to a UI tree node. Payload-agnostic: keyed on
+    the complex-type name (e.g. ``"Hlr"``, ``"Llr"``).
+    """
+    type_name = params.get("type")
+    if not isinstance(type_name, str):
+        raise ValueError("form_schema requires string 'type'")
+    xsd_path = _as_path(params.get("xsd_path"), PROJECT_XSD)
+    refs = params.get("refs")
+    if refs is not None and not isinstance(refs, dict):
+        raise ValueError("'refs' must be an object or null")
+    return _derive_form_schema(
+        type_name,
+        xsd_path=xsd_path,
+        refs=refs,
+    )
+
+
+def _method_next_free_id(params: dict[str, Any]) -> dict[str, Any]:
+    """Allocate the next free ``HLR-NNN`` or ``LLR-XXX-NN`` id (HLR-005)."""
+    kind = params.get("kind")
+    if kind not in {"hlr", "llr"}:
+        raise ValueError("next_free_id requires kind='hlr' or 'llr'")
+    xml_path = _as_path(params.get("xml_path"), PROJECT_XML)
+    if kind == "hlr":
+        return {"id": _next_free_hlr_id(xml_path)}
+    function = params.get("function")
+    if not isinstance(function, str) or not function:
+        raise ValueError("next_free_id kind='llr' requires 'function' prefix")
+    return {"id": _next_free_llr_id(function, xml_path)}
+
+
 METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "lint": _method_lint,
     "render": _method_render,
@@ -201,6 +278,9 @@ METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "list_documents": _method_list_documents,
     "ui_hints_index": _method_ui_hints_index,
     "init_project": _method_init_project,
+    "apply_edit": _method_apply_edit,
+    "form_schema": _method_form_schema,
+    "next_free_id": _method_next_free_id,
 }
 
 

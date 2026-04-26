@@ -3203,6 +3203,107 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
       </llr>
     </function>
 
+    <function number="22"
+              title="apply_edit write surface ([tools/project_edit.py](../tools/project_edit.py))"
+              name="aed"
+              source="tools/project_edit.py">
+      <intro><![CDATA[Phase 3: the authoritative write-back primitive for `doc/Project.xml`. `apply_edit` accepts a list of small JSON-Patch-like operations, applies them on a working copy of the parsed tree, runs XSD + linter validation, and only on a clean result rewrites the file via `lxml` so comments, CDATA, attribute order, and whitespace are preserved (HLR-018). On validation failure the on-disk file is byte-identical to its pre-call state and the structured findings are returned to the caller (HLR-019). Every Phase 3 surface that needs to change Project.xml (the form panel, addHlr/addLlr, the structural Quick Fix) routes through this single function so the validate-then-write contract is enforced in exactly one place.]]></intro>
+
+      <llr id="LLR-AED-01">
+        <text><![CDATA[`apply_edit(operations, *, xml_path, xsd_path, expect_clean=True)` shall parse `xml_path` with `lxml.etree.XMLParser(remove_blank_text=False, remove_comments=False, strip_cdata=False)` so the in-memory tree retains every comment, CDATA section, and inter-element whitespace from the source; new text bodies whose value contains markup-significant characters (`<`, `>`, `&`, markdown links/code) shall be wrapped in `etree.CDATA` so subsequent re-renders preserve the formatting (HLR-018).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-018" name="Whitespace-Preserving Writes"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-AED-02">
+        <text><![CDATA[`apply_edit` shall write the candidate output to a sibling temp file in the same directory as `xml_path`, run `lint_project.lint` on the temp file, and on a finding of severity `error` (or any XSD failure) when `expect_clean` is true return an `ApplyEditResult(ok=False, written=False, findings=…)` *without* touching `xml_path`. The on-disk bytes of `xml_path` shall be byte-identical to its pre-call state on every failure path (HLR-019).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-019" name="Atomic Validate-then-Write"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-AED-03">
+        <text><![CDATA[`apply_edit` shall accept a tiny path grammar (`/section/tag[k=v]/@attr`, `.../tag` for child text bodies, `.../tag/-` for an append slot) and three operation kinds (`replace`, `add`, `remove`). Element values shall use the `@attr` / bare-key convention (`@id`, `@name` for attributes; bare keys for child elements with list values for repeated children). The grammar shall be expressive enough to drive every Phase 3 surface (form submission, addHlr/addLlr, the no-test Quick Fix) without a richer JSON Patch implementation.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-AED-04">
+        <text><![CDATA[`apply_edit` shall replace `xml_path` with the validated candidate via `os.replace(tmp_path, xml_path)` so the swap is atomic on POSIX file systems — a crash mid-write cannot leave the user with a half-rewritten Project.xml (HLR-019).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-019" name="Atomic Validate-then-Write"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-AED-05">
+        <text><![CDATA[The sidecar shall expose `apply_edit`, `form_schema`, and `next_free_id` JSON-RPC methods backed by the helpers in `project_edit.py`. The TS client (`ProjectIoClient.applyEdit`, `.formSchema`, `.nextFreeId`) shall forward params verbatim and return the structured result so the form panel and Quick Fix layer share one transport.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+          <trace target="HLR" ref="HLR-005" name="Stable Identifiers"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="23"
+              title="Form panel webview ([tools/vscode-project-xml/src/forms/](../tools/vscode-project-xml/src/forms/))"
+              name="frm"
+              source="tools/vscode-project-xml/src/forms/FormPanelProvider.ts">
+      <intro><![CDATA[Phase 3 (HLR-026): a payload-agnostic form panel that edits a single `<hlr>` or `<llr>` using `react-jsonschema-form`. The schema is derived at runtime from the relevant XSD subtree plus the `ui:form` field hints in the Phase 2.5b ui_hints_index — there is no per-payload form code. The panel sends a JSON Patch through `apply_edit`, prompts to save dirty buffers before mutating the file, and renders inline validation findings on rejection so the user can correct the form and retry.]]></intro>
+
+      <llr id="LLR-FRM-01">
+        <text><![CDATA[`derive_form_schema(type_name, *, xsd_path, refs)` shall walk the named complex type's `<xs:appinfo>/<ui:form>` block from the XSD plus the attribute `use` flags and return `{schema, uiSchema, fields, type}`. Field `kind` values (`text`, `textarea`, `cdata`, `enum`, `ref:HLR/LLR/SDD`) shall map to RJSF widgets (`text`, `textarea`, `select`); the `<traces>` subtree shall surface as an array of `{target, ref, name?}` rows whose `ref` selector is populated from the `refs` snapshot when supplied. Adding a new payload kind shall require zero changes to the deriver.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-02">
+        <text><![CDATA[`FormPanelProvider.open` shall first check whether `doc/Project.xml` is open in the editor with unsaved changes; if so it shall prompt the user with a modal warning ("Save and Continue" / "Cancel") and abort the open on cancel. This guards against silently overwriting in-progress edits when the form posts back through `apply_edit`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-018" name="Whitespace-Preserving Writes"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-03">
+        <text><![CDATA[`buildOperations({basePath, appendPath}, formData)` shall translate a form submission into the JSON Patch list the sidecar's `apply_edit` accepts. In add mode (no `basePath`) it shall emit a single `add` op against `appendPath`; in edit mode it shall emit one `replace` per attribute (`/@id`, `/@name`) and one `replace` per child (text body, `/traces`). The function shall be a pure helper exported separately from the panel class so the path-shape contract is unit-testable without the VS Code API.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-04">
+        <text><![CDATA[The form webview bundle (`dist/formPanel.js`) shall be produced by a second esbuild entry pointing at `src/forms/webview/formMain.tsx` and shall load `react`, `react-dom`, and `@rjsf/core` + `@rjsf/validator-ajv8` as in-bundle dependencies. The CSP set in `FormPanelProvider`'s HTML shall pin the script to a per-load nonce so no other script can run inside the webview.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+    </function>
+
+    <function number="24"
+              title="Add / edit commands ([tools/vscode-project-xml/src/commands/forms.ts](../tools/vscode-project-xml/src/commands/forms.ts))"
+              name="add"
+              source="tools/vscode-project-xml/src/commands/forms.ts">
+      <intro><![CDATA[Phase 3: `projectXml.addHlr`, `projectXml.addLlr`, and `projectXml.editPayload` open the schema-driven form panel for new and existing payload nodes. The add commands prompt the user to pick a section/function, allocate the next-free id via the sidecar, and open a blank form against the corresponding append slot; `editPayload` re-uses the same panel in edit mode.]]></intro>
+
+      <llr id="LLR-ADD-01">
+        <text><![CDATA[`addHlr` shall list every `<hlrs>/<section>` from the parsed tree in a `vscode.QuickPick`, ask the sidecar for the next-free `HLR-NNN`, and open `FormPanelProvider` against `/hlrs/section[number=N]/hlr/-` for the picked section. `addLlr` shall do the same against `<llrs>/<function>` (using the function's `name` for the LLR prefix and asking the sidecar for the next-free `LLR-PREFIX-NN`). Adding a new section or function shall therefore surface a new add target with no extension code change (HLR-005).]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-005" name="Stable Identifiers"/>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-ADD-02">
+        <text><![CDATA[The Phase 2.5c `no-test` Quick Fix shall route through `ProjectIoClient.applyEdit` (rather than `WorkspaceEdit.insert` before `</tests>`) so the new `<test>` element passes the XSD + linter gate before the file is rewritten. The other three Phase 2.5c fixes (`broken-trace`, `id-format`, `missing-template`) shall remain on `WorkspaceEdit` because they only mutate flat text and stay usable on dirty buffers.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-025" name="Quick Fixes for Common Findings"/>
+          <trace target="HLR" ref="HLR-019" name="Atomic Validate-then-Write"/>
+        </traces>
+      </llr>
+    </function>
+
   </llrs>
 
   <!-- Test sources (see Schema_Reference.md §7). -->
@@ -4332,6 +4433,149 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
           <trace target="LLR" ref="LLR-QFX-01"/>
           <trace target="LLR" ref="LLR-QFX-03"/>
           <trace target="LLR" ref="LLR-QFX-04"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="test/test_project_edit.py" role="unit" count="14">
+      <header><![CDATA[Phase 3 tests for tools/project_edit.py — apply_edit and the JSON-Schema deriver. Builds an in-tmpdir Project.xml with a CDATA-bearing HLR, a comment, and a covering test, then exercises every supported operation kind plus the validate-then-write contract.]]></header>
+
+      <test name="test_replace_attribute_writes_when_clean">
+        <purpose><![CDATA[Pins LLR-AED-01 and LLR-AED-03: a `replace` op against `/hlrs/section[number=1]/hlr[id=HLR-001]/@name` rewrites the attribute and the file is written when the candidate lints clean.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-01"/>
+          <trace target="LLR" ref="LLR-AED-03"/>
+        </traces>
+      </test>
+
+      <test name="test_replace_text_body_with_cdata">
+        <purpose><![CDATA[Pins LLR-AED-01: a text body containing markup-significant characters is wrapped in a `CDATA` section so subsequent renders see the same tokens the form submitted.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-01"/>
+        </traces>
+      </test>
+
+      <test name="test_append_new_hlr">
+        <purpose><![CDATA[Pins LLR-AED-03: an `add` op against `/hlrs/section[...]/hlr/-` appends a new `<hlr>` element with the supplied attributes and child elements; the form-panel addHlr command path is exercised end-to-end.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-03"/>
+          <trace target="LLR" ref="LLR-ADD-01"/>
+        </traces>
+      </test>
+
+      <test name="test_failed_validation_leaves_file_byte_identical">
+        <purpose><![CDATA[Pins LLR-AED-02: an XSD failure (replacing an HLR id with a value that fails the HlrId pattern) leaves `xml_path` byte-identical to its pre-call state and surfaces the structured findings in the result.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-02"/>
+        </traces>
+      </test>
+
+      <test name="test_broken_trace_blocks_write">
+        <purpose><![CDATA[Pins LLR-AED-02: a new LLR whose trace targets a non-existent HLR is rejected by the linter; the file is not written and the original bytes are preserved.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-02"/>
+        </traces>
+      </test>
+
+      <test name="test_roundtrip_preserves_existing_cdata">
+        <purpose><![CDATA[Pins LLR-AED-01: editing an attribute on an element whose `<text>` child is wrapped in CDATA leaves the CDATA section verbatim in the rewritten file.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-01"/>
+        </traces>
+      </test>
+
+      <test name="test_roundtrip_preserves_top_level_comment">
+        <purpose><![CDATA[Pins LLR-AED-01: top-of-file XML comments survive a successful round-trip write, proving lxml's parser/serializer is preserving the comment node verbatim.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-01"/>
+        </traces>
+      </test>
+
+      <test name="test_next_free_hlr_id">
+        <purpose><![CDATA[Pins LLR-ADD-01: `next_free_hlr_id` returns the next HLR-NNN id (zero-padded to the widest existing id) so the addHlr command can pre-fill the form.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ADD-01"/>
+        </traces>
+      </test>
+
+      <test name="test_next_free_llr_id">
+        <purpose><![CDATA[Pins LLR-ADD-01: `next_free_llr_id` returns the next LLR-PREFIX-NN id for an existing function-prefix (preserving the established width).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ADD-01"/>
+        </traces>
+      </test>
+
+      <test name="test_next_free_llr_id_for_unseen_function">
+        <purpose><![CDATA[Pins LLR-ADD-01: `next_free_llr_id` for a fresh function prefix returns `LLR-PREFIX-01` so the addLlr command works on a brand-new function.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ADD-01"/>
+        </traces>
+      </test>
+
+      <test name="test_derive_hlr_form_schema_shape">
+        <purpose><![CDATA[Pins LLR-FRM-01: `derive_form_schema("Hlr")` returns a JSON Schema whose properties match the `<ui:form>` field list, lifts the HLR id pattern from the XSD `HlrId` simple type, marks `id`/`name` required, and selects the textarea widget for the cdata-kind text body.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-01"/>
+        </traces>
+      </test>
+
+      <test name="test_derive_llr_form_schema_with_refs">
+        <purpose><![CDATA[Pins LLR-FRM-01: when a `refs` snapshot is supplied, the LLR `traces` array surfaces a populated `enum` for the `ref` selector so the form renders a closed-set picker.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-01"/>
+        </traces>
+      </test>
+
+      <test name="test_split_path_strips_leading_slash">
+        <purpose><![CDATA[Pins LLR-AED-03: the path grammar parser strips the leading slash and rejects relative paths so a missing `/` is caught early in the apply_edit pipeline.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-03"/>
+        </traces>
+      </test>
+
+      <test name="test_predicate_parses_attr_terms">
+        <purpose><![CDATA[Pins LLR-AED-03: predicates of the form `[k=v,k2=v2]` are parsed as ordered attribute terms so element selection by attribute combination works.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-03"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="5">
+      <header><![CDATA[Phase 3 tests for the pure `buildOperations` helper exported from FormPanelProvider. Pins the JSON Patch shape the form panel posts to the sidecar without needing the VS Code webview API.]]></header>
+
+      <test name="emits a single add op with @attr keys when in add mode">
+        <purpose><![CDATA[Pins LLR-FRM-03: in add mode the helper emits exactly one `add` op whose value uses the `@attr` / bare-key convention apply_edit understands.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-03"/>
+        </traces>
+      </test>
+
+      <test name="emits one replace per attribute and per child in edit mode">
+        <purpose><![CDATA[Pins LLR-FRM-03: in edit mode the helper emits a separate `replace` op per attribute and per child element body.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-03"/>
+        </traces>
+      </test>
+
+      <test name="drops empty trace name attributes">
+        <purpose><![CDATA[Pins LLR-FRM-03: trace rows with an empty `name` field are emitted without an `@name` attribute so the round trip does not introduce blank attribute noise.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-03"/>
+        </traces>
+      </test>
+
+      <test name="skips invalid trace rows">
+        <purpose><![CDATA[Pins LLR-FRM-03: trace rows missing `target` or `ref` are filtered out so a half-edited row in the form does not produce a `<trace>` that fails XSD validation downstream.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-03"/>
+        </traces>
+      </test>
+
+      <test name="throws when neither basePath nor appendPath is supplied">
+        <purpose><![CDATA[Pins LLR-FRM-03: missing both addressing modes is a programmer error that throws synchronously rather than producing an empty patch.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-03"/>
         </traces>
       </test>
     </file>
