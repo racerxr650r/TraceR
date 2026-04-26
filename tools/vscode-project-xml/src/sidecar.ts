@@ -107,6 +107,34 @@ export class ProjectIoClient implements vscode.Disposable {
         );
     }
 
+    /**
+     * Phase 5a (HLR-029..033, HLR-052): drive the AI pipeline. The
+     * sidecar is stateless; this client exists to (a) prepare a
+     * grounding bundle + system prompt for an intent, and (b) hand a
+     * raw model response back for validation, JSON-Patch translation,
+     * and (when accepted) the `apply_edit` write. The TS layer owns
+     * `vscode.lm.*` (HLR-045); the Python side never calls a model.
+     *
+     * The single `ai_request` method dispatches on the `mode`
+     * parameter:
+     *   - `prepare`  → returns `{ kind: 'prompt', prompt, intent, target }`
+     *   - `evaluate` → translates a `response` against the intent
+     *                  schema, runs `apply_edit` (with `dry_run` when
+     *                  `write=false`) and returns either
+     *                  `{ kind: 'applied' | 'validated', patch, lint }`
+     *                  or `{ kind: 'rejected', failures, retry_feedback }`
+     *
+     * Provenance is appended automatically by the sidecar to
+     * `<workspace>/.edit_doc/ai_history.jsonl` when
+     * `enable_history=true` (HLR-049).
+     */
+    async aiRequest(params: AiRequestParams): Promise<AiRequestResult> {
+        return this.request<AiRequestResult>(
+            'ai_request',
+            params as unknown as Record<string, unknown>,
+        );
+    }
+
     private async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
         const proc = this.ensureStarted();
         const id = this.nextId++;
@@ -417,6 +445,13 @@ export interface UiHintEntry {
      *  names. Null when no `<xs:element type="...">` declaration
      *  binds the type. */
     element: string | null;
+    /** Phase 5a (HLR-053): the AI intent ids that apply to this
+     *  payload type, projected from `tools/ai/registry.py`. The TS
+     *  tree provider maps each id to a context-menu entry; the chat
+     *  participant uses the same projection to determine which slash
+     *  commands accept which targets. Empty/absent when no intents
+     *  target this type — older sidecar builds omit the field. */
+    ai_actions?: string[];
 }
 
 export type UiHintsIndex = Record<string, UiHintEntry>;
@@ -554,4 +589,89 @@ export interface ParsedProject {
      *  payload that carries a `ui:treeNode` hint without per-tag
      *  builders. Absent on older sidecars. */
     _nodes?: ParsedNodesIndex;
+}
+
+// ---------- Phase 5a: ai_request --------------------------------------
+
+/**
+ * Target descriptor for an AI request. Mirrors `tools/ai/context.py`'s
+ * `TargetSpec`. `type` is the complex-type name (e.g. `"Hlr"`); the
+ * remaining fields disambiguate which instance an authoring intent
+ * acts on or which container an `add` lands in.
+ */
+export interface AiTarget {
+    /** Complex-type name from the schema (`"Hlr"`, `"Llr"`, etc.). */
+    type: string;
+    /** Existing instance id, when the intent edits/reviews/expands one. */
+    id?: string;
+    /** HLR section number / LLR function prefix when adding under a group. */
+    section?: string;
+    /** Test file path when targeting a `<test>` under a `<file>`. */
+    file?: string;
+    /** Free-form extras passed through verbatim. */
+    extra?: Record<string, unknown>;
+}
+
+export interface AiRequestParams {
+    intent: string;
+    target: AiTarget;
+    user_prompt: string;
+    /** When omitted the sidecar returns the system prompt; supply the
+     *  raw model response on the next call to drive validation. */
+    model_response?: string;
+    /** Identifier of the model that produced `model_response`; logged
+     *  to the provenance JSONL. */
+    model?: string;
+    retry_count?: number;
+    max_retries?: number;
+    /** When false, `apply_edit` runs in dry-run mode and the result is
+     *  `{ kind: 'validated' }` so the diff-preview-and-apply flow can
+     *  show the patch before persisting (HLR-032). */
+    write?: boolean;
+    /** Per-call override for the grounding-bundle token budget; falls
+     *  back to the sidecar default. */
+    max_tokens?: number;
+    xml_path?: string;
+    xsd_path?: string;
+    /** Lint findings list, only required by `gap.fix` (HLR-051). */
+    lint_findings?: unknown[];
+    /** Workspace root used to locate `.edit_doc/ai_history.jsonl`. */
+    history_dir?: string;
+    history_enabled?: boolean;
+}
+
+export type AiResponseKind =
+    | 'prompt'
+    | 'applied'
+    | 'validated'
+    | 'rejected'
+    | 'advisory'
+    | 'draft_pvd'
+    | 'no-model';
+
+/** Shape returned by `ai_request`. Matches `pipeline.StepResult.to_dict`. */
+export interface AiRequestResult {
+    kind: AiResponseKind;
+    intent: string;
+    target: AiTarget;
+    retries: number;
+    bundle_estimated_tokens?: number;
+    /** Populated when `kind === 'prompt'`; pass to the language model. */
+    prompt?: string;
+    /** Populated when the previous turn failed validation. */
+    retry_feedback?: string[];
+    /** JSON-Patch-shaped operations the translator produced. */
+    patch?: EditOperation[];
+    /** Lint result from the (real or dry-run) `apply_edit`. */
+    lint?: LintResult;
+    /** `apply_edit` write status; `false` for `validated` (dry-run). */
+    written?: boolean;
+    /** PVD ghostwriter response (Markdown) when `kind === 'draft_pvd'`. */
+    markdown?: string;
+    /** Structured findings from `review.item` etc. */
+    advisory?: Array<Record<string, unknown>>;
+    /** Validation/translation failures when `kind === 'rejected'`. */
+    failures?: string[];
+    /** Echo of the parsed model JSON when present. */
+    response?: Record<string, unknown>;
 }

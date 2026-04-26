@@ -17,7 +17,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:doc/Project.xml"
+    "workspaceContains:doc/Project.xml",
+    "onChatParticipant:tracer.projectspec"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -118,6 +119,14 @@
       {
         "command": "projectXml.addTest",
         "title": "Project Spec: Add Test…"
+      },
+      {
+        "command": "projectXml.ai.runOnTreeItem",
+        "title": "Project Spec: Run AI Action…"
+      },
+      {
+        "command": "projectXml.ai.fix.suggestTrace",
+        "title": "Project Spec: Suggest correct ref with AI"
       }
     ],
     "walkthroughs": [
@@ -191,6 +200,11 @@
           "command": "projectXml.revealInXml",
           "when": "view == projectXml.tree && viewItem =~ /revealable/",
           "group": "navigation"
+        },
+        {
+          "command": "projectXml.ai.runOnTreeItem",
+          "when": "view == projectXml.tree && viewItem =~ /aiTargetable/ && projectXml.ai.available",
+          "group": "ai@1"
         }
       ],
       "commandPalette": [
@@ -220,6 +234,14 @@
         },
         {
           "command": "projectXml.editPayload",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.ai.runOnTreeItem",
+          "when": "false"
+        },
+        {
+          "command": "projectXml.ai.fix.suggestTrace",
           "when": "false"
         }
       ]
@@ -261,9 +283,55 @@
           "type": "boolean",
           "default": true,
           "description": "Show ⚠ (coverage gap) and ❌ (broken trace / id error) status badges on payload nodes in the Project Spec tree. Sourced from the latest lint findings; turn off to declutter the tree."
+        },
+        "projectXml.ai.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Project Spec AI surfaces (the @projectspec chat participant, AI tree menu, AI Quick Fix variants). Setting this to false hides every AI surface cleanly while keeping deterministic surfaces (tree, diagnostics, lenses, form panels, render) fully functional. Untrusted workspaces and missing language models also disable AI automatically (HLR-044, HLR-045)."
+        },
+        "projectXml.ai.modelFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Optional language-model family selector passed to vscode.lm.selectChatModels (e.g. 'gpt-4o'). Empty = no constraint; the first available model is used."
+        },
+        "projectXml.ai.maxTokens": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1024,
+          "description": "Token budget for the AI grounding bundle. The Python packer drops siblings/upstream and trims long excerpts to fit; schema, intent, and user prompt are never dropped (HLR-029)."
+        },
+        "projectXml.ai.autoApplyValidated": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, validated AI patches skip the diff-preview-and-apply gate and persist immediately. Default false: every patch is shown to the user first (HLR-032)."
+        },
+        "projectXml.ai.historyLog": {
+          "type": "boolean",
+          "default": true,
+          "description": "Append every accepted/rejected AI step to <workspace>/.edit_doc/ai_history.jsonl for audit (HLR-049). Set to false to disable provenance logging."
         }
       }
-    }
+    },
+    "chatParticipants": [
+      {
+        "id": "tracer.projectspec",
+        "name": "projectspec",
+        "fullName": "Project Spec",
+        "description": "TraceR's schema-aware AI ghostwriter for Project.xml and PVD.md.",
+        "isSticky": true,
+        "commands": [
+          { "name": "draft-hlr",       "description": "Draft an HLR with AI" },
+          { "name": "draft-llr",       "description": "Draft an LLR with AI" },
+          { "name": "draft-test",      "description": "Draft a test with AI" },
+          { "name": "draft-module",    "description": "Draft an SDD module with AI" },
+          { "name": "draft-pvd",       "description": "Draft a PVD section with AI" },
+          { "name": "expand",          "description": "Expand an HLR into LLRs (or an LLR into tests)" },
+          { "name": "review",          "description": "Review an item for advisory findings" },
+          { "name": "suggest-traces",  "description": "Suggest correct trace targets" },
+          { "name": "gap-fill",        "description": "Propose fixes for outstanding coverage gaps" }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
