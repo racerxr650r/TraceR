@@ -756,6 +756,33 @@ the Phase 3 `apply_edit` write path.
 > The flow must work in an empty workspace.
 
 ### Phase 5 — Inline AI assistance
+
+Phase 5 is split into two sub-phases so the Python pipeline can land
+and be exercised end-to-end on its own (`echo … | python3
+tools/project_io.py` plus a stubbable model callback) before the
+TypeScript chat / diff / settings surfaces are wired in. Both
+sub-phases together are required for the [PVD §8](PVD.md) AI-grounded
+authoring success metric; neither is optional.
+
+*   **Phase 5a — Python grounding & pipeline.** `tools/ai/` package
+    (context packer, validate→retry pipeline, intent registry, JSON
+    Schemas + prompts for all 10 intents, deterministic per-intent
+    translators, provenance writer), `ai_request` JSON-RPC method
+    on `project_io.py`, and the `aiActions` projection on
+    `ui_hints_index` (so Phase 5b's tree menu is schema-driven from
+    the moment it lands per [HLR-053](HLRs.md)). Self-contained:
+    no TypeScript edits, no model calls from Python — the LM
+    callback is injected by the caller (the Phase 5b participant or
+    the test harness).
+*   **Phase 5b — TypeScript surfaces.** `@projectspec` chat
+    participant via `vscode.chat.createChatParticipant`, the nine
+    slash commands, the schema-driven right-click tree menu, the
+    `broken-trace` AI-suggest Quick Fix variant, the diff-preview-
+    and-apply flow with backup, the `projectXml.ai.*` settings UI,
+    and the graceful-degradation gates (HLR-044/HLR-045).
+
+#### Phase 5a — Python grounding & pipeline
+
 1.  Build `tools/ai/context.py` (grounding bundle assembler, per
     [HLR-029](HLRs.md)) and `tools/ai/pipeline.py` (validate → retry
     loop, per [HLR-030](HLRs.md)–[HLR-031](HLRs.md)). Re-uses
@@ -802,30 +829,59 @@ the Phase 3 `apply_edit` write path.
     plus deterministic translators for each authoring intent's
     response → JSON Patch (re-using the Phase 3 `apply_edit` write
     path for `Project.xml` edits and a separate diff applier for
-    PVD edits).
-5.  TypeScript side: `ai/participant.ts` registers the
+    PVD edits). The model callback is injected by the caller — the
+    Python sidecar never imports an LM client.
+5.  **`aiActions` projection on `ui_hints_index`.** The sidecar's
+    `ui_hints_index` and `parse_to_json` responses gain a per-
+    complex-type `ai_actions: [intent_id, …]` field derived from
+    the intent registry's `targets` so Phase 5b's tree context
+    menu is schema-driven from the moment it lands (per
+    [HLR-053](HLRs.md), carry-forward contract from Phase 2.5b).
+6.  Acceptance (Phase 5a):
+    *   `echo '{"method":"ai_request","params":{"intent":"draft.hlr",
+        "target":{"section":"1"}}}' | python3 tools/project_io.py`
+        with a stubbed model callback returns either an applied
+        JSON Patch + clean lint or a rejected suggestion + the
+        validator findings — never a write to `Project.xml` on
+        failure.
+    *   The grounding bundle's schema and user-intent fields survive
+        an aggressively low `max_tokens` cap (the deterministic
+        packer drops examples and sibling lists first).
+    *   Every authoring intent's translator produces operations
+        consumable by `apply_edit` without TypeScript involvement.
+    *   The `aiActions` field on each `ui_hints_index` entry
+        correctly enumerates the intents that target that complex
+        type.
+
+#### Phase 5b — TypeScript surfaces
+
+Depends on Phase 5a's `ai_request` sidecar method and `aiActions`
+projection.
+
+1.  TypeScript side: `ai/participant.ts` registers the
     `@projectspec` chat participant via
     `vscode.chat.createChatParticipant`. Slash commands cover the
     full intent matrix: `/draft-hlr`, `/draft-llr`, `/draft-test`,
     `/draft-module`, `/draft-pvd`, `/expand`, `/review`,
-    `/suggest-traces`, `/gap-fill`.
-6.  **Schema-driven AI tree menu** (per [HLR-053](HLRs.md), carry-
+    `/suggest-traces`, `/gap-fill`. The chat participant supplies
+    the model callback that Phase 5a's pipeline expects.
+2.  **Schema-driven AI tree menu** (per [HLR-053](HLRs.md), carry-
     forward contract from Phase 2.5b). Right-click context-menu
     entries on every Project Spec tree node — `Draft …`,
     `Expand …`, `Review with AI`, `Suggest traces with AI`,
     `Fix gap with AI` — are derived from the `ui_hints_index`
-    (a per-element-kind `aiActions` projection), **not** hard-coded
+    `aiActions` projection shipped in Phase 5a, **not** hard-coded
     per element name. A new payload kind that adds a `ui:treeNode`
     hint inherits the applicable AI surface for free.
-7.  AI-suggest Quick Fix variants on the Phase 2.5c Quick Fix table
+3.  AI-suggest Quick Fix variants on the Phase 2.5c Quick Fix table
     (e.g. "AI: suggest correct ref" on `broken-trace`).
-8.  Diff-preview-and-apply flow with backup + provenance log
+4.  Diff-preview-and-apply flow with backup + provenance log
     (`.edit_doc/ai_history.jsonl`) per [HLR-032](HLRs.md) and
     [HLR-033](HLRs.md). `projectXml.ai.autoApplyValidated`
     defaults to `false` and is honoured even for fully-validated
     suggestions.
-9.  Settings UI for the `projectXml.ai.*` block.
-10. **Graceful degradation and trust gating** (per
+5.  Settings UI for the `projectXml.ai.*` block.
+6.  **Graceful degradation and trust gating** (per
     [HLR-044](HLRs.md), [HLR-045](HLRs.md)):
     *   When `vscode.lm.selectChatModels()` returns no models, the
         chat participant is unregistered, the AI tree context-menu
@@ -840,7 +896,7 @@ the Phase 3 `apply_edit` write path.
         deterministic surfaces remain available.
     *   Disabling `projectXml.ai.enabled` removes every AI surface
         cleanly without unloading the extension.
-11. Acceptance:
+7.  Acceptance (Phase 5b):
     *   `@projectspec /draft-hlr support reading from stdin` produces
         a schema-valid `<hlr>` with non-empty `<text>` and at least
         one plausible SDD trace; user accepts via diff and the entry

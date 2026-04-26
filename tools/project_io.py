@@ -35,6 +35,28 @@ lint_project.py as JSON-RPC methods:
   * next_free_id(kind, function?, xml_path?)
         -> {"id": "HLR-NNN" | "LLR-XXX-NN"}
         Allocate the next-free id (HLR-005)..
+  * ai_request(intent, target, user_prompt, model_response?, retry_count?,
+               write?, max_tokens?, xml_path?, xsd_path?, lint_findings?,
+               history_dir?)
+        -> {"kind": "prompt" | "applied" | "validated" | "rejected"
+                  | "advisory" | "draft_pvd" | "no-model",
+            "prompt"?: str, "retry_feedback"?: [...],
+            "patch"?: [...], "lint"?: {...}, "failures"?: [...],
+            "response"?: {...}, "intent": str, "target": {...}}
+        Phase 5a inline-AI surface (HLR-029..033). The TS chat
+        participant drives this method in a stateless loop:
+          1. First call omits ``model_response`` and gets back
+             ``kind="prompt"`` with the system prompt to send to
+             ``vscode.lm.*``.
+          2. Subsequent calls supply the raw model response and
+             ``retry_count`` (incremented on each retry); the method
+             validates + translates + applies (or proposes) the patch
+             and either returns a terminal kind or another
+             ``kind="prompt"`` carrying ``retry_feedback`` to feed back
+             into the LM. Returns ``kind="no-model"`` when no LM is
+             available so the TS surfaces can hide gracefully
+             (HLR-044). Provenance is appended to
+             ``<workspace>/.edit_doc/ai_history.jsonl`` (HLR-049).
 
 Wire format
 -----------
@@ -61,6 +83,7 @@ Errors are returned as standard JSON-RPC error objects with codes:
    -32602 invalid params       (missing required arg, wrong type)
    -32603 internal error       (uncaught exception in the handler)
    -32000 application error    (e.g. ProjectXmlError)
+   -32020 no language model    (HLR-044; ai_request only)
 
 Exit codes
 ----------
@@ -97,6 +120,13 @@ from project_edit import (
     next_free_hlr_id as _next_free_hlr_id,
     next_free_llr_id as _next_free_llr_id,
 )
+from ai.context import TargetSpec as _AiTargetSpec
+from ai.pipeline import (
+    prepare as _ai_prepare,
+    evaluate as _ai_evaluate,
+)
+from ai.provenance import append_record as _ai_append_record
+from ai.registry import get_intent as _ai_get_intent
 
 # JSON-RPC error codes (https://www.jsonrpc.org/specification#error_object).
 PARSE_ERROR = -32700
@@ -105,6 +135,7 @@ METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 APPLICATION_ERROR = -32000
+NO_LANGUAGE_MODEL = -32020
 
 
 # --------------------------------------------------------------------- #
@@ -271,6 +302,120 @@ def _method_next_free_id(params: dict[str, Any]) -> dict[str, Any]:
     return {"id": _next_free_llr_id(function, xml_path)}
 
 
+def _ai_target_from_params(params: dict[str, Any]) -> _AiTargetSpec:
+    target = params.get("target")
+    if not isinstance(target, dict):
+        raise ValueError("ai_request requires 'target' object")
+    type_ = target.get("type")
+    if not isinstance(type_, str) or not type_:
+        raise ValueError("ai_request target.type must be a non-empty string")
+    return _AiTargetSpec(
+        type=type_,
+        id=target.get("id"),
+        section=target.get("section"),
+        file=target.get("file"),
+        extra=dict(target.get("extra") or {}),
+    )
+
+
+def _method_ai_request(params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 5a inline-AI surface (HLR-029..033, HLR-044, HLR-045, HLR-049).
+
+    The Python sidecar never calls a language model directly. Instead
+    this method runs one step of the validate-retry loop:
+
+    * If ``model_response`` is omitted the method returns the rendered
+      system prompt for the TS chat-participant layer to send to
+      ``vscode.lm.*``.
+    * If ``model_response`` is supplied the method validates,
+      translates, and applies (or proposes) the response. The result
+      is either terminal (``applied`` / ``validated`` / ``rejected``
+      / ``advisory`` / ``draft_pvd``) or another ``kind="prompt"``
+      with ``retry_feedback`` for the next turn.
+
+    Provenance is appended to ``<workspace>/.edit_doc/ai_history.jsonl``
+    on every terminal step.
+    """
+    intent_id = params.get("intent")
+    if not isinstance(intent_id, str) or not intent_id:
+        raise ValueError("ai_request requires string 'intent'")
+    try:
+        intent = _ai_get_intent(intent_id)
+    except KeyError as exc:
+        raise ValueError(str(exc)) from exc
+    user_prompt = params.get("user_prompt")
+    if not isinstance(user_prompt, str):
+        raise ValueError("ai_request requires string 'user_prompt'")
+    target = _ai_target_from_params(params)
+
+    model_response = params.get("model_response")
+    if model_response is not None and not isinstance(model_response, str):
+        raise ValueError("ai_request 'model_response' must be a string when provided")
+    retry_count = params.get("retry_count", 0)
+    if not isinstance(retry_count, int) or retry_count < 0:
+        raise ValueError("ai_request 'retry_count' must be a non-negative int")
+    max_retries = params.get("max_retries", 2)
+    if not isinstance(max_retries, int) or max_retries < 0:
+        raise ValueError("ai_request 'max_retries' must be a non-negative int")
+    write = params.get("write", True)
+    if not isinstance(write, bool):
+        raise ValueError("ai_request 'write' must be a boolean")
+    max_tokens = params.get("max_tokens", 16000)
+    if not isinstance(max_tokens, int) or max_tokens < 1024:
+        raise ValueError("ai_request 'max_tokens' must be an int >= 1024")
+    xml_path = _as_path(params.get("xml_path"), PROJECT_XML)
+    xsd_path = _as_path(params.get("xsd_path"), PROJECT_XSD)
+    lint_findings = params.get("lint_findings")
+    if lint_findings is not None and not isinstance(lint_findings, list):
+        raise ValueError("ai_request 'lint_findings' must be a list when provided")
+    history_dir = params.get("history_dir")
+    history_root = Path(history_dir) if isinstance(history_dir, str) else xml_path.parent
+    enable_history = bool(params.get("history_enabled", True))
+
+    if model_response is None:
+        step = _ai_prepare(
+            intent_id, target, user_prompt,
+            xml_path=xml_path, xsd_path=xsd_path,
+            max_tokens=max_tokens, lint_findings=lint_findings,
+        )
+    else:
+        step = _ai_evaluate(
+            intent_id, target, user_prompt, model_response,
+            retry_count=retry_count, max_retries=max_retries,
+            xml_path=xml_path, xsd_path=xsd_path,
+            max_tokens=max_tokens, write=write, lint_findings=lint_findings,
+        )
+
+    payload = step.to_dict()
+    payload.setdefault("intent", intent_id)
+    payload.setdefault("target", target.to_dict())
+
+    # Append provenance on terminal steps so the audit log only carries
+    # outcomes, not in-flight retries.
+    if step.kind not in {"prompt"} and step.result is not None:
+        try:
+            _ai_append_record(
+                workspace_root=history_root,
+                intent=intent_id,
+                outcome=step.kind,
+                prompt=step.prompt or "",
+                model=str(params.get("model") or "unknown"),
+                retries=step.retries,
+                validator=step.result.lint,
+                patch=step.result.patch,
+                target=target.to_dict(),
+                notes="; ".join(step.result.failures or []) if step.result.failures else "",
+                enabled=enable_history,
+            )
+        except OSError:
+            # Provenance failures must not block the user-visible
+            # result. The TS layer surfaces a non-fatal warning when
+            # it notices the file is missing.
+            pass
+
+    return payload
+
+
 METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "lint": _method_lint,
     "render": _method_render,
@@ -281,6 +426,7 @@ METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "apply_edit": _method_apply_edit,
     "form_schema": _method_form_schema,
     "next_free_id": _method_next_free_id,
+    "ai_request": _method_ai_request,
 }
 
 

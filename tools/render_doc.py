@@ -243,6 +243,18 @@ def parse_ui_hints_index(
         if type_attr in index and index[type_attr]["element"] is None:
             index[type_attr]["element"] = local
 
+    # Third pass: project the per-type AI action list. The registry
+    # in :mod:`tools.ai.registry` is the single source of truth for
+    # which intents apply to which complex type (HLR-053).  Imported
+    # lazily so render_doc.py keeps working when the optional ai
+    # package is absent in some downstream consumer.
+    try:
+        from ai.registry import ai_actions_for_type as _ai_actions_for_type
+    except Exception:  # pragma: no cover - defensive
+        _ai_actions_for_type = lambda _name: []  # noqa: E731
+    for type_name, entry in index.items():
+        entry["ai_actions"] = _ai_actions_for_type(type_name)
+
     return index
 
 
