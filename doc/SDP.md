@@ -1,6 +1,25 @@
 # Software Development Plan Document (SDP): VS Code Extension for Project.xml Authoring
 
 **Status:** Baseline product (per [PVD §5, §7.1](PVD.md))
+
+## Status
+
+| Phase | Description | Status |
+| ----- | ----------- | ------ |
+| 0     | Sidecar foundations: importable `render_doc.py` / `lint_project.py`, JSON-RPC `tools/project_io.py`, test suite. | ✅ Complete |
+| 1     | Read-only VS Code extension: tree view, lint diagnostics, Reveal in XML. | ✅ Complete |
+| 2     | Code Lenses + Render & Preview. | ✅ Complete |
+| 2.5   | Schema-driven retrofit: `list_documents` discovery, dynamic `Render <Doc>` commands, `Finding.code` linter contract, `ui:*` per-element hints, coverage status badges, `<plan>` acceptance proof. | ✅ Complete |
+| 2.5b  | Generic schema-driven projection: full `xs:appinfo` vocabulary, generic `ParsedNode`, tree / lens / locator rewrite. | ✅ Done — Python `_ui_hints_index` + `_nodes` over JSON-RPC; TS shim typed; tree provider auto-projects any `<ui:treeNode/>` payload, lens provider scans schema-declared lens kinds, lint diagnostics resolve schema-declared id tokens. Adding a new payload requires zero TypeScript edits. |
+| 2.5c  | Payload-agnostic Quick Fix table keyed on `Finding.code`. | ✅ Done — `CodeActionProvider` dispatches on `Finding.code` (`broken-trace`, `id-format`, `missing-template`, `no-test`); every fix uses `WorkspaceEdit` text edits, none reference payload element name. |
+| 3     | Form webviews for HLRs / LLRs. | ✅ Done — `tools/project_edit.py` adds `apply_edit` (lxml round-trip + validate-then-write, byte-identical on failure) and a payload-agnostic XSD→JSON-Schema deriver; sidecar exposes `apply_edit` / `form_schema` / `next_free_id`; React + RJSF webview drives `Project Spec: Add HLR` / `Add LLR` / edit-payload; the structural `no-test` Quick Fix routes through `apply_edit`. |
+| 4     | SDD/STP/Test forms + Walkthrough. | ✅ Done — `FormPanelProvider` widened to any complex type carrying a `<ui:form>` annotation; `<ui:form>` added to `StpFixture` and `TestFile`; new commands `Project Spec: Add SDD Module / Add STP Fixture / Add Test File / Add Test`; `Project Spec: Initialise Project.xml…` bootstraps a brand-new project from an empty workspace via the sidecar's `init_project`; seven-step **Get Started with Project Spec** Walkthrough makes the bootstrap-to-first-render flow discoverable from VS Code's Get Started page. Schema bumped to `1.5`. |
+| 5a    | Inline AI assistance — Python grounding & pipeline. | ✅ Done — `tools/ai/{registry,context,pipeline,translators,provenance}.py` with 10 registered intents (`draft.{module,hlr,llr,test,pvd}`, `expand.hlr_to_llrs`, `expand.llr_to_tests`, `review.item`, `suggest.traces`, `gap.fix`); per-intent system prompts under `tools/ai/intents/` and Draft-07 JSON Schemas under `tools/ai/schemas/`; sidecar `ai_request` JSON-RPC method (stateless `prepare`/`evaluate`/`run` so the TS layer owns `vscode.lm.*` per HLR-045); deterministic translators emit `apply_edit`-shaped JSON Patches; PVD ghostwriting prompt with clarifying-question rules (HLR-052); provenance JSONL at `<workspace>/.edit_doc/ai_history.jsonl` (HLR-049); `apply_edit` gains `dry_run` for diff-preview; `parse_ui_hints_index` projects `ai_actions` per `<ui:treeNode/>` payload (HLR-053). New JSON-RPC error code `-32020 NO_LANGUAGE_MODEL`. 123 unittests green. |
+| 5b    | Inline AI assistance — TypeScript surfaces. | ✅ Done — `@projectspec` chat participant (`vscode.chat.createChatParticipant`) with slash commands `/draft-hlr`, `/draft-llr`, `/draft-test`, `/draft-module`, `/draft-pvd`, `/expand`, `/review`, `/suggest-traces`, `/gap-fill`; schema-driven AI tree context-menu entries projected from `ui_hints_index.ai_actions`; AI Quick Fix variant on `broken-trace`; diff-preview-and-apply with timestamped backup under `.edit_doc/backups/`; settings UI for `projectXml.ai.{enabled,modelFamily,maxTokens,autoApplyValidated,historyLog}`; graceful degradation per HLR-044/045 — when `vscode.lm.selectChatModels` returns no models, the workspace is untrusted, or `projectXml.ai.enabled` is false, every AI surface is hidden cleanly while every deterministic surface (tree, diagnostics, lenses, form panels, render, Stage A merge) remains fully functional. |
+| 5.5   | AI-assisted merge conflict resolution. | ✅ Done — `tools/project_merge.py` deterministic Stage A three-way merger (lxml-based, preserves comments / CDATA / attribute order; unions disjoint adds and `<traces>` rows; reallocates colliding ids; recomputes `<metadata>/<counts>`; refuses cleanly when the Git merge base is unavailable per HLR-034); sidecar JSON-RPC methods `merge_three_way` and `apply_merge_resolution`; four `merge.*` AI intents (`merge.body`, `merge.trace`, `merge.rename`, `merge.schema_bump`) with `kind="merge"` skipping the `apply_edit` path; `projectXml.resolveMergeConflicts` command + `MergeConflictResolver` (Git extension API to detect MERGE state, three-way blob fetch via `git show :1/:2/:3`, per-region "✨ AI suggestion" badging, accept/reject in the merge editor — never writes automatically per SDP §5.9); `@projectspec /resolve-conflicts` slash command; per-region provenance to `.edit_doc/ai_history.jsonl` (sha-1 of base/ours/theirs + intent + rationale); settings `projectXml.merge.{enabled,aiResidualResolution}` (the latter forced off when `projectXml.ai.enabled=false`). |
+| 6     | Marketplace polish. | ✅ Done — extension `prepackage` script bundles `tools/{project_io,render_doc,lint_project,project_edit,project_merge}.py`, `project.xsd`, `templates/`, and `ai/` into `tools/vscode-project-xml/dist/python/` and writes the source XSD's `version` attribute into `dist/python/.bundle_version`; `.vscodeignore` retains the bundled tree so the shipped `.vsix` is fully self-contained (HLR-060). `getToolsDir()` falls back to `<extensionPath>/dist/python` when the workspace has no `tools/`. New `Project Spec: Scaffold tools/ into workspace…` command (chained automatically from `Project Spec: Initialise Project.xml…` when the new workspace lacks `tools/`) drops the bundled tree into the workspace, with a single modal collision prompt offering Overwrite all / Skip existing / Cancel (HLR-061). At activation, when the bundled `.bundle_version` is strictly newer than the workspace's `tools/project.xsd` `version`, a one-shot information notification offers a `Re-scaffold tools/` action (HLR-062 — never an error, never blocking). New status-bar item shows `n errors / m warnings` for `doc/Project.xml`; honours `projectXml.warningsAsErrors` (escalates severity, NEVER suppresses; HLR-042); click focuses the Problems panel. Activation events widened to `onCommand:projectXml.{initProject,scaffoldTools}` so the bootstrap and scaffold flows run in an empty workspace. New `.github/workflows/publish-vsix.yml` builds the `.vsix` on `vscode-v*` tag pushes (running `prepackage` before `vsce package`), uploads it as an artifact, and gates `vsce publish` on a `VSCE_PAT` secret (no auto-publish from this commit). |
+
+
 **Owner:** TBD
 **Target deliverable:** `tools/vscode-project-xml/` — a VS Code
 extension (publishable as a `.vsix`, optionally to the Marketplace)
@@ -503,7 +522,7 @@ payload".
     (`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`) is
     deferred to Phase 2.5b** — Phase 2.5 only reserves the
     namespace and ships the per-element decoration channel.
-    Schema_Reference.md §14 documents `<plan>` as the example
+    Developers_Guide.md §14 documents `<plan>` as the example
     payload; §15 pins the `Finding` / `LintFinding` / `code`
     contract.
 4.  **Coverage status badges.** Every HLR / LLR leaf in the Project
@@ -573,7 +592,7 @@ lenses, locator, and Phase 3 form panels with no TypeScript edits.
         which ids are renderable targets (today inferred from the
         presence of the `<document>` row itself).
     Document the vocabulary in
-    [Schema_Reference.md](Schema_Reference.md) alongside §14
+    [Developers_Guide.md](../tools/Developers_Guide.md) alongside §14
     (`<plan>` payload) and §15 (linter contract) shipped in 2.5.
     Bump `<project schema_version>` (1.3 → 1.4).
 2.  **Generic JSON projection.** Replace the hand-typed
@@ -627,7 +646,7 @@ lenses, locator, and Phase 3 form panels with no TypeScript edits.
 > `tools/project.xsd` with the full `<xs:appinfo>` UI-hint
 > vocabulary (`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`)
 > under the existing `urn:tracer:ui:v1` namespace, document it in
-> `Schema_Reference.md`, and bump `schema_version` to 1.4. Extend
+> `Developers_Guide.md`, and bump `schema_version` to 1.4. Extend
 > `tools/project_io.py`'s `parse_to_json` to emit a generic
 > `ParsedNode` tree plus a `ui_hints_index` distilled from the
 > XSD. On the TypeScript side, replace the hand-typed

@@ -17,6 +17,7 @@ import {
 import { BadgeIndex } from '../util/badges';
 import { applyHintsToNode } from '../util/hints';
 import { getConfig, getProjectXmlPath } from '../util/paths';
+import { decorateTooltips } from './coverageTooltips';
 
 export interface RevealLocator {
     readonly tag: string;
@@ -132,6 +133,7 @@ function buildTopLevel(
         ...buildGenericPayloadNodes(project),
     ];
     decorateAiTargetable(topLevel, hints);
+    decorateTooltips(topLevel, project);
     return topLevel;
 }
 

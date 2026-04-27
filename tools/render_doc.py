@@ -182,7 +182,7 @@ def parse_ui_hints_index(
     an ``xs:element``) are walked too and keyed under the parent
     element's local name (e.g. ``Plan/item``).
 
-    Pinned by Schema_Reference.md §16 and consumed by
+    Pinned by Developers_Guide.md §16 and consumed by
     [tools/project_io.py](project_io.py)'s ``ui_hints_index`` and
     ``parse_to_json`` JSON-RPC methods (Phase 2.5b).
     """
@@ -1053,7 +1053,7 @@ SKELETON_PROJECT_XML = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Project.xml — single source of truth for this project's spec stack.
-  See doc/Schema_Reference.md for the schema reference.
+  See tools/Developers_Guide.md for the schema reference.
 
   This file was created by `render_doc.py` in init mode. Fill in the
   payload sections (sdd, stp, hlrs, llrs, tests) as the project takes
@@ -1076,23 +1076,23 @@ SKELETON_PROJECT_XML = """\
     </counts>
   </metadata>
 
-  <!-- Software Design Document payload (see doc/Schema_Reference.md §3). -->
+  <!-- Software Design Document payload (see tools/Developers_Guide.md §3). -->
   <sdd>
   </sdd>
 
-  <!-- Software Test Plan payload (see doc/Schema_Reference.md §4). -->
+  <!-- Software Test Plan payload (see tools/Developers_Guide.md §4). -->
   <stp>
   </stp>
 
-  <!-- High-Level Requirements (see doc/Schema_Reference.md §5). -->
+  <!-- High-Level Requirements (see tools/Developers_Guide.md §5). -->
   <hlrs>
   </hlrs>
 
-  <!-- Low-Level Requirements (see doc/Schema_Reference.md §6). -->
+  <!-- Low-Level Requirements (see tools/Developers_Guide.md §6). -->
   <llrs>
   </llrs>
 
-  <!-- Test sources (see doc/Schema_Reference.md §7). -->
+  <!-- Test sources (see tools/Developers_Guide.md §7). -->
   <tests>
   </tests>
 </project>
