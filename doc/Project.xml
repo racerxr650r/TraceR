@@ -917,6 +917,15 @@ hard-coded per element kind.]]></responsibility>
         <responsibility><![CDATA[Locate elements in the underlying XML for `Reveal in XML`
 via the generic locator (`util/locator.ts`), which takes
 `(elementName, idAttr, idValue)` from the hint registry.]]></responsibility>
+        <responsibility><![CDATA[Attach a Markdown hover tooltip to every leaf representing
+an `<hlr>`, `<llr>`, or `<test>`, summarising the same
+upstream/downstream coverage shown by the inline code
+lenses and rendering each related item as a clickable
+`projectXml.revealInXml` command link. The tooltip builder
+lives in `treeView/coverageTooltips.ts` and reuses the
+already-parsed `flat_hlrs` / `flat_llrs` / `flat_tests`
+payload so no extra sidecar call is issued for the hover
+surface.]]></responsibility>
         <interfaces title_suffix="(VS Code)">
           <interface title="View contribution"><![CDATA[`projectXml.tree` registered against the
 `projectXml-explorer` view container in
@@ -2026,6 +2035,26 @@ spawn; the extension shall never silently rewrite workspace
           <trace target="SDD" ref="11"/>
         </traces>
       </hlr>
+
+      <hlr id="HLR-063" name="Tree View Coverage Tooltips">
+        <text><![CDATA[Every leaf in the Project Spec tree view that maps to a
+`<hlr>`, `<llr>`, or `<test>` element shall expose a hover
+tooltip summarising the same coverage information surfaced
+by the inline code lenses: the count and identities of
+upstream and downstream items linked by `<traces>` blocks.
+Each related-item entry in the tooltip shall be a clickable
+command link that invokes `projectXml.revealInXml` against
+the target's locator so the developer can navigate the
+specification stack without leaving the tree. Leaves that
+carry no coverage information shall fall back to the
+element's default tooltip; tooltip generation shall not
+require any additional sidecar round-trip beyond the
+`parse_to_json` call already used to build the tree.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+          <trace target="SDD" ref="15"/>
+        </traces>
+      </hlr>
     </section>
 
     <section number="7" title="AI Authoring Pipeline">
@@ -2899,6 +2928,23 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
           <trace target="HLR" ref="HLR-021" name="Sidecar Lifecycle"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-05">
+        <text><![CDATA[After the typed and generic builders have populated the tree roots, `ProjectSpecProvider.buildTopLevel` shall invoke `decorateTooltips(roots, project)` from [coverageTooltips.ts](../tools/vscode-project-xml/src/treeView/coverageTooltips.ts) so every leaf whose `RevealLocator.tag` is `hlr`, `llr`, or `test` carries a Markdown tooltip computed from the same `flat_hlrs` / `flat_llrs` / `flat_tests` payload already returned by `parse_to_json` — no second sidecar round-trip and no parallel coverage index.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+          <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-06">
+        <text><![CDATA[Each tooltip emitted by `decorateTooltips` shall be a trusted `vscode.MarkdownString` (`isTrusted = true`) whose body lists upstream and downstream items as bullet points, with each bullet rendered as a `[label](command:projectXml.revealInXml?<encoded-locator>)` link so a single click in the hover surface jumps to the cited element via the existing `revealInXml` code path; leaves with neither upstream nor downstream items shall render an explicit "No traces yet." / "No downstream LLRs or tests yet." line rather than an empty tooltip so coverage gaps are visible from hover.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
+          <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
         </traces>
       </llr>
     </function>

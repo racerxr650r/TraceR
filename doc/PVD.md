@@ -221,11 +221,14 @@ These principles are the tie-breakers when requirements conflict.
     baseline product, not an optional add-on. It contributes a
     "Project Spec" tree view (HLRs / LLRs / Tests / SDD / STP),
     inline diagnostics wired to the linter, code lenses showing
-    coverage status on every `<hlr>`/`<llr>`/`<test>`, form panels
-    for editing single payload items without touching XML, a
-    side-by-side rendered Markdown preview, a guided walkthrough
-    for bootstrapping new projects, and quick-fixes for the most
-    common lint findings (broken trace refs, ID-format errors).
+    coverage status on every `<hlr>`/`<llr>`/`<test>`, hover
+    tooltips on every tree-view leaf that summarise upstream and
+    downstream coverage with click-through reveal links, form
+    panels for editing single payload items without touching
+    XML, a side-by-side rendered Markdown preview, a guided
+    walkthrough for bootstrapping new projects, and quick-fixes
+    for the most common lint findings (broken trace refs,
+    ID-format errors).
     All of these surfaces are **schema-driven**: the tree, form
     panels, code lenses, preview targets, and `Render <Doc>`
     commands are built at runtime from `tools/project.xsd` UI
