@@ -7,7 +7,7 @@
 -->
 <project name="UI Test Fixture" short_name="uitf" schema_version="1.5"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="../../../../tools/project.xsd">
+         xsi:noNamespaceSchemaLocation="../../../../../../tools/project.xsd">
   <metadata>
     <document id="SDD"          title="Software Design Document"     source="doc/SDD.md"
               version="0.1" date="2026-04-27" author="UI Tests"

@@ -136,7 +136,19 @@ export class ProjectSpecProvider
         }
         try {
             const xmlPath = getProjectXmlPath();
-            const params = xmlPath ? { xml_path: xmlPath } : {};
+            if (!xmlPath) {
+                // No workspace folder open yet (or doc/Project.xml
+                // not found). Return a placeholder; the
+                // onDidChangeWorkspaceFolders handler in extension.ts
+                // will refresh the tree once a workspace appears.
+                const item = new ProjectSpecNode(
+                    'Open a folder containing doc/Project.xml',
+                    vscode.TreeItemCollapsibleState.None,
+                );
+                item.iconPath = new vscode.ThemeIcon('info');
+                return [item];
+            }
+            const params = { xml_path: xmlPath };
             const project = await this.client.parseToJson(params);
             const badges = badgesEnabled() ? this.badges : undefined;
             this.cached = buildTopLevel(project, badges);
