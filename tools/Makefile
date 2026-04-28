@@ -135,6 +135,16 @@ prereqs-debian:
 	    curl -fsSL https://deb.nodesource.com/setup_20.x | $(SUDO) -E bash - ; \
 	    $(SUDO) apt install -y nodejs ; \
 	fi
+	# xvfb + Chrome / Chromium for ExTester UI tests (needed in CI too).
+	$(SUDO) apt install -y xvfb
+	@if ! command -v google-chrome >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then \
+	    echo "Installing google-chrome-stable for UI tests..." ; \
+	    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+	        | $(SUDO) gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg ; \
+	    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main' \
+	        | $(SUDO) tee /etc/apt/sources.list.d/google-chrome.list >/dev/null ; \
+	    $(SUDO) apt update && $(SUDO) apt install -y google-chrome-stable ; \
+	fi
 ifneq ($(CI_SLIM),1)
 	# GitHub CLI: prefer distro package; fall back to upstream apt repo.
 	@if ! command -v gh >/dev/null 2>&1; then \
@@ -153,15 +163,6 @@ ifneq ($(CI_SLIM),1)
 	    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" \
 	        | $(SUDO) tee /etc/apt/sources.list.d/vscode.list >/dev/null ; \
 	    $(SUDO) apt update && $(SUDO) apt install -y code ; 
-	fi
-	# Chrome / Chromium for ExTester UI tests.
-	@if ! command -v google-chrome >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then \
-	    echo "Installing google-chrome-stable for UI tests..." ; \
-	    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
-	        | $(SUDO) gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg ; \
-	    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main' \
-	        | $(SUDO) tee /etc/apt/sources.list.d/google-chrome.list >/dev/null ; \
-	    $(SUDO) apt update && $(SUDO) apt install -y google-chrome-stable ; \
 	fi
 	$(SUDO) npm install -g @vscode/vsce
 endif
@@ -414,14 +415,24 @@ ext-test-ui:
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi
-	cd "$(EXT_DIR)" && npm run test:ui
+	@if [[ -z "$${DISPLAY:-}" ]]; then \
+	    echo "  (no DISPLAY — using xvfb-run)" ; \
+	    cd "$(EXT_DIR)" && xvfb-run -a npm run test:ui ; \
+	else \
+	    cd "$(EXT_DIR)" && npm run test:ui ; \
+	fi
 
 ext-screenshots: ext-build
 	@echo ">>> Capturing screenshots for documentation (ExTester)..."
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi
-	cd "$(EXT_DIR)" && npm run test:screenshots
+	@if [[ -z "$${DISPLAY:-}" ]]; then \
+	    echo "  (no DISPLAY — using xvfb-run)" ; \
+	    cd "$(EXT_DIR)" && xvfb-run -a npm run test:screenshots ; \
+	else \
+	    cd "$(EXT_DIR)" && npm run test:screenshots ; \
+	fi
 	@echo "Screenshots saved to images/screenshots/"
 
 test: test-py ext-test-unit ext-test-ui
