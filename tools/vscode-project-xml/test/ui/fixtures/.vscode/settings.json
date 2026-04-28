@@ -1,3 +1,4 @@
 {
-    "git.openRepositoryInParentFolders": "never"
+    "git.openRepositoryInParentFolders": "never",
+    "projectXml.toolsDir": "../../../../tools"
 }

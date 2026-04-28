@@ -308,6 +308,25 @@ export function activate(context: vscode.ExtensionContext): void {
         sidecar, previewProvider, dynamicRenderCommands, context, output,
     );
 
+    // When workspace folders change (e.g. ExTester opens the fixture
+    // workspace after VS Code is already running), restart the sidecar
+    // so it picks up the correct toolsDir / interpreter and re-parse.
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeWorkspaceFolders(() => {
+            sidecar.restart();
+            invalidateDocumentsCache(sidecar);
+            treeProvider.refresh();
+            lensProvider.refresh();
+            void diagnostics.run().then((result) => {
+                treeProvider.setBadges(buildBadgeIndex(result?.items));
+                statusBar.update(result);
+            });
+            void syncDynamicRenderCommands(
+                sidecar, previewProvider, dynamicRenderCommands, context, output,
+            );
+        }),
+    );
+
     // Re-lint and refresh the tree whenever Project.xml is saved.
     context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument((doc) => {

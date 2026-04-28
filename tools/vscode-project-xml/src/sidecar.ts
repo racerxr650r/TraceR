@@ -294,6 +294,26 @@ export class ProjectIoClient implements vscode.Disposable {
             proc.kill();
         }
     }
+
+    /**
+     * Kill the current process (if any) and clear cached errors so
+     * the next request spawns a fresh sidecar. Used when workspace
+     * folders change and the tools dir / interpreter may differ.
+     */
+    restart(): void {
+        this.startError = undefined;
+        const proc = this.proc;
+        this.proc = undefined;
+        this.failAll(new Error('sidecar restarting'));
+        if (proc && !proc.killed) {
+            try {
+                proc.stdin.end();
+            } catch {
+                // ignore
+            }
+            proc.kill();
+        }
+    }
 }
 
 function pickPython(): string {
