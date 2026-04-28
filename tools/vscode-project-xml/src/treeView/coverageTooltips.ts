@@ -19,7 +19,7 @@ import {
 } from '../sidecar';
 import { ProjectSpecNode, RevealLocator } from './ProjectSpecProvider';
 
-interface CoverageIndex {
+export interface CoverageIndex {
     /** HLR-NNN → LLRs that trace to it. */
     readonly llrsByHlr: Map<string, ParsedLlr[]>;
     /** HLR-NNN → tests that trace to it. */
@@ -150,7 +150,7 @@ function tooltipForHlr(
     const hlr = index.hlrById.get(id);
     md.appendMarkdown(`**HLR \`${id}\`**`);
     if (hlr?.name) {
-        md.appendMarkdown(` — ${escapeMd(hlr.name)}`);
+        md.appendMarkdown(` — ${hlr.name}`);
     }
     md.appendMarkdown('\n\n');
 
@@ -165,6 +165,7 @@ function tooltipForHlr(
     })));
     appendList(md, 'Direct tests', tests.map((t) => ({
         label: t.name,
+        sublabel: t.file,
         locator: { tag: 'test', attr: 'name', value: t.name },
     })));
     if (llrs.length === 0 && tests.length === 0) {
@@ -198,6 +199,7 @@ function tooltipForLlr(
     })));
     appendList(md, 'Tests', tests.map((t) => ({
         label: t.name,
+        sublabel: t.file,
         locator: { tag: 'test', attr: 'name', value: t.name },
     })));
     if (upstream.length === 0 && tests.length === 0) {
@@ -212,7 +214,11 @@ function tooltipForTest(
 ): vscode.MarkdownString {
     const md = makeMd();
     const test = index.testByName.get(name);
-    md.appendMarkdown(`**Test \`${escapeMd(name)}\`**\n\n`);
+    md.appendMarkdown(`**Test \`${name}\`**`);
+    if (test?.file) {
+        md.appendMarkdown(` — \`${test.file}\``);
+    }
+    md.appendMarkdown('\n\n');
     const hlrTraces: string[] = [];
     const llrTraces: string[] = [];
     for (const tr of test?.traces ?? []) {
@@ -260,7 +266,7 @@ function appendList(
     md.appendMarkdown(`**${heading}**\n\n`);
     for (const entry of entries) {
         const link = revealCommandLink(entry.label, entry.locator);
-        const sub = entry.sublabel ? ` — ${escapeMd(entry.sublabel)}` : '';
+        const sub = entry.sublabel ? ` — ${entry.sublabel}` : '';
         md.appendMarkdown(`* ${link}${sub}\n`);
     }
     md.appendMarkdown('\n');
@@ -281,10 +287,6 @@ function makeMd(): vscode.MarkdownString {
 
 function pluralize(n: number, singular: string): string {
     return n === 1 ? `${n} ${singular}` : `${n} ${singular}s`;
-}
-
-function escapeMd(text: string): string {
-    return text.replace(/[\\`*_{}\[\]()#+\-.!|<>]/g, (m) => `\\${m}`);
 }
 
 function pushTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {
@@ -320,7 +322,7 @@ function collectTests(project: ParsedProject): ParsedTest[] {
     const out: ParsedTest[] = [];
     for (const f of project.tests ?? []) {
         for (const t of f.tests ?? []) {
-            out.push(t);
+            out.push({ ...t, file: t.file ?? f.path });
         }
     }
     return out;

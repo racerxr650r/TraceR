@@ -576,6 +576,8 @@ export interface ParsedTest {
     purpose?: string;
     traces?: ParsedTrace[];
     ui?: UiHints | null;
+    /** Parent `<file path="...">` — present on `flat_tests` entries. */
+    file?: string;
 }
 
 export interface ParsedTrace {

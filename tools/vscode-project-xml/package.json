@@ -42,7 +42,7 @@
       "activitybar": [
         {
           "id": "projectXml",
-          "title": "Project Spec",
+          "title": "TraceR",
           "icon": "media/icon.svg"
         }
       ]
@@ -51,9 +51,9 @@
       "projectXml": [
         {
           "id": "projectXml.tree",
-          "name": "Project Spec",
+          "name": "TraceR",
           "icon": "media/icon.svg",
-          "contextualTitle": "Project Spec"
+          "contextualTitle": "TraceR"
         }
       ]
     },
@@ -61,11 +61,13 @@
       {
         "command": "projectXml.refresh",
         "title": "Project Spec: Refresh",
+        "shortTitle": "Refresh",
         "icon": "$(refresh)"
       },
       {
         "command": "projectXml.lint",
-        "title": "Project Spec: Run Linter"
+        "title": "Project Spec: Run Linter",
+        "shortTitle": "Run Linter"
       },
       {
         "command": "projectXml.revealInXml",
@@ -73,11 +75,13 @@
       },
       {
         "command": "projectXml.renderAndPreview",
-        "title": "Project Spec: Render & Preview\u2026"
+        "title": "Project Spec: Render & Preview…",
+        "shortTitle": "Render & Preview"
       },
       {
         "command": "projectXml.renderAll",
-        "title": "Project Spec: Render All Documents"
+        "title": "Project Spec: Render All Documents",
+        "shortTitle": "Render All Documents"
       },
       {
         "command": "projectXml.codeLens.pickRelated",
@@ -113,7 +117,8 @@
       },
       {
         "command": "projectXml.initProject",
-        "title": "Project Spec: Initialise Project.xml…"
+        "title": "Project Spec: Initialise Project.xml…",
+        "shortTitle": "Initialize Project.xml"
       },
       {
         "command": "projectXml.addModule",
@@ -141,7 +146,8 @@
       },
       {
         "command": "projectXml.resolveMergeConflicts",
-        "title": "Project Spec: Resolve Project.xml merge conflicts…"
+        "title": "Project Spec: Resolve Project.xml merge conflicts…",
+        "shortTitle": "Resolve Merge Conflicts"
       },
       {
         "command": "projectXml.scaffoldTools",
@@ -158,50 +164,78 @@
             "id": "init",
             "title": "Initialise Project.xml",
             "description": "Run **Project Spec: Initialise Project.xml…** to scaffold `doc/Project.xml` and `doc/PVD.md` from the built-in skeleton.\n[Initialise Project.xml](command:projectXml.initProject)",
-            "media": { "markdown": "media/walkthrough/01-init.md" },
-            "completionEvents": ["onCommand:projectXml.initProject"]
+            "media": {
+              "markdown": "media/walkthrough/01-init.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.initProject"
+            ]
           },
           {
             "id": "addHlr",
             "title": "Add a High-Level Requirement",
             "description": "Capture what the project must do.\n[Add HLR](command:projectXml.addHlr)",
-            "media": { "markdown": "media/walkthrough/02-add-hlr.md" },
-            "completionEvents": ["onCommand:projectXml.addHlr"]
+            "media": {
+              "markdown": "media/walkthrough/02-add-hlr.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.addHlr"
+            ]
           },
           {
             "id": "addLlr",
             "title": "Add a Low-Level Requirement",
             "description": "Decompose an HLR into an implementable LLR.\n[Add LLR](command:projectXml.addLlr)",
-            "media": { "markdown": "media/walkthrough/03-add-llr.md" },
-            "completionEvents": ["onCommand:projectXml.addLlr"]
+            "media": {
+              "markdown": "media/walkthrough/03-add-llr.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.addLlr"
+            ]
           },
           {
             "id": "addModule",
             "title": "Add an SDD Module",
             "description": "Describe a code module so the SDD reflects the design.\n[Add SDD Module](command:projectXml.addModule)",
-            "media": { "markdown": "media/walkthrough/04-add-module.md" },
-            "completionEvents": ["onCommand:projectXml.addModule"]
+            "media": {
+              "markdown": "media/walkthrough/04-add-module.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.addModule"
+            ]
           },
           {
             "id": "addTest",
             "title": "Register a Test",
             "description": "Add a `<file>` then a `<test>` so the STP and Traceability docs cite real tests.\n[Add Test File](command:projectXml.addTestFile) · [Add Test](command:projectXml.addTest)",
-            "media": { "markdown": "media/walkthrough/05-add-test.md" },
-            "completionEvents": ["onCommand:projectXml.addTest"]
+            "media": {
+              "markdown": "media/walkthrough/05-add-test.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.addTest"
+            ]
           },
           {
             "id": "lint",
             "title": "Lint",
             "description": "Validate the XML against `tools/project.xsd` and the structural lint rules.\n[Lint](command:projectXml.lint)",
-            "media": { "markdown": "media/walkthrough/06-lint.md" },
-            "completionEvents": ["onCommand:projectXml.lint"]
+            "media": {
+              "markdown": "media/walkthrough/06-lint.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.lint"
+            ]
           },
           {
             "id": "render",
             "title": "Render All Spec Docs",
             "description": "Render the PVD/SDD/HLRs/LLRs/STP/Traceability suite.\n[Render All](command:projectXml.renderAll)",
-            "media": { "markdown": "media/walkthrough/07-render.md" },
-            "completionEvents": ["onCommand:projectXml.renderAll"]
+            "media": {
+              "markdown": "media/walkthrough/07-render.md"
+            },
+            "completionEvents": [
+              "onCommand:projectXml.renderAll"
+            ]
           }
         ]
       }
@@ -212,12 +246,72 @@
           "command": "projectXml.refresh",
           "when": "view == projectXml.tree",
           "group": "navigation"
+        },
+        {
+          "command": "projectXml.refresh",
+          "when": "view == projectXml.tree",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "projectXml.lint",
+          "when": "view == projectXml.tree",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "projectXml.renderAll",
+          "when": "view == projectXml.tree",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "projectXml.resolveMergeConflicts",
+          "when": "view == projectXml.tree",
+          "group": "2_project@1"
+        },
+        {
+          "command": "projectXml.initProject",
+          "when": "view == projectXml.tree",
+          "group": "2_project@2"
         }
       ],
       "view/item/context": [
         {
+          "command": "projectXml.addHlr",
+          "when": "view == projectXml.tree && viewItem == hlrsGroup",
+          "group": "navigation"
+        },
+        {
+          "command": "projectXml.addLlr",
+          "when": "view == projectXml.tree && viewItem == llrsGroup",
+          "group": "navigation"
+        },
+        {
+          "command": "projectXml.addTest",
+          "when": "view == projectXml.tree && viewItem == testsGroup",
+          "group": "navigation"
+        },
+        {
+          "command": "projectXml.addTestFile",
+          "when": "view == projectXml.tree && viewItem == testsGroup",
+          "group": "navigation"
+        },
+        {
+          "command": "projectXml.addModule",
+          "when": "view == projectXml.tree && viewItem == sddGroup",
+          "group": "navigation"
+        },
+        {
+          "command": "projectXml.renderAndPreview",
+          "when": "view == projectXml.tree && viewItem =~ /^(hlrsGroup|llrsGroup|testsGroup|sddGroup)$/",
+          "group": "render@1"
+        },
+        {
           "command": "projectXml.revealInXml",
           "when": "view == projectXml.tree && viewItem =~ /revealable/",
+          "group": "navigation"
+        },
+        {
+          "command": "projectXml.editPayload",
+          "when": "view == projectXml.tree && viewItem =~ /editable/",
           "group": "navigation"
         },
         {
@@ -354,16 +448,46 @@
         "description": "TraceR's schema-aware AI ghostwriter for Project.xml and PVD.md.",
         "isSticky": true,
         "commands": [
-          { "name": "draft-hlr",         "description": "Draft an HLR with AI" },
-          { "name": "draft-llr",         "description": "Draft an LLR with AI" },
-          { "name": "draft-test",        "description": "Draft a test with AI" },
-          { "name": "draft-module",      "description": "Draft an SDD module with AI" },
-          { "name": "draft-pvd",         "description": "Draft a PVD section with AI" },
-          { "name": "expand",            "description": "Expand an HLR into LLRs (or an LLR into tests)" },
-          { "name": "review",            "description": "Review an item for advisory findings" },
-          { "name": "suggest-traces",    "description": "Suggest correct trace targets" },
-          { "name": "gap-fill",          "description": "Propose fixes for outstanding coverage gaps" },
-          { "name": "resolve-conflicts", "description": "Resolve a Git merge conflict on doc/Project.xml" }
+          {
+            "name": "draft-hlr",
+            "description": "Draft an HLR with AI"
+          },
+          {
+            "name": "draft-llr",
+            "description": "Draft an LLR with AI"
+          },
+          {
+            "name": "draft-test",
+            "description": "Draft a test with AI"
+          },
+          {
+            "name": "draft-module",
+            "description": "Draft an SDD module with AI"
+          },
+          {
+            "name": "draft-pvd",
+            "description": "Draft a PVD section with AI"
+          },
+          {
+            "name": "expand",
+            "description": "Expand an HLR into LLRs (or an LLR into tests)"
+          },
+          {
+            "name": "review",
+            "description": "Review an item for advisory findings"
+          },
+          {
+            "name": "suggest-traces",
+            "description": "Suggest correct trace targets"
+          },
+          {
+            "name": "gap-fill",
+            "description": "Propose fixes for outstanding coverage gaps"
+          },
+          {
+            "name": "resolve-conflicts",
+            "description": "Resolve a Git merge conflict on doc/Project.xml"
+          }
         ]
       }
     ]
@@ -375,6 +499,10 @@
     "compile": "tsc -p . --noEmit",
     "compile:test": "tsc -p tsconfig.test.json --noEmit",
     "test:unit": "TS_NODE_PROJECT=tsconfig.test.json mocha",
+    "test:ui": "extest setup-and-run out/test/ui/*.test.js -i",
+    "test:screenshots": "extest setup-and-run out/test/ui/screenshots/*.test.js -i",
+    "pretest:ui": "tsc -p tsconfig.uitest.json",
+    "pretest:screenshots": "tsc -p tsconfig.uitest.json",
     "prepackage": "node scripts/prepackage.js",
     "package": "npm run prepackage && vsce package"
   },
@@ -382,16 +510,23 @@
     "@rjsf/core": "^5.18.0",
     "@rjsf/utils": "^5.18.0",
     "@rjsf/validator-ajv8": "^5.18.0",
+    "@types/chai": "^4.3.20",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.15.0",
+    "chai": "^4.5.0",
     "esbuild": "^0.20.0",
     "mocha": "^10.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vscode-extension-tester": "^8.23.0"
+  },
+  "overrides": {
+    "undici": "5.28.4"
   }
 }

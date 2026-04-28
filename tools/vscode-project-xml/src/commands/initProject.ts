@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ProjectIoClient } from '../sidecar';
-import { getConfig } from '../util/paths';
+import { getConfig, getExtensionContext } from '../util/paths';
 import { SCAFFOLD_TOOLS_COMMAND } from './scaffoldTools';
 
 const SHORT_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,15}$/;
@@ -136,6 +136,23 @@ export async function initProject(
                 `Project Spec: initialised the project, but scaffolding tools/ failed: ${msg}. ` +
                 'You can re-run "Project Spec: Scaffold tools/ into workspace…" later.',
             );
+        }
+    }
+
+    // Copy the bundled TraceR SKILL.md into .github/skills/tracer/
+    // so AI agents in the new workspace automatically pick up the
+    // TraceR workflow guidance.
+    const ctx = getExtensionContext();
+    if (ctx) {
+        const skillSrc = path.join(ctx.extensionPath, 'media', 'skills', 'tracer', 'SKILL.md');
+        const skillDst = path.join(folder.uri.fsPath, '.github', 'skills', 'tracer', 'SKILL.md');
+        if (fs.existsSync(skillSrc) && !fs.existsSync(skillDst)) {
+            try {
+                fs.mkdirSync(path.dirname(skillDst), { recursive: true });
+                fs.copyFileSync(skillSrc, skillDst);
+            } catch {
+                // Non-fatal — the skill file is a convenience.
+            }
         }
     }
 

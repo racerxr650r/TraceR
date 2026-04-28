@@ -8,6 +8,7 @@ scripts/**
 **/*.map
 **/tsconfig.json
 **/tsconfig.test.json
+**/tsconfig.uitest.json
 **/esbuild.config.js
 **/.gitignore
 **/.mocharc*

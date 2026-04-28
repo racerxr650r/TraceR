@@ -230,6 +230,25 @@ Validate the XML before regenerating:
 python3 -c "import xml.etree.ElementTree as ET; ET.parse('doc/Project.xml')"
 ```
 
+## Build, Test, and Package via Makefile
+
+[tools/Makefile](../../../tools/Makefile) is the single entry point
+for building, testing, and packaging. **Always use its targets
+instead of running npm/python commands directly.** Run
+`make -C tools help` to see all available targets.
+
+Key targets:
+
+| Task | Command |
+| ---- | ------- |
+| Build the VS Code extension | `make -C tools ext-build` |
+| Package a `.vsix` | `make -C tools ext-package` |
+| Run Python tests only | `make -C tools test-py` |
+| Run extension unit tests only | `make -C tools ext-test-unit` |
+| Run extension UI tests only | `make -C tools ext-test-ui` |
+| Run **all** tests | `make -C tools test` |
+| Full CI check (lint + render + test + build) | `make -C tools ci` |
+
 The shape of the `project` namespace passed to every template —
 payload roots, flat lists, ID lookups, cross-reference indexes,
 coverage-gap lists, and available filters — is documented in the

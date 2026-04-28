@@ -40,9 +40,9 @@
 {%- macro sdd_link(ref) -%}
 {%- set title = project.sdd_titles.get(ref, "") -%}
 {%- if title -%}
-[§{{ ref }}](SDD.md#{{ (ref + " " + title) | gh_slug }})
+[Section {{ ref }}](SDD.md#{{ (ref + " " + title) | gh_slug }})
 {%- else -%}
-[§{{ ref }}](SDD.md)
+[Section {{ ref }}](SDD.md)
 {%- endif -%}
 {%- endmacro %}
 {#- ====================================================== -#}

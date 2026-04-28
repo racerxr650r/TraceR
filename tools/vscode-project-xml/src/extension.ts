@@ -9,7 +9,7 @@
 
 import * as vscode from 'vscode';
 import { DocumentInfo, ProjectIoClient } from './sidecar';
-import { ProjectSpecProvider } from './treeView/ProjectSpecProvider';
+import { ProjectSpecProvider, ProjectSpecNode } from './treeView/ProjectSpecProvider';
 import { LintDiagnosticsProvider } from './diagnostics/LintDiagnosticsProvider';
 import { buildBadgeIndex } from './util/badges';
 import { revealInXml } from './commands/revealInXml';
@@ -73,6 +73,10 @@ export function activate(context: vscode.ExtensionContext): void {
         showCollapseAll: true,
     });
     context.subscriptions.push(treeView);
+
+    // LLR-PSP-07: editable leaf nodes have TreeItem.command set to
+    // `projectXml.editPayload` so clicking them opens the popup edit
+    // dialog.  Right-click context menus work independently.
 
     const diagnostics = new LintDiagnosticsProvider(sidecar, output);
     context.subscriptions.push(diagnostics);
@@ -221,9 +225,15 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('projectXml.addLlr', () =>
             addLlr(sidecar, formPanel),
         ),
-        vscode.commands.registerCommand('projectXml.editPayload', (args) =>
-            editPayload(formPanel, args),
-        ),
+        vscode.commands.registerCommand('projectXml.editPayload', (args) => {
+            // When invoked from the context menu VS Code passes the
+            // tree item; extract editArgs from the node.  When invoked
+            // programmatically the caller passes EditPayloadArgs directly.
+            const resolved = args instanceof ProjectSpecNode
+                ? args.editArgs
+                : args;
+            return editPayload(formPanel, resolved);
+        }),
         // Phase 4 additions:
         vscode.commands.registerCommand('projectXml.addModule', () =>
             addModule(sidecar, formPanel),

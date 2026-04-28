@@ -100,3 +100,12 @@ def test_vscodeignore_does_not_exclude_bundled_python() -> None:
         assert stripped not in {"dist", "dist/", "dist/**", "dist/**/*"}, (
             f".vscodeignore line `{stripped}` would drop the bundled sidecar"
         )
+
+
+def test_prepackage_bundles_screenshots(run_prepackage: Path) -> None:
+    # The User Manual references screenshots via ../images/screenshots/
+    # relative paths, so they must land in dist/images/screenshots/.
+    screenshots_dir = run_prepackage.parent / "images" / "screenshots"
+    assert screenshots_dir.is_dir(), "dist/images/screenshots/ missing"
+    pngs = list(screenshots_dir.glob("*.png"))
+    assert len(pngs) >= 1, "no .png files found in dist/images/screenshots/"

@@ -47,6 +47,12 @@ const DOC_FILES = [
     'User_Manual.md',
     'Developers_Guide.md',
 ];
+// Screenshots referenced by the User Manual via relative paths
+// (../images/screenshots/*.png).  Placed under dist/images/ so the
+// relative path from dist/python/User_Manual.md resolves correctly.
+const REPO_ROOT = path.resolve(TOOLS_SRC, '..');                 // project root
+const SCREENSHOTS_SRC = path.join(REPO_ROOT, 'images', 'screenshots');
+const SCREENSHOTS_DST_REL = path.join('..', 'images', 'screenshots');  // relative to DIST
 
 /** Recursively remove a directory if it exists. */
 function rmrf(target) {
@@ -116,6 +122,13 @@ function main() {
             throw new Error(`prepackage: missing required doc file ${src}`);
         }
         fs.copyFileSync(src, path.join(DIST, name));
+    }
+
+    // Copy screenshots so the User Manual's relative image paths work
+    // inside the bundled extension.
+    if (fs.existsSync(SCREENSHOTS_SRC)) {
+        const dst = path.resolve(DIST, SCREENSHOTS_DST_REL);
+        copyDir(SCREENSHOTS_SRC, dst);
     }
 
     const version = readSchemaVersion(path.join(DIST, 'project.xsd'));

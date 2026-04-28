@@ -26,10 +26,16 @@ import {
     EditOperation,
     FormSchemaResult,
     ParsedNodesIndex,
+    ParsedProject,
+    ParsedSection,
+    ParsedLlrGroup,
+    ParsedTestFile,
     ProjectIoClient,
     UiFormField,
 } from '../sidecar';
 import { getProjectXmlPath } from '../util/paths';
+import { RevealLocator } from '../treeView/ProjectSpecProvider';
+import { buildCoverageIndex, CoverageIndex } from '../treeView/coverageTooltips';
 
 /**
  * Phase 3 shipped HLR/LLR; Phase 4 widens this to any complex-type
@@ -58,6 +64,27 @@ export interface OpenFormParams {
 }
 
 const PANEL_VIEW_TYPE = 'projectXml.formPanel';
+
+/** A single clickable trace link shown in the form panel's coverage section. */
+export interface CoverageLink {
+    label: string;
+    sublabel?: string;
+    tag: string;
+    attr?: string;
+    value: string;
+}
+
+/** A group of related trace links under a heading. */
+export interface CoverageLinkSection {
+    heading: string;
+    items: CoverageLink[];
+}
+
+/** Read-only traceability summary sent to the form webview. */
+export interface CoverageInfo {
+    summary: string;
+    sections: CoverageLinkSection[];
+}
 
 export class FormPanelProvider {
     constructor(
@@ -106,6 +133,18 @@ export class FormPanelProvider {
             return;
         }
 
+        // Coverage info is best-effort; a failure here must not block
+        // the form from opening.
+        let coverageInfo: CoverageInfo | undefined;
+        if (params.basePath) {
+            try {
+                const parsed = await this.sidecar.parseToJson();
+                coverageInfo = computeCoverage(parsed, params.type, params.initial);
+            } catch {
+                // Silently degrade — the form opens without the hint.
+            }
+        }
+
         const panel = vscode.window.createWebviewPanel(
             PANEL_VIEW_TYPE,
             params.title,
@@ -135,11 +174,48 @@ export class FormPanelProvider {
                         schema: derived.schema,
                         uiSchema: derived.uiSchema,
                         formData: params.initial,
+                        canReveal: !!params.basePath,
+                        coverageInfo,
                     });
                     return;
                 }
                 if (msg?.type === 'submit') {
                     await this.onSubmit(panel, params, derived.fields, msg.formData);
+                    return;
+                }
+                if (msg?.type === 'reveal') {
+                    const locator: RevealLocator | undefined =
+                        msg.locator ?? locatorFromBasePath(params.basePath);
+                    if (locator) {
+                        void vscode.commands.executeCommand('projectXml.revealInXml', locator);
+                    }
+                    return;
+                }
+                if (msg?.type === 'openForm') {
+                    const locator: RevealLocator | undefined = msg.locator;
+                    if (!locator) { return; }
+                    try {
+                        const parsed = await this.sidecar.parseToJson();
+                        const formParams = resolveFormParams(parsed, locator);
+                        if (formParams) {
+                            void this.open(formParams);
+                        } else {
+                            void vscode.window.showWarningMessage(
+                                `Could not find ${locator.tag} "${locator.value}" in Project.xml.`,
+                            );
+                        }
+                    } catch {
+                        // Best-effort; silently ignore parse failures.
+                    }
+                    return;
+                }
+                if (msg?.type === 'openFile') {
+                    const filePath = msg.path;
+                    if (typeof filePath !== 'string' || !filePath) { return; }
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (!workspaceFolders?.length) { return; }
+                    const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, filePath);
+                    void vscode.window.showTextDocument(uri, { preview: true });
                     return;
                 }
                 if (msg?.type === 'cancel') {
@@ -202,11 +278,25 @@ export class FormPanelProvider {
             const llrs = (nodes.Llr ?? [])
                 .map((n) => n.attrs?.id)
                 .filter((id): id is string => typeof id === 'string' && id.length > 0);
+            // SDD refs are template-derived section numbers (e.g. "3",
+            // "2.2"), not module paths. Collect the unique set already
+            // used across all HLR traces so the dropdown stays valid.
+            const sddRefs = new Set<string>();
+            for (const h of parsed.flat_hlrs ?? []) {
+                for (const tr of h.traces ?? []) {
+                    if (tr.target === 'SDD' && tr.ref) {
+                        sddRefs.add(tr.ref);
+                    }
+                }
+            }
             if (hlrs.length) {
                 out.HLR = hlrs;
             }
             if (llrs.length) {
                 out.LLR = llrs;
+            }
+            if (sddRefs.size) {
+                out.SDD = [...sddRefs].sort();
             }
             return out;
         } catch (err) {
@@ -216,6 +306,284 @@ export class FormPanelProvider {
             return {};
         }
     }
+}
+
+/**
+ * Build the read-only coverage info for the element being edited.
+ * Returns `undefined` when the element type has no meaningful
+ * traceability surface (e.g. unknown type, or missing id/name).
+ *
+ * Exported for unit tests.
+ */
+export function computeCoverage(
+    parsed: ParsedProject,
+    type: string,
+    initial: Record<string, unknown>,
+): CoverageInfo | undefined {
+    const index = buildCoverageIndex(parsed);
+    switch (type) {
+        case 'Hlr':
+            return hlrCoverage(String(initial.id ?? ''), index);
+        case 'Llr':
+            return llrCoverage(String(initial.id ?? ''), index);
+        case 'Test':
+            return testCoverage(String(initial.name ?? ''), index);
+        case 'SddModule':
+            return sddCoverage(String(initial.path ?? ''), parsed);
+        default:
+            return undefined;
+    }
+}
+
+function hlrCoverage(id: string, index: CoverageIndex): CoverageInfo | undefined {
+    if (!id) { return undefined; }
+    const llrs = index.llrsByHlr.get(id) ?? [];
+    const tests = index.testsByHlr.get(id) ?? [];
+    const sections: CoverageLinkSection[] = [];
+    if (llrs.length) {
+        sections.push({
+            heading: 'Downstream LLRs',
+            items: llrs.map((l) => ({
+                label: l.id,
+                tag: 'llr',
+                value: l.id,
+            })),
+        });
+    }
+    if (tests.length) {
+        sections.push({
+            heading: 'Direct tests',
+            items: tests.map((t) => ({
+                label: t.name,
+                sublabel: t.file,
+                tag: 'test',
+                attr: 'name',
+                value: t.name,
+            })),
+        });
+    }
+    return {
+        summary: `${plural(llrs.length, 'LLR')} · ${plural(tests.length, 'test')}`,
+        sections,
+    };
+}
+
+function llrCoverage(id: string, index: CoverageIndex): CoverageInfo | undefined {
+    if (!id) { return undefined; }
+    const llr = index.llrById.get(id);
+    const upstream: CoverageLink[] = [];
+    for (const tr of llr?.traces ?? []) {
+        if (tr.target === 'HLR' && tr.ref) {
+            const hlr = index.hlrById.get(tr.ref);
+            upstream.push({
+                label: tr.ref,
+                sublabel: hlr?.name,
+                tag: 'hlr',
+                value: tr.ref,
+            });
+        }
+    }
+    const tests = index.testsByLlr.get(id) ?? [];
+    const sections: CoverageLinkSection[] = [];
+    if (upstream.length) {
+        sections.push({ heading: 'Upstream HLRs', items: upstream });
+    }
+    if (tests.length) {
+        sections.push({
+            heading: 'Tests',
+            items: tests.map((t) => ({
+                label: t.name,
+                sublabel: t.file,
+                tag: 'test',
+                attr: 'name',
+                value: t.name,
+            })),
+        });
+    }
+    return {
+        summary: `${plural(upstream.length, 'HLR trace')} · ${plural(tests.length, 'test')}`,
+        sections,
+    };
+}
+
+function testCoverage(name: string, index: CoverageIndex): CoverageInfo | undefined {
+    if (!name) { return undefined; }
+    const test = index.testByName.get(name);
+    const hlrLinks: CoverageLink[] = [];
+    const llrLinks: CoverageLink[] = [];
+    for (const tr of test?.traces ?? []) {
+        if (!tr.ref) { continue; }
+        if (tr.target === 'HLR') {
+            const hlr = index.hlrById.get(tr.ref);
+            hlrLinks.push({
+                label: tr.ref,
+                sublabel: hlr?.name,
+                tag: 'hlr',
+                value: tr.ref,
+            });
+        } else if (tr.target === 'LLR') {
+            llrLinks.push({
+                label: tr.ref,
+                tag: 'llr',
+                value: tr.ref,
+            });
+        }
+    }
+    const sections: CoverageLinkSection[] = [];
+    if (hlrLinks.length) {
+        sections.push({ heading: 'Upstream HLRs', items: hlrLinks });
+    }
+    if (llrLinks.length) {
+        sections.push({ heading: 'Upstream LLRs', items: llrLinks });
+    }
+    if (test?.file) {
+        sections.push({
+            heading: 'Source file',
+            items: [{ label: test.file, tag: 'file', value: test.file }],
+        });
+    }
+    return {
+        summary: `${plural(hlrLinks.length, 'HLR')} · ${plural(llrLinks.length, 'LLR')}`,
+        sections,
+    };
+}
+
+function sddCoverage(path: string, parsed: ParsedProject): CoverageInfo | undefined {
+    if (!path) { return undefined; }
+    // Find HLRs that trace to this SDD section.
+    const flatHlrs = parsed.flat_hlrs ?? collectHlrsFlat(parsed);
+    const hlrLinks: CoverageLink[] = [];
+    for (const hlr of flatHlrs) {
+        for (const tr of hlr.traces ?? []) {
+            if (tr.target === 'SDD' && tr.ref === path) {
+                hlrLinks.push({
+                    label: hlr.id,
+                    sublabel: hlr.name,
+                    tag: 'hlr',
+                    value: hlr.id,
+                });
+                break; // One link per HLR, even if it traces multiple times.
+            }
+        }
+    }
+    const sections: CoverageLinkSection[] = [];
+    if (hlrLinks.length) {
+        sections.push({ heading: 'HLRs tracing to this module', items: hlrLinks });
+    }
+    return {
+        summary: `${plural(hlrLinks.length, 'HLR')}`,
+        sections,
+    };
+}
+
+function collectHlrsFlat(project: ParsedProject): Array<{ id: string; name?: string; traces?: Array<{ target?: string; ref?: string }> }> {
+    const out: Array<{ id: string; name?: string; traces?: Array<{ target?: string; ref?: string }> }> = [];
+    for (const sec of project.hlrs ?? []) {
+        for (const h of (sec as { hlrs?: Array<{ id: string; name?: string; traces?: Array<{ target?: string; ref?: string }> }> }).hlrs ?? []) {
+            out.push(h);
+        }
+    }
+    return out;
+}
+
+function plural(n: number, singular: string): string {
+    return n === 1 ? `${n} ${singular}` : `${n} ${singular}s`;
+}
+
+/**
+ * Resolve a coverage-link locator to {@link OpenFormParams} by
+ * looking up the matching item in the parsed project. Returns
+ * `undefined` when the item cannot be found (e.g. stale link).
+ *
+ * Exported for unit tests.
+ */
+export function resolveFormParams(
+    parsed: ParsedProject,
+    locator: RevealLocator,
+): OpenFormParams | undefined {
+    const { tag, value } = locator;
+    switch (tag) {
+        case 'hlr': {
+            for (const sec of (parsed.hlrs ?? []) as ParsedSection[]) {
+                for (const h of (sec as { hlrs?: Array<Record<string, unknown>> }).hlrs ?? []) {
+                    if (h.id === value) {
+                        return {
+                            type: 'Hlr',
+                            title: `Edit ${value}`,
+                            initial: { ...h } as Record<string, unknown>,
+                            basePath: `/hlrs/section[number=${sec.number}]/hlr[id=${value}]`,
+                        };
+                    }
+                }
+            }
+            return undefined;
+        }
+        case 'llr': {
+            for (const fn of (parsed.llrs ?? []) as ParsedLlrGroup[]) {
+                for (const l of fn.llrs ?? []) {
+                    if (l.id === value) {
+                        return {
+                            type: 'Llr',
+                            title: `Edit ${value}`,
+                            initial: { ...l } as Record<string, unknown>,
+                            basePath: `/llrs/function[number=${fn.number}]/llr[id=${value}]`,
+                        };
+                    }
+                }
+            }
+            return undefined;
+        }
+        case 'test': {
+            for (const f of (parsed.tests ?? []) as ParsedTestFile[]) {
+                for (const t of f.tests ?? []) {
+                    if (t.name === value) {
+                        return {
+                            type: 'Test',
+                            title: `Edit ${value}`,
+                            initial: { ...t, file: f.path } as Record<string, unknown>,
+                            basePath: `/tests/file[path=${f.path}]/test[name=${value}]`,
+                        };
+                    }
+                }
+            }
+            return undefined;
+        }
+        case 'module': {
+            for (const m of parsed.sdd?.modules ?? []) {
+                if (m.path === value) {
+                    return {
+                        type: 'SddModule',
+                        title: `Edit ${value}`,
+                        initial: { ...m } as Record<string, unknown>,
+                        basePath: `/sdd/modules/module[path=${value}]`,
+                    };
+                }
+            }
+            return undefined;
+        }
+        default:
+            return undefined;
+    }
+}
+
+/**
+ * Derive a {@link RevealLocator} from a basePath like
+ * `/hlrs/section[number=1]/hlr[id=HLR-001]` by extracting the
+ * last segment's tag name and bracketed attribute.
+ */
+function locatorFromBasePath(basePath: string | undefined): RevealLocator | undefined {
+    if (!basePath) {
+        return undefined;
+    }
+    // Match the last path segment: tag[attr=value]
+    const m = basePath.match(/\/(\w+)\[(\w+)=([^\]]+)\]\s*$/);
+    if (!m) {
+        return undefined;
+    }
+    const [, tag, attr, value] = m;
+    return attr === 'id'
+        ? { tag, value }
+        : { tag, attr, value };
 }
 
 
@@ -398,6 +766,12 @@ function renderFormHtml(
       .findings { margin-top: 1rem; padding: 0.5rem; background: var(--vscode-inputValidation-errorBackground, rgba(255,0,0,0.08)); border: 1px solid var(--vscode-inputValidation-errorBorder, #c00); }
       .findings ul { margin: 0.25rem 0 0 1.25rem; }
       .traces-row { display: grid; grid-template-columns: 6rem 1fr 1fr auto; gap: 0.5rem; margin-bottom: 0.4rem; }
+      .coverage-section { margin-bottom: 1rem; padding: 0.75rem; background: var(--vscode-textBlockQuote-background, rgba(127,127,127,0.1)); border-left: 3px solid var(--vscode-textLink-foreground, #3794ff); }
+      .coverage-summary { font-weight: 600; margin-bottom: 0.5rem; }
+      .coverage-group { margin-bottom: 0.4rem; }
+      .coverage-list { margin: 0.2rem 0 0 1.25rem; padding: 0; }
+      .coverage-link { color: var(--vscode-textLink-foreground, #3794ff); cursor: pointer; text-decoration: none; }
+      .coverage-link:hover { text-decoration: underline; }
     </style>
   </head>
   <body>

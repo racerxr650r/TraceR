@@ -1,29 +1,45 @@
 # tools/Makefile — developer convenience targets for TraceR.
 #
-# The `prereqs` target detects the host OS and dispatches to the
-# matching package-manager recipe to install the system-level
-# toolchain documented in doc/SDP.md §0 (Required Tools for
-# Development). It is a thin, opinionated wrapper around the
-# copy-pasteable shell blocks in that document; the canonical
-# instructions remain in the SDP.
-#
 # Usage (run from anywhere; targets cd as needed):
-#     make -C tools prereqs        # detect OS, install, then verify
-#     make -C tools prereqs-debian # force a specific OS recipe
-#     make -C tools prereqs-fedora
-#     make -C tools prereqs-arch
-#     make -C tools prereqs-macos
-#     make -C tools verify         # only run the version checks
-#     make -C tools detect         # print the detected OS family
+#     make -C tools <target>
 #
-# Every install recipe uses $(SUDO) (auto-detected: empty when
-# already running as root, otherwise 'sudo'). brew manages its own
-# privilege escalation. The Makefile makes no destructive changes
-# beyond what each platform's package manager normally performs.
+# Targets:
+#   prereqs         Detect host OS and install full dev toolchain, then verify.
+#   prereqs-ci      Slim install for CI (no VS Code, vsce, or gh).
+#   prereqs-debian  Install via apt (Debian/Ubuntu/MX).
+#   prereqs-fedora  Install via dnf (Fedora/RHEL/CentOS Stream).
+#   prereqs-arch    Install via pacman (Arch/Manjaro).
+#   prereqs-macos   Install via Homebrew (macOS).
+#   verify          Print versions of the required tools.
+#   bootstrap       Create .venv, install Python+Node deps, install
+#                   the redhat.vscode-xml extension. Run after 'prereqs'.
+#   detect          Print the detected OS family.
+#   lint            Run tools/lint_project.py against doc/Project.xml.
+#   validate-xml    Validate doc/Project.xml against tools/project.xsd.
+#   render          Render all five spec templates (catches template/schema drift).
+#   test-py         Run the Python unit tests under test/.
+#   ext-typecheck   Run 'tsc --noEmit' on the VS Code extension.
+#   ext-build       Bundle the VS Code extension via esbuild.
+#   ext-package     Produce a .vsix via 'vsce package'.
+#   ext-test-unit   Run the VS Code extension's mocha unit tests.
+#   ext-test-ui     Run the ExTester Selenium UI tests (needs Chrome).
+#   ext-screenshots Capture documentation screenshots via ExTester.
+#   ext             ext-typecheck + ext-build (fail on any warning).
+#   test            Run all tests (Python + extension unit + UI).
+#   ci              lint + validate-xml + render + test + ext (CI umbrella).
+#   clean           Remove generated docs, extension build output, __pycache__.
+#   clean-docs      Remove generated markdown specs (HLRs/LLRs/SDD/STP/Traceability).
+#   clean-ext       Remove the VS Code extension's dist/ and *.vsix.
+#   distclean       'clean' plus .venv and tools/vscode-project-xml/node_modules.
+#
+# The prereqs targets detect the host OS and dispatch to the matching
+# package-manager recipe to install the system-level toolchain
+# documented in doc/SDP.md §0. Every install recipe uses $(SUDO)
+# (auto-detected: empty when already root). brew manages its own
+# privilege escalation.
 #
 # CI usage: prefer 'prereqs-ci' (slim — no VS Code, no vsce, no gh)
-# and the 'ci' umbrella target which runs lint + validate-xml +
-# render + test + ext.
+# and the 'ci' umbrella target.
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -57,34 +73,12 @@ endif
 .PHONY: help detect prereqs prereqs-ci verify bootstrap \
         prereqs-debian prereqs-fedora prereqs-arch prereqs-macos \
         ext-build ext-typecheck ext-package ext \
-        lint validate-xml render test ci \
+        ext-test-unit ext-test-ui \
+        lint validate-xml render test test-py ci \
         clean clean-docs clean-ext distclean
 
 help:
-	@echo "TraceR tools/Makefile targets:"
-	@echo "  prereqs         Detect host OS and install full dev toolchain, then verify."
-	@echo "  prereqs-ci      Slim install for CI (no VS Code, vsce, or gh)."
-	@echo "  prereqs-debian  Install via apt (Debian/Ubuntu/MX)."
-	@echo "  prereqs-fedora  Install via dnf (Fedora/RHEL/CentOS Stream)."
-	@echo "  prereqs-arch    Install via pacman (Arch/Manjaro)."
-	@echo "  prereqs-macos   Install via Homebrew (macOS)."
-	@echo "  verify          Print versions of the required tools."
-	@echo "  bootstrap       Create .venv, install Python+Node deps, install"
-	@echo "                  the redhat.vscode-xml extension. Run after 'prereqs'."
-	@echo "  lint            Run tools/lint_project.py against doc/Project.xml."
-	@echo "  validate-xml    Validate doc/Project.xml against tools/project.xsd."
-	@echo "  render          Render all five spec templates (catches template/schema drift)."
-	@echo "  test            Run the pytest suite under test/."
-	@echo "  ext-typecheck   Run 'tsc --noEmit' on the VS Code extension."
-	@echo "  ext-build       Bundle the VS Code extension via esbuild."
-	@echo "  ext-package     Produce a .vsix via 'vsce package'."
-	@echo "  ext             ext-typecheck + ext-build (fail on any warning)."
-	@echo "  ci              lint + validate-xml + render + test + ext (CI umbrella)."
-	@echo "  clean           Remove generated docs, extension build output, __pycache__."
-	@echo "  clean-docs      Remove generated markdown specs (HLRs/LLRs/SDD/STP/Traceability)."
-	@echo "  clean-ext       Remove the VS Code extension's dist/ and *.vsix."
-	@echo "  distclean       'clean' plus .venv and tools/vscode-project-xml/node_modules."
-	@echo "  detect          Print the detected OS family ($(OS_FAMILY))."
+	@awk '/^# Targets:/{found=1} found{if(/^[^#]/ || /^#$$/)exit; sub(/^# ?/,""); print}' $(MAKEFILE_LIST)
 
 detect:
 	@echo "uname -s: $(UNAME_S)"
@@ -158,14 +152,19 @@ ifneq ($(CI_SLIM),1)
 	        | gpg --dearmor | $(SUDO) tee /usr/share/keyrings/packages.microsoft.gpg >/dev/null ; \
 	    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" \
 	        | $(SUDO) tee /etc/apt/sources.list.d/vscode.list >/dev/null ; \
-	    $(SUDO) apt update && $(SUDO) apt install -y code ; \
+	    $(SUDO) apt update && $(SUDO) apt install -y code ; 
+	fi
+	# Chrome / Chromium for ExTester UI tests.
+	@if ! command -v google-chrome >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then \
+	    echo "Installing google-chrome-stable for UI tests..." ; \
+	    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+	        | $(SUDO) gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg ; \
+	    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main' \
+	        | $(SUDO) tee /etc/apt/sources.list.d/google-chrome.list >/dev/null ; \
+	    $(SUDO) apt update && $(SUDO) apt install -y google-chrome-stable ; \
 	fi
 	$(SUDO) npm install -g @vscode/vsce
 endif
-
-# ---------------------------------------------------------------- #
-# Fedora / RHEL / CentOS Stream                                    #
-# ---------------------------------------------------------------- #
 prereqs-fedora:
 	@echo ">>> Installing TraceR prerequisites via dnf..."
 	$(SUDO) dnf install -y python3 python3-pip libxml2 git curl
@@ -194,12 +193,14 @@ ifneq ($(CI_SLIM),1)
 	    $(SUDO) dnf check-update || true ; \
 	    $(SUDO) dnf install -y code ; \
 	fi
+	# Chrome / Chromium for ExTester UI tests.
+	@if ! command -v google-chrome >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then \
+	    $(SUDO) dnf install -y google-chrome-stable || { \
+	        echo "Install google-chrome-stable or chromium for UI tests." >&2 ; \
+	    } ; \
+	fi
 	$(SUDO) npm install -g @vscode/vsce
 endif
-
-# ---------------------------------------------------------------- #
-# Arch / Manjaro                                                   #
-# ---------------------------------------------------------------- #
 prereqs-arch:
 	@echo ">>> Installing TraceR prerequisites via pacman..."
 ifeq ($(CI_SLIM),1)
@@ -218,6 +219,12 @@ else
 	        echo "Install 'visual-studio-code-bin' from the AUR for the" >&2 ; \
 	        echo "Microsoft-branded VS Code build." >&2 ; \
 	        exit 1 ; \
+	    } ; \
+	fi
+	# Chrome / Chromium for ExTester UI tests.
+	@if ! command -v google-chrome >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then \
+	    $(SUDO) pacman -S --needed --noconfirm chromium || { \
+	        echo "Install google-chrome or chromium for UI tests." >&2 ; \
 	    } ; \
 	fi
 	$(SUDO) npm install -g @vscode/vsce
@@ -240,6 +247,8 @@ else
 	brew install python@3.12 libxml2 node@20 git gh
 	brew link --overwrite --force node@20 || true
 	brew install --cask visual-studio-code || true
+	# Chrome / Chromium for ExTester UI tests.
+	brew install --cask google-chrome || true
 	npm install -g @vscode/vsce
 endif
 
@@ -268,6 +277,15 @@ verify:
 	check_min "code"      code    "1.90"   ; \
 	check_min "gh"        gh      "any"    ; \
 	check_min "vsce"      vsce    "2.x"    ; \
+	if command -v google-chrome >/dev/null 2>&1 ; then \
+	    printf "  [OK]      %-12s %s\n" "chrome" "$$(google-chrome --version 2>&1 | head -n1)" ; \
+	elif command -v chromium >/dev/null 2>&1 ; then \
+	    printf "  [OK]      %-12s %s\n" "chromium" "$$(chromium --version 2>&1 | head -n1)" ; \
+	elif command -v chromium-browser >/dev/null 2>&1 ; then \
+	    printf "  [OK]      %-12s %s\n" "chromium" "$$(chromium-browser --version 2>&1 | head -n1)" ; \
+	else \
+	    printf "  [WARN]    %-12s (required for UI tests; install google-chrome or chromium)\n" "chrome" ; \
+	fi ; \
 	if command -v xmllint >/dev/null 2>&1 ; then \
 	    printf "  [OK]      %-12s %s\n" "xmllint" "$$(xmllint --version 2>&1 | head -n1)" ; \
 	elif python3 -c 'import lxml' 2>/dev/null ; then \
@@ -305,9 +323,9 @@ bootstrap:
 	@if [[ ! -x "$(VENV_DIR)/bin/python" ]]; then \
 	    $(PYTHON) -m venv "$(VENV_DIR)" ; \
 	fi
-	@echo ">>> Installing Python dependencies (jinja2, lxml, pytest, xmlschema)..."
+	@echo ">>> Installing Python dependencies (jinja2, lxml, xmlschema)..."
 	"$(VENV_PIP)" install --upgrade pip
-	"$(VENV_PIP)" install jinja2 lxml pytest xmlschema
+	"$(VENV_PIP)" install jinja2 lxml xmlschema
 	@echo ">>> Installing VS Code extension npm dependencies..."
 	@if [[ -f "$(EXT_DIR)/package.json" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
@@ -380,9 +398,35 @@ render:
 	        --out "$(REPO_ROOT)/doc/$$spec.md" ; \
 	done
 
-test:
-	@echo ">>> Running pytest..."
-	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m pytest test/
+test-py:
+	@echo ">>> Running Python unit tests..."
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m unittest discover -s test -p 'test_*.py'
+
+ext-test-unit:
+	@echo ">>> Running VS Code extension unit tests (mocha)..."
+	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
+	    cd "$(EXT_DIR)" && npm install ; \
+	fi
+	cd "$(EXT_DIR)" && npm run test:unit
+
+ext-test-ui:
+	@echo ">>> Running VS Code extension UI tests (ExTester)..."
+	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
+	    cd "$(EXT_DIR)" && npm install ; \
+	fi
+	cd "$(EXT_DIR)" && npm run test:ui
+
+ext-screenshots: ext-build
+	@echo ">>> Capturing screenshots for documentation (ExTester)..."
+	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
+	    cd "$(EXT_DIR)" && npm install ; \
+	fi
+	cd "$(EXT_DIR)" && npm run test:screenshots
+	@echo "Screenshots saved to images/screenshots/"
+
+test: test-py ext-test-unit ext-test-ui
+	@echo ""
+	@echo "All test suites passed."
 
 # CI umbrella. Order matters: lint+validate fail fast on bad XML
 # before the slower render/test/ext steps run.
@@ -396,11 +440,11 @@ ext: ext-build
 
 ext-package: ext-build
 	@echo ">>> Packaging VS Code extension (vsce package)..."
-	@command -v vsce >/dev/null 2>&1 || { \
-	    echo "vsce not found on PATH. Run 'make -C tools prereqs' first." >&2 ; \
-	    exit 1 ; \
-	}
-	cd "$(EXT_DIR)" && vsce package --out "$(REPO_ROOT)/dist/"
+	cd "$(EXT_DIR)" && npx vsce package
+	@echo ""
+	@echo "To install, run:"
+	@echo "  code --install-extension $(EXT_DIR)/vscode-project-xml-*.vsix --force"
+	@echo "Then reload the VS Code window (Ctrl+Shift+P → Developer: Reload Window)."
 
 # ---------------------------------------------------------------- #
 # Clean targets                                                    #

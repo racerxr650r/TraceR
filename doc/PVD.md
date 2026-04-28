@@ -32,7 +32,9 @@ document is the reference.
 > validation, quick-fixes, and schema-grounded AI assistance for
 > drafting and review — and the SDD, HLRs, LLRs, STP, and
 > end-to-end traceability matrix are regenerated on demand and
-> re-verified on every commit.
+> re-verified on every commit. In addition, `TR` provides easy
+> use UI elements to edit the one structured source without
+> having to edit an XML file.
 ## 3. Problem Statement
 
 Today, teams that want a traceable specification stack either pay
@@ -59,6 +61,10 @@ workflow.
 *   Markdown-only stacks have no schema, so the same field is
     spelled five ways across five projects and no tooling can
     reason about them.
+*   Developers and QA don't want the hassle of making sense of
+    XML encoding. They prefer the information about a specific
+    object (leaf in the tree) is provided in a simple to edit
+    popup dialog window when selected with a double-click.
 
 The cumulative effect is that small teams either skip traceable
 specs entirely (and lose the engineering discipline that produces)

@@ -83,8 +83,10 @@ blocker.
 | **esbuild** | 0.20+ | Bundler for the extension and webviews (see `esbuild.config.js`). Installed via `npm install`. |
 | **VS Code** | 1.90+ | Required for the Chat Participant API used in Phase 5 (`vscode.chat.createChatParticipant`). |
 | **`@vscode/vsce`** | 2.x | Packages and (optionally) publishes the `.vsix`. Installed globally or via `npx vsce`. |
+| **`vscode-extension-tester`** | 8.x | UI integration testing framework for VS Code extensions (Selenium WebDriver). Installed via `npm install` from the local `package.json`. Requires Chrome/Chromium. |
 | **Red Hat XML extension** (`redhat.vscode-xml`) | latest | Declared as `extensionDependencies`; provides syntax, outline, and XSD-backed completion that this extension layers on top of. |
 | **Git** | 2.30+ | Required by Phase 5.5 for `git show :1:`/`:2:`/`:3:` blob retrieval during three-way merge resolution. |
+| **Chrome / Chromium** | latest | Required by `vscode-extension-tester` (ExTester) for Selenium WebDriver-based UI tests. ChromeDriver is downloaded automatically by ExTester. |
 | **GitHub CLI** (`gh`) | optional | Convenience for releasing tags that trigger the `.vsix` publish workflow. |
 
 ### Bootstrapping a fresh checkout
@@ -98,6 +100,8 @@ pip install jinja2 lxml pytest
 cd tools/vscode-project-xml
 npm install
 npm run build      # esbuild bundle
+npm run test:unit  # tier-1 Mocha unit tests (no VS Code instance)
+npm run test:ui    # ExTester UI tests (launches VS Code + ChromeDriver)
 code --extensionDevelopmentPath=$PWD .
 ```
 
@@ -147,6 +151,17 @@ https://packages.microsoft.com/repos/code stable main" \
     | sudo tee /etc/apt/sources.list.d/vscode.list >/dev/null
 sudo apt update && sudo apt install -y code
 
+# Chrome (required for ExTester UI tests)
+# Google Chrome:
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+    | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] \
+    http://dl.google.com/linux/chrome/deb/ stable main' \
+    | sudo tee /etc/apt/sources.list.d/google-chrome.list
+sudo apt update && sudo apt install -y google-chrome-stable
+# Or Chromium:
+#   sudo apt install -y chromium-browser
+
 # vsce (extension packager) — install globally with npm, or use `npx vsce`
 sudo npm install -g @vscode/vsce
 ```
@@ -189,6 +204,9 @@ EOF
 dnf check-update                                     # exits non-zero by design
 sudo dnf install -y code                             # use 'yum' on RHEL 7
 
+# Chrome (required for ExTester UI tests)
+sudo dnf install -y google-chrome-stable              # or: chromium
+
 # vsce
 sudo npm install -g @vscode/vsce
 ```
@@ -214,6 +232,10 @@ sudo pacman -S --needed git github-cli
 sudo pacman -S --needed code                         # OSS build (Code - OSS)
 # Microsoft-branded build:
 #   yay -S visual-studio-code-bin                    # AUR helper required
+
+# Chrome (required for ExTester UI tests)
+# Google Chrome: download from https://www.google.com/chrome/
+# or: sudo pacman -S chromium
 
 # vsce
 sudo npm install -g @vscode/vsce
@@ -244,6 +266,9 @@ brew install gh
 # VS Code (cask) — or download the .dmg from https://code.visualstudio.com
 brew install --cask visual-studio-code
 
+# Chrome (required for ExTester UI tests)
+brew install --cask google-chrome                    # or: brew install chromium
+
 # vsce
 npm install -g @vscode/vsce
 ```
@@ -260,6 +285,8 @@ npm --version              # >= 10
 code --version             # >= 1.90.0
 git --version              # >= 2.30
 gh --version               # optional
+google-chrome --version \
+    || chromium --version  # required for UI tests (ExTester)
 xmllint --version 2>&1 \
     | head -n1             # optional XSD validator (or `python3 -c "import lxml"`)
 ```
@@ -1204,7 +1231,17 @@ AI Prompt:
 > SDP.md. Replace the current ./README.md with an overview of the
 > TraceR product. Keep the graphic.
 
-### Phase 8 - Address Lint Warnings and Vulnerabilities
+### Phase 8 - Add popup for editing leaf objects
+1. Update the PVD to state a goal is the user will not have to
+   edit XML. The product will open a dialog box with editable
+   fields when the user double clicks on an editable object in
+   the tree view. At the top of the dialog box, it will display
+   the same information found in the tooltip for that object.
+   These will be hot links to those linked object. Following
+   a link will close the current dialog box and open a new one
+   for the linked object. 
+
+### Phase 9 - Address Lint Warnings and Vulnerabilities
 1. Address the remaining lint warnings.
 2. Scan the third party packages for vulnerabilities and 
    address any GitHub dependbot issues and clear them on
@@ -1214,7 +1251,7 @@ AI Prompt:
    In addition perform a safety review of the source code
    and flag any potential issues.
 
-## Phase 9 - Publish
+## Phase 10 - Publish
 1. Create a release tag v1.0.
 2. Publish the package to the market place.
 3. Upload the package to the GitHub project page.

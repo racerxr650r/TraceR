@@ -1,23 +1,22 @@
 name: Publish VS Code Extension
 
 # Phase 6 (HLR-060, LLR-PKG-01): build a fully-bundled .vsix when a
-# tag of the form `vscode-vX.Y.Z` is pushed. The `prepackage` step
-# must run BEFORE `vsce package` so the bundled sidecar Python tree
-# (dist/python/) ships inside the .vsix.
+# GitHub Release is created (typically via the web UI). The
+# `prepackage` step must run BEFORE `vsce package` so the bundled
+# sidecar Python tree (dist/python/) ships inside the .vsix.
 #
+# The .vsix is attached to the release that triggered the workflow.
 # Publishing to the Marketplace is gated on `secrets.VSCE_PAT`; if
 # the secret is unset, the workflow stops at the artifact upload
-# step. This keeps the manual gate explicit — the maintainer rotates
-# the PAT and decides when to flip the publish switch.
+# step.
 
 on:
-  push:
-    tags:
-      - 'vscode-v*'
+  release:
+    types: [created]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write          # needed to create releases and upload assets
 
 jobs:
   package:
@@ -48,6 +47,17 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Stamp version from release tag
+        # Extracts the semver from the tag (e.g. "v0.2.0" → "0.2.0")
+        # and writes it into package.json before packaging. Skipped
+        # for workflow_dispatch where no release tag exists.
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          echo "Setting package version to ${VERSION}"
+          npm version "${VERSION}" --no-git-tag-version
+
       - name: Bundle sidecar tree (prepackage)
         run: npm run prepackage
 
@@ -70,10 +80,18 @@ jobs:
           path: tools/vscode-project-xml/*.vsix
           if-no-files-found: error
 
+      - name: Attach .vsix to GitHub Release
+        # Runs only when triggered by a release event; attaches the
+        # .vsix to the release that was just created on the website.
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" *.vsix
+
       - name: Publish to Marketplace
         # Gated on the VSCE_PAT secret; if unset, the step is
         # skipped and the .vsix is available as an artifact only.
-        if: ${{ env.VSCE_PAT != '' && startsWith(github.ref, 'refs/tags/vscode-v') }}
+        if: ${{ env.VSCE_PAT != '' && github.event_name == 'release' }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx --yes @vscode/vsce publish --no-dependencies --pat "$VSCE_PAT"

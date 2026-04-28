@@ -266,9 +266,12 @@ spawns `tools/project_io.py` and calls `parse_to_json` plus
 returned by `parse_to_json` and contributes one root node per
 `ui:treeNode`-marked element kind, populated from the parsed
 payload.]]></step>
-        <step><![CDATA[The user clicks "Add HLR" on the HLRs tree node. The
-extension opens a form webview whose JSON Schema was derived
-from the relevant XSD subtree plus its `ui:form` hints.]]></step>
+        <step><![CDATA[The user double-clicks an existing leaf (e.g. an `<hlr>`) to
+edit it, or clicks "Add HLR" on the HLRs tree node to
+create a new one. Either gesture opens the single,
+reusable popup edit dialog whose fields are derived at
+runtime from the element's XSD complex type plus its
+`ui:form` hints — no per-payload dialog code exists.]]></step>
         <step><![CDATA[On submit, the webview posts a JSON Patch to the extension,
 which forwards it to the sidecar's `apply_edit` method. The
 sidecar applies the patch on a working copy, runs XSD + lint,
@@ -914,6 +917,15 @@ gaps or broken refs.]]></responsibility>
 `Draft / Expand / Review with AI`. The set of available
 commands per node is derived from the hint registry, not
 hard-coded per element kind.]]></responsibility>
+        <responsibility><![CDATA[Set `TreeItem.command` on every leaf node (individual
+`<hlr>`, `<llr>`, `<test>`, `<module>`) to
+`projectXml.editPayload`, so that double-clicking a leaf
+in the tree opens the schema-driven popup edit dialog for
+that element. The dialog is a single reusable popup whose
+fields are derived at runtime from the element's XSD
+complex type and `ui:form` hints — no per-payload code
+and no extension changes when a user adds a new document
+or payload kind.]]></responsibility>
         <responsibility><![CDATA[Locate elements in the underlying XML for `Reveal in XML`
 via the generic locator (`util/locator.ts`), which takes
 `(elementName, idAttr, idValue)` from the hint registry.]]></responsibility>
@@ -1118,18 +1130,25 @@ Lazily computes lens text from the cached
         </dependencies>
       </module>
 
-      <module path="tools/vscode-project-xml/src/webview/" title="Form panels and Markdown preview (planned)">
-        <purpose><![CDATA[hosts the single-item form webviews used to edit one
-payload element at a time, plus the side-by-side Markdown
-preview pane.
+      <module path="tools/vscode-project-xml/src/webview/" title="Popup edit dialog and Markdown preview (planned)">
+        <purpose><![CDATA[hosts a single, reusable popup edit dialog used to edit
+one payload element at a time, plus the side-by-side
+Markdown preview pane. The dialog's fields are derived
+entirely at runtime from the element's XSD complex type
+and `ui:form` hints in `Project.xml`, so it adapts to
+any payload kind — including user-added document types —
+with no extension code changes.
 
 **Status:** planned (Phases 3–4). No directory ships in the
 current checkout; the design below freezes the contract
 shared with [tools/PLAN_web_form.md](../tools/PLAN_web_form.md).]]></purpose>
-        <responsibility><![CDATA[Open one form panel per `Edit`/`Add` action. The form's
-JSON Schema comes from the sidecar's `parse_to_json`
-response, which derives it from the relevant XSD subtree
-plus per-field `ui:form` hints.]]></responsibility>
+        <responsibility><![CDATA[Open the popup edit dialog on `Edit`/`Add` actions and on
+double-click of a tree leaf. The dialog's JSON Schema
+comes from the sidecar's `parse_to_json` response, which
+derives it from the relevant XSD subtree plus per-field
+`ui:form` hints. Because the schema derivation is fully
+generic, one dialog implementation serves every payload
+element kind.]]></responsibility>
         <responsibility><![CDATA[On submit, post a JSON Patch to the extension which
 forwards it to `apply_edit`. On `apply_edit` returning a
 clean lint, the extension closes the panel and refreshes
@@ -1881,7 +1900,10 @@ extension deactivate.]]></text>
 view that renders one root node per payload kind, populated
 from the sidecar's `parse_to_json` response; from Phase 2.5
 the contributed nodes shall be derived from the schema's
-UI-hint registry rather than from hard-coded TypeScript.]]></text>
+UI-hint registry rather than from hard-coded TypeScript.
+Double-clicking any leaf node in the tree shall open the
+schema-driven popup edit dialog for that element, giving
+users a simple, XML-free editing surface.]]></text>
         <traces>
           <trace target="SDD" ref="3"/>
           <trace target="SDD" ref="11"/>
@@ -1924,11 +1946,14 @@ entry rather than per-payload code.]]></text>
       </hlr>
 
       <hlr id="HLR-026" name="Structured Form Editing">
-        <text><![CDATA[The extension shall provide a form webview for every payload
-element kind whose JSON Schema is derived at runtime from
-the relevant XSD subtree plus per-field `ui:form` hints, so
-that adding a new field is a schema-and-hint change rather
-than a TypeScript change.]]></text>
+        <text><![CDATA[The extension shall provide a single, reusable popup edit
+dialog whose fields are derived at runtime from the target
+element's XSD complex type plus per-field `ui:form` hints
+in `Project.xml`. One dialog implementation shall serve
+every payload element kind — HLR, LLR, test, SDD module,
+STP fixture, and any user-added document type — so that
+adding a new payload kind or field is a schema-and-hint
+change with zero extension code updates.]]></text>
         <traces>
           <trace target="SDD" ref="3"/>
           <trace target="SDD" ref="18"/>
@@ -2940,11 +2965,26 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
       </llr>
 
       <llr id="LLR-PSP-06">
-        <text><![CDATA[Each tooltip emitted by `decorateTooltips` shall be a trusted `vscode.MarkdownString` (`isTrusted = true`) whose body lists upstream and downstream items as bullet points, with each bullet rendered as a `[label](command:projectXml.revealInXml?<encoded-locator>)` link so a single click in the hover surface jumps to the cited element via the existing `revealInXml` code path; leaves with neither upstream nor downstream items shall render an explicit "No traces yet." / "No downstream LLRs or tests yet." line rather than an empty tooltip so coverage gaps are visible from hover.]]></text>
+        <text><![CDATA[Each tooltip emitted by `decorateTooltips` shall be a trusted `vscode.MarkdownString` (`isTrusted = true`) whose body lists upstream and downstream items as bullet points, with each bullet rendered as a `[label](command:projectXml.revealInXml?<encoded-locator>)` link so a single click in the hover surface jumps to the cited element via the existing `revealInXml` code path; leaves with neither upstream nor downstream items shall render an explicit "No traces yet." / "No downstream LLRs or tests yet." line rather than an empty tooltip so coverage gaps are visible from hover. Test entries in the tooltip lists shall include the test's parent file path (`ParsedTest.file`) as a sublabel, and the Test tooltip header shall display the file path alongside the test name. Tooltip text shall be rendered without Markdown backslash-escaping so that underscores and other characters in names and paths appear cleanly in both inline and code-span contexts.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
           <trace target="HLR" ref="HLR-024" name="Reveal in XML"/>
           <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-07">
+        <text><![CDATA[Every leaf `ProjectSpecNode` whose `RevealLocator` identifies a concrete payload element (`<hlr>`, `<llr>`, `<test>`, `<module>`, or any element carrying a `<ui:form>` annotation) shall set `TreeItem.command` to `projectXml.editPayload` with the node's locator as argument, so that double-clicking the leaf in VS Code's tree view opens the schema-driven popup edit dialog for that element. The command wiring shall be generic — derived from the hint registry — so new payload kinds surface as double-clickable leaves with no extension code change.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PSP-08">
+        <text><![CDATA[The Project Spec tree view title bar shall contribute a dropdown menu (via `contributes.menus["view/title"]`) exposing, in order: Refresh, Run Linter, Render All Documents, Resolve Merge Conflicts, and Initialize Project.xml. The first three shall appear in a single group (`1_actions`), and the last two in a second group (`2_project`) separated by a visual divider. Each entry shall set `shortTitle` on its command definition to display the exact label listed above. The Refresh command shall additionally remain as a clickable icon button in the `navigation` group so the tree toolbar keeps its quick-access refresh affordance.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
         </traces>
       </llr>
     </function>
@@ -3440,6 +3480,36 @@ contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
           <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
         </traces>
       </llr>
+
+      <llr id="LLR-FRM-08">
+        <text><![CDATA[When the form panel opens in edit mode, `FormPanelProvider.open` shall compute an inline coverage summary from the current `parse_to_json` result and include it in the `init` message. For HLRs the summary shall list downstream LLRs and direct tests; for LLRs it shall list upstream HLRs and verifying tests; for tests it shall list upstream HLRs and LLRs; for SDD modules it shall list HLRs that trace to the module's path. Each related-item entry shall be a clickable link that posts an `openForm` message with the target's locator so the extension host opens that item's edit form via `resolveFormParams`. Test entries in the HLR and LLR coverage sections shall include the test's parent file path (from `ParsedTest.file`) as a clickable sublabel that posts an `openFile` message so clicking it opens the test source file in the editor; the test's own coverage summary shall include the file path when available. Coverage computation shall reuse `buildCoverageIndex` from `treeView/coverageTooltips.ts` and shall be best-effort — a failure shall not prevent the form from opening.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+          <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-09">
+        <text><![CDATA[When the form panel opens in edit mode for an HLR, LLR, or Test, the `formData` passed to the webview shall include a `traces` array populated from the element's parsed `<traces>` block so existing trace rows appear pre-filled and editable. The RJSF `Form` component shall receive a `translateString` callback that maps `TranslatableString.AddItemButton` to `"Add Trace"` so the array-add button displays clear labelling; all other translatable strings shall fall through to the RJSF default.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-10">
+        <text><![CDATA[`snapshotRefIds()` shall collect SDD section references by scanning `parsed.flat_hlrs` traces where `trace.target === 'SDD'`, building a sorted set of unique ref values (e.g. `"2.2"`, `"3"`, `"8"`), and passing them as `out.SDD` alongside the existing HLR and LLR id lists. This populates the `ref` dropdown in the HLR trace-editing form so users can select SDD section targets without manual entry.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-FRM-11">
+        <text><![CDATA[`resolveFormParams(parsed, locator)` shall walk the nested project structure (`hlrs`, `llrs`, `tests`, `sdd`) to resolve a `{tag, value}` coverage locator into an `OpenFormParams` object containing the `type`, `basePath`, and pre-populated `initial` data. Supported tags are `hlr`, `llr`, `test`, and `module`; unrecognised tags or missing items shall return `undefined`. The extension host's `openForm` message handler shall call `resolveFormParams` and open a new form panel for the resolved item so coverage-hint clicks navigate directly to the target's edit form.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+          <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
+        </traces>
+      </llr>
     </function>
 
     <function number="24"
@@ -3736,13 +3806,16 @@ breakdown (HLR-042). The status bar shall re-render when
 
       <llr id="LLR-PKG-09">
         <text><![CDATA[A `.github/workflows/publish-vsix.yml` workflow shall trigger
-on tag pushes matching `vscode-v*`, install Node 20 LTS and
-Python 3.12, run `npm ci && npm run prepackage && npm run
-build && npm run compile && npm run test:unit`, then run
-`npx @vscode/vsce package` and upload the resulting `.vsix`
-as a build artifact. A final `npx @vscode/vsce publish` step
+on GitHub Release creation (`release: types: [created]`),
+install Node 20 LTS and Python 3.12, run
+`npm ci && npm run prepackage && npm run build && npm run
+compile && npm run test:unit`, stamp the `package.json`
+version from the release tag (`npm version "${TAG#v}"
+--no-git-tag-version`), then run `npx @vscode/vsce package`
+and attach the resulting `.vsix` to the GitHub Release via
+`gh release upload`. A final `npx @vscode/vsce publish` step
 shall run only when a `VSCE_PAT` repository secret is
-defined; in its absence the workflow stops at the artifact
+defined; in its absence the workflow stops at the asset
 upload so the maintainer remains the explicit gate on
 Marketplace publication.]]></text>
         <traces>
@@ -3766,6 +3839,19 @@ PNG/GIF assets — the README documents the gap so a future
 release step can populate them before `vsce publish`.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-028" name="Guided Authoring Walkthrough"/>
+          <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
+        </traces>
+      </llr>
+
+      <llr id="LLR-PKG-11">
+        <text><![CDATA[`scripts/prepackage.js` shall copy the repository-root
+`images/screenshots/` directory into `dist/images/screenshots/`
+so that the User Manual's relative `../images/screenshots/`
+paths resolve correctly when the manual is served from
+`dist/python/User_Manual.md` inside the packaged `.vsix`.
+The copy shall be skipped silently when the source directory
+does not exist.]]></text>
+        <traces>
           <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
         </traces>
       </llr>
@@ -5152,8 +5238,8 @@ and shall not block the resolution flow.]]></text>
       </test>
     </file>
 
-    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="12">
-      <header><![CDATA[Phase 3 tests for the pure `buildOperations` helper exported from FormPanelProvider. Pins the JSON Patch shape the form panel posts to the sidecar without needing the VS Code webview API.]]></header>
+    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="25">
+      <header><![CDATA[Phase 3 tests for the pure `buildOperations` helper exported from FormPanelProvider, the `computeCoverage` inline summary, `resolveFormParams` coverage-link navigation, plus `package.json` contribution-point assertions. Pins the JSON Patch shape the form panel posts to the sidecar without needing the VS Code webview API.]]></header>
 
       <test name="emits a single add op with @attr keys when in add mode">
         <purpose><![CDATA[Pins LLR-FRM-03: in add mode the helper emits exactly one `add` op whose value uses the `@attr` / bare-key convention apply_edit understands.]]></purpose>
@@ -5240,6 +5326,100 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Pins LLR-BOOT-04: each `completionEvents: ['onCommand:projectXml.X']` entry refers to a command that is also declared under `contributes.commands`, so VS Code can mark the step done when the command runs.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-BOOT-04"/>
+        </traces>
+      </test>
+
+      <test name="computeCoverage returns downstream LLRs and tests for an HLR">
+        <purpose><![CDATA[Pins LLR-FRM-08: when editing an HLR, `computeCoverage` produces a CoverageInfo with sections for downstream LLRs and direct tests, each test entry carrying a sublabel with the parent file path and a locator so the webview can post `openForm` messages.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-08"/>
+        </traces>
+      </test>
+
+      <test name="computeCoverage returns upstream HLRs and tests for an LLR">
+        <purpose><![CDATA[Pins LLR-FRM-08: when editing an LLR, `computeCoverage` produces upstream HLR links (with sublabels) and verifying test links whose sublabel carries the test's parent file path.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-08"/>
+        </traces>
+      </test>
+
+      <test name="computeCoverage returns upstream traces for a test">
+        <purpose><![CDATA[Pins LLR-FRM-08: when editing a test, `computeCoverage` lists both upstream HLRs and upstream LLRs from the test's `<traces>` block and includes the test's file path in the coverage summary.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-08"/>
+        </traces>
+      </test>
+
+      <test name="computeCoverage returns HLRs tracing to an SDD module">
+        <purpose><![CDATA[Pins LLR-FRM-08: when editing an SDD module, `computeCoverage` lists HLRs whose `<traces>` contain `target="SDD" ref="<path>"`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-08"/>
+        </traces>
+      </test>
+
+      <test name="contributes the five expected commands to the tree view title menu">
+        <purpose><![CDATA[Pins LLR-PSP-08: validates that `package.json` declares exactly the five expected commands (refresh, lint, renderAll, resolveMergeConflicts, initProject) in the `view/title` menu contribution for `projectXml.tree`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-08"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="groups actions and project commands into separate menu groups">
+        <purpose><![CDATA[Pins LLR-PSP-08: validates that the `view/title` menu entries are split into `1_actions` (≥3 entries: Refresh, Lint, Render) and `2_project` (≥2 entries: Merge, Init) groups so VS Code renders a visual separator between them.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-08"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="keeps refresh in the navigation group as an icon button">
+        <purpose><![CDATA[Pins LLR-PSP-08: validates that Refresh also appears in the `navigation` group so it is rendered as a visible icon button in the view title bar, in addition to appearing in the dropdown.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-08"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="resolves an HLR locator to form params with correct basePath">
+        <purpose><![CDATA[Pins LLR-FRM-11: `resolveFormParams` maps `{tag:'hlr', value:'HLR-001'}` to an `OpenFormParams` with `type='Hlr'` and `basePath='/hlrs/section[number=N]/hlr[id=HLR-001]'`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+        </traces>
+      </test>
+
+      <test name="resolves an LLR locator to form params with correct basePath">
+        <purpose><![CDATA[Pins LLR-FRM-11: `resolveFormParams` maps an LLR locator to a form params object whose `basePath` addresses the correct `<llr>` inside its parent `<function>`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+        </traces>
+      </test>
+
+      <test name="resolves a test locator to form params with correct basePath">
+        <purpose><![CDATA[Pins LLR-FRM-11: `resolveFormParams` maps a test locator (with `attr:'name'`) to a form params whose `basePath` includes both the parent `<file>` path and the `<test>` name predicate.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+        </traces>
+      </test>
+
+      <test name="resolves an SDD module locator to form params">
+        <purpose><![CDATA[Pins LLR-FRM-11: `resolveFormParams` maps `{tag:'module', value:'3.1'}` to an `OpenFormParams` with `type='SddModule'` and `basePath='/sdd/modules/module[path=3.1]'`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined for a non-existent item">
+        <purpose><![CDATA[Pins LLR-FRM-11: when the locator targets an id that does not exist in the parsed project, `resolveFormParams` returns `undefined` rather than throwing.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+        </traces>
+      </test>
+
+      <test name="returns undefined for an unknown tag">
+        <purpose><![CDATA[Pins LLR-FRM-11: when the locator's `tag` is not one of the recognised item types (`hlr`, `llr`, `test`, `module`), `resolveFormParams` returns `undefined`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
         </traces>
       </test>
     </file>
@@ -5378,7 +5558,7 @@ and shall not block the resolution flow.]]></text>
       </test>
     </file>
 
-    <file path="test/test_prepackage.py" role="unit" count="4">
+    <file path="test/test_prepackage.py" role="unit" count="5">
       <test name="test_prepackage_writes_required_python_files">
         <purpose><![CDATA[Pins LLR-PKG-01: every Python file the sidecar spawns (`project_io.py`, `render_doc.py`, `lint_project.py`, `project_edit.py`, `project_merge.py`, `project.xsd`) lands in `tools/vscode-project-xml/dist/python/` after `npm run prepackage`.]]></purpose>
         <traces>
@@ -5407,6 +5587,14 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Pins the LLR-PKG-01 final clause: `tools/vscode-project-xml/.vscodeignore` does not list `dist/python/**` (or any glob that would match it), so the bundled sidecar tree survives `vsce package`.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PKG-01"/>
+          <trace target="HLR" ref="HLR-060"/>
+        </traces>
+      </test>
+
+      <test name="test_prepackage_bundles_screenshots">
+        <purpose><![CDATA[Pins LLR-PKG-11: after `npm run prepackage`, the `dist/images/screenshots/` directory exists and contains at least one `.png` file, so the User Manual's relative `../images/screenshots/` paths resolve inside the packaged `.vsix`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PKG-11"/>
           <trace target="HLR" ref="HLR-060"/>
         </traces>
       </test>
@@ -5574,6 +5762,167 @@ and shall not block the resolution flow.]]></text>
         <traces>
           <trace target="LLR" ref="LLR-PKG-10"/>
           <trace target="HLR" ref="HLR-042"/>
+        </traces>
+      </test>
+    </file>
+
+    <file path="tools/vscode-project-xml/test/ui/treeView.test.ts" role="ui-ts" count="14">
+      <header><![CDATA[ExTester-based UI integration tests for the Project Spec tree view. Launches a real VS Code instance with Selenium WebDriver and exercises tree population, leaf click-to-edit, right-click context menus, group-node context menus, and the view title dropdown menu against a fixture `doc/Project.xml`.]]></header>
+
+      <test name="shows the HLRs group with at least one child">
+        <purpose><![CDATA[Verifies the HLRs top-level tree group appears and contains at least one leaf when a valid `doc/Project.xml` is open.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="shows the LLRs group with at least one child">
+        <purpose><![CDATA[Verifies the LLRs top-level tree group appears and contains at least one leaf.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="shows the Tests group with at least one child">
+        <purpose><![CDATA[Verifies the Tests top-level tree group appears and contains at least one leaf.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="right-click on HLR leaf shows Reveal in Project.xml">
+        <purpose><![CDATA[Verifies that right-clicking an HLR leaf in the tree shows "Reveal in Project.xml" in the context menu, confirming the `revealable` contextValue token is set and the `view/item/context` menu contribution is wired.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-03"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="right-click on HLR leaf shows Edit in Form">
+        <purpose><![CDATA[Verifies that right-clicking an HLR leaf in the tree shows "Edit in Form…" in the context menu, confirming the `editable` contextValue token is set by `markEditable` and the `view/item/context` menu entry for `editPayload` is wired.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-07"/>
+          <trace target="HLR" ref="HLR-022"/>
+          <trace target="HLR" ref="HLR-026"/>
+        </traces>
+      </test>
+
+      <test name="clicking an HLR leaf opens the edit form panel">
+        <purpose><![CDATA[Verifies that clicking (single-click via `TreeItem.command`) an HLR leaf opens the schema-driven popup edit dialog as a webview panel tab, confirming `markEditable` sets `TreeItem.command` to `projectXml.editPayload` and the form panel renders.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-07"/>
+          <trace target="LLR" ref="LLR-FRM-03"/>
+          <trace target="HLR" ref="HLR-022"/>
+          <trace target="HLR" ref="HLR-026"/>
+        </traces>
+      </test>
+
+      <test name="shows the SDD group with at least one child">
+        <purpose><![CDATA[Verifies the SDD top-level tree group appears and contains at least one module leaf, confirming that `buildSddNode` populates SDD modules from `parse_to_json`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="tree root groups display accurate item counts">
+        <purpose><![CDATA[Verifies that every top-level tree group (HLRs, LLRs, Tests, SDD) carries an accurate parenthetical count badge matching the fixture data.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="right-click on LLR leaf shows both context commands">
+        <purpose><![CDATA[Verifies that right-clicking an LLR leaf in the tree shows both "Reveal in Project.xml" and "Edit in Form…" context menu items, confirming the `revealable` and `editable` contextValue tokens are set on LLR leaves.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-03"/>
+          <trace target="LLR" ref="LLR-PSP-07"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="clicking LLR leaf opens the edit form panel">
+        <purpose><![CDATA[Verifies that clicking an LLR leaf opens the schema-driven popup edit dialog, confirming the form panel is generic across payload types (LLR-FRM-05) and `TreeItem.command` is wired on LLR leaves.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-07"/>
+          <trace target="LLR" ref="LLR-FRM-05"/>
+          <trace target="HLR" ref="HLR-022"/>
+          <trace target="HLR" ref="HLR-026"/>
+        </traces>
+      </test>
+
+      <test name="right-click on HLRs group shows Add High-Level Requirement">
+        <purpose><![CDATA[Verifies that right-clicking the HLRs group node in the tree shows "Add High-Level Requirement…" in the context menu, confirming the `hlrsGroup` contextValue and `view/item/context` wiring.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="right-click on LLRs group shows Add Low-Level Requirement">
+        <purpose><![CDATA[Verifies that right-clicking the LLRs group node shows "Add Low-Level Requirement…" in the context menu, confirming the `llrsGroup` contextValue and `view/item/context` wiring.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="right-click on Tests group shows Add Test">
+        <purpose><![CDATA[Verifies that right-clicking the Tests group node shows "Add Test…" in the context menu, confirming the `testsGroup` contextValue and `view/item/context` wiring.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+      <test name="right-click on SDD group shows Add SDD Module">
+        <purpose><![CDATA[Verifies that right-clicking the SDD group node shows "Add SDD Module…" in the context menu, confirming the `sddGroup` contextValue and `view/item/context` wiring.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+
+    </file>
+
+    <file path="tools/vscode-project-xml/test/ui/editor.test.ts" role="ui-ts" count="4">
+      <header><![CDATA[ExTester-based UI integration tests for editor-centric features: Reveal in XML, status bar lint summary, Problems panel diagnostics, and code lenses on Project.xml.]]></header>
+
+      <test name="Reveal in XML opens Project.xml with HLR element selected">
+        <purpose><![CDATA[Verifies that "Reveal in Project.xml" from the tree context menu opens `doc/Project.xml` in the editor and selects the targeted HLR element's id attribute value.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RVX-01"/>
+          <trace target="LLR" ref="LLR-RVX-02"/>
+          <trace target="HLR" ref="HLR-024"/>
+        </traces>
+      </test>
+
+      <test name="status bar shows Project Spec lint summary">
+        <purpose><![CDATA[Verifies the extension's status bar item is visible and displays error/warning counts in the format "Project Spec: N errors / M warnings".]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PKG-08"/>
+          <trace target="HLR" ref="HLR-023"/>
+        </traces>
+      </test>
+
+      <test name="Problems panel shows lint findings for coverage gaps">
+        <purpose><![CDATA[Verifies that lint diagnostics appear in the VS Code Problems panel. The fixture includes an HLR with no downstream LLR (coverage gap), so the linter should report at least one warning.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-023"/>
+        </traces>
+      </test>
+
+      <test name="code lenses appear on HLR elements in Project.xml">
+        <purpose><![CDATA[Verifies that coverage code lenses appear on HLR elements when `doc/Project.xml` is opened in the editor, and at least one lens contains coverage information (LLR/test counts).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-01"/>
+          <trace target="LLR" ref="LLR-CCL-02"/>
+          <trace target="HLR" ref="HLR-022"/>
         </traces>
       </test>
     </file>
