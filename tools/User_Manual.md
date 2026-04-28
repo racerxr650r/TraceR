@@ -129,15 +129,19 @@ python3 tools/lint_project.py        # checks for problems
 
 ### Editing an existing project
 
-Open the folder in VS Code. The **Project Spec** icon appears in
+Open the folder in VS Code. The **TraceR** icon appears in
 the activity bar (the strip on the far left). Click it to open the
-Project Spec view. From there you can:
+tree view. From there you can:
 
-* **Click any item** in the tree to jump straight to it in
-  `Project.xml`.
+* **Click any item** in the tree to open the edit form for that
+  item, with its current values pre-populated.
 * **Right-click a category** (HLRs, LLRs, Tests, …) and pick
   **Add HLR**, **Add LLR**, **Add Test**, etc. A form appears;
   fill it in and submit.
+* **Right-click any item** and pick **Reveal in Project.xml** to
+  jump to its source, or **Edit in Form…** to open the form.
+* Use the **dropdown menu** (⋯ in the view title bar) to Refresh,
+  Run Linter, Render All Documents, or Resolve Merge Conflicts.
 * **Right-click any item** and use the AI menu (when AI is
   available) to draft, expand, review, or fix coverage gaps.
 * **Save** the file. TraceR re-checks for problems and updates the
@@ -168,9 +172,10 @@ be overwritten — change `Project.xml` instead.
 When the extension is active, you get the following surfaces. They
 all stay in sync with `doc/Project.xml`.
 
-### The Project Spec tree
+### The TraceR tree
 
-The activity-bar tree groups your project by category:
+The **TraceR** icon in the activity bar opens a structural tree view
+of your project, grouped by category:
 
 * **HLRs** — High-Level Requirements, grouped by section.
 * **LLRs** — Low-Level Requirements, grouped by function or module.
@@ -178,13 +183,60 @@ The activity-bar tree groups your project by category:
 * **SDD** — design document modules.
 * **STP** — Software Test Plan fixtures.
 
-Each item shows its ID and name. A small badge appears on items
-with problems:
+Each group shows a parenthetical count (e.g. "HLRs (12)") and each
+item shows its ID and name. A small badge appears on items with
+problems:
 
 * ❌ — at least one error refers to this item.
 * ⚠ — at least one warning refers to this item.
 
-Click any item to reveal it in `Project.xml`.
+![Tree view with all groups collapsed](../images/screenshots/tree-view-collapsed.png)
+
+Click any group to expand it and reveal its children:
+
+![Tree view with HLRs group expanded](../images/screenshots/tree-view-expanded.png)
+
+#### Dropdown menu
+
+The view title bar includes a **Refresh** icon button and a **⋯**
+overflow menu with five commands:
+
+| Command | What it does |
+|---------|-------------|
+| **Refresh** | Reload the tree from `Project.xml` |
+| **Run Linter** | Lint and update diagnostics |
+| **Render All Documents** | Regenerate all five spec documents to disk |
+| **Resolve Merge Conflicts** | Launch the structural merge resolver |
+| **Initialize Project.xml** | Bootstrap a new project from scratch |
+
+These are the same commands available in the Command Palette under
+the **Project Spec:** prefix, but accessible directly from the tree
+view without leaving the side panel.
+
+#### Context menus — leaf items
+
+Right-clicking any leaf item (an HLR, LLR, test, or module) shows
+context-sensitive commands:
+
+* **Project Spec: Reveal in Project.xml** — opens `Project.xml` in the
+  editor and selects the element.
+* **Project Spec: Edit in Form…** — opens the schema-driven edit form
+  (see [Forms](#forms) below).
+
+![Right-click context menu on an HLR leaf](../images/screenshots/context-menu-leaf.png)
+
+#### Context menus — group nodes
+
+Right-clicking a group node (HLRs, LLRs, Tests, SDD) shows an
+**Add…** command that opens a pre-populated form for adding a new item
+to that category:
+
+![Right-click context menu on the HLRs group](../images/screenshots/context-menu-group.png)
+
+Click any item to open it in the edit form, or right-click it and pick
+**Reveal in Project.xml** to jump to its XML source:
+
+![Project.xml with HLR element selected after Reveal](../images/screenshots/reveal-in-xml.png)
 
 ### Problems and the status bar
 
@@ -200,8 +252,20 @@ exact line. Common problems include:
 * A document declared in the metadata but missing its template
   file.
 
-The status bar at the bottom of the window shows a live count of
-errors and warnings. Click it to jump to the Problems panel.
+The status bar at the bottom of the window shows a live **TraceR**
+lint summary (e.g. "TraceR: 0 errors / 3 warnings"). The status bar
+item is colour-coded:
+
+* **Red background** with the ✖ icon when there are errors.
+* **Yellow background** with the ⚠ icon when there are warnings
+  but no errors.
+* **Green ✓** when everything is clean.
+
+Click the status bar item to jump to the Problems panel.
+
+![Status bar showing TraceR lint summary](../images/screenshots/status-bar.png)
+
+![Problems panel with lint diagnostics](../images/screenshots/problems-panel.png)
 
 ### Quick Fixes
 
@@ -221,6 +285,8 @@ With `doc/Project.xml` open in the editor, look just above each
 `<hlr>`, `<llr>`, and `<test>` element. TraceR draws a row of small
 clickable hints — things like *"2 LLRs / 4 tests"* over a
 high-level requirement, or *"Traced from HLR-001"* over a test.
+
+![Coverage code lenses on HLR elements](../images/screenshots/code-lenses.png)
 
 To use them:
 
@@ -331,13 +397,15 @@ Preferences → Keyboard Shortcuts** (search for
 
 ### Forms
 
-Forms are the easiest way to add new items. Each form is generated
-from the schema, so the fields you see always match what the
-project file expects.
+Forms are the easiest way to add or edit items. Each form is
+generated from the schema, so the fields you see always match what
+the project file expects.
+
+![HLR edit form with coverage hints](../images/screenshots/edit-form.png)
 
 **To add a new item:**
 
-1.  Open the **Project Spec** view in the activity bar.
+1.  Open the **TraceR** view in the activity bar.
 2.  Right-click the appropriate category in the tree and pick the
     matching **Add…** command. The available commands are:
 
@@ -351,7 +419,8 @@ project file expects.
     | a test file       | **Add Test…**          | A new test inside that file           |
 
     The same commands are also available from the Command Palette
-    under their **Project Spec:** prefix.
+    under their **Project Spec:** prefix, or via the tree view's
+    dropdown menu.
 
 3.  A form panel opens beside the editor. The first ID field is
     pre-filled with the next free ID (e.g. `HLR-007`,
@@ -372,11 +441,24 @@ adding a new item only works against a clean copy on disk.
 
 **To edit an existing item with a form:**
 
-1.  Right-click the item in the tree.
-2.  Pick **Edit in Form…**.
-3.  The same form opens, pre-populated with the current values.
-    Submit to apply the change (validated and lint-checked just
-    like an add).
+1.  Click the item in the tree (single-click), or right-click it
+    and pick **Edit in Form…**.
+2.  The form opens, pre-populated with the current values.
+
+The edit form includes these additional features:
+
+* **Traces** — the item's existing `<traces>` are pre-populated in
+  the form as editable rows. Each row shows the target type (HLR,
+  LLR, SDD) and ref. Click the **Add Trace** button at the bottom
+  of the traces section to add a new trace reference.
+* **Coverage hints** — below the form fields, a coverage sidebar
+  shows related items (e.g. downstream LLRs and tests for an HLR,
+  or upstream HLRs for an LLR). Test entries include a sublabel
+  showing the parent test file path. Click any coverage item to
+  reveal it in `Project.xml`.
+
+Submit to apply the change (validated and lint-checked just like
+an add).
 
 ### AI assistance (optional)
 
@@ -484,7 +566,7 @@ already set up.
     code .
     ```
 
-    The **Project Spec** icon appears in the activity bar.
+    The **TraceR** icon appears in the activity bar.
 
 2.  **Add a new requirement.** Right-click **HLRs** in the tree →
     **Add HLR**. The form pre-fills the next free ID. Fill in the
@@ -524,3 +606,61 @@ already set up.
 That's the loop. For deeper details — the schema, the linter's
 problem codes, how to add a new kind of generated document —
 see the [Developer's Guide](Developers_Guide.md).
+
+## Appendix A: AI Skill Reference (SKILL.md)
+
+When you initialise a new project with **Project Spec: Initialise
+Project.xml…**, the extension automatically copies a
+**SKILL.md** file into `.github/skills/tracer/SKILL.md` in your
+workspace. This file is an AI-agent skill definition — AI coding
+assistants (such as GitHub Copilot) that support skill discovery
+will read it automatically and learn how to work with your
+TraceR project.
+
+### What the skill file contains
+
+The SKILL.md teaches AI agents:
+
+* **What TraceR is** and how the traceability chain works
+  (SDD → HLR → LLR → Test).
+* **Key files** and their purposes (`doc/Project.xml`,
+  `tools/render_doc.py`, `tools/lint_project.py`, etc.).
+* **Hard rules** the agent must follow — never edit generated `.md`
+  files, IDs are stable contracts, always use `<![CDATA[…]]>` for
+  markdown content, render and lint after every edit.
+* **Decision flow** — a lookup table mapping common tasks ("Add an
+  HLR", "Fix a coverage gap", "Update a spec section") to the
+  correct sequence of actions.
+* **CLI commands** — the `make -C tools` targets for rendering,
+  linting, testing, and building.
+* **VS Code extension features** — tree view, form panels, context
+  menus, dropdown menu, code lenses, and the `@projectspec` AI
+  chat participant.
+* **Common pitfalls** — the same mistakes humans make (editing
+  generated files, forgetting traces, not rendering after edits),
+  written so the AI agent avoids them too.
+
+### When to use it
+
+You don't need to do anything — the skill file works passively. As
+long as it's at `.github/skills/tracer/SKILL.md`, any AI agent
+that supports VS Code skills will discover it and apply the
+guidance when you ask it to work on your TraceR project.
+
+If you're using a project that was created before this feature
+existed, you can copy the file manually from the extension:
+
+```
+~/.vscode/extensions/tracer.vscode-project-xml-<version>/
+    media/skills/tracer/SKILL.md
+```
+
+…into your workspace at `.github/skills/tracer/SKILL.md`.
+
+### Customising the skill
+
+The SKILL.md is a plain markdown file with a YAML frontmatter
+header. You can edit it freely — add project-specific conventions,
+rename sections, or extend the decision flow with entries specific
+to your domain. The extension will not overwrite it if it already
+exists.

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal fixture for UI integration tests (vscode-extension-tester).
+  Contains one HLR, one LLR, one test, and one SDD module so the
+  Project Spec tree view is populated and leaf-click / context-menu
+  interactions can be exercised.
+-->
+<project name="UI Test Fixture" short_name="uitf" schema_version="1.5"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../../../../../../tools/project.xsd">
+  <metadata>
+    <document id="SDD"          title="Software Design Document"     source="doc/SDD.md"
+              version="0.1" date="2026-04-27" author="UI Tests"
+              template="tools/templates/SDD.md.j2"          output="doc/SDD.md"/>
+    <document id="HLRs"         title="High-Level Requirements"      source="doc/HLRs.md"
+              version="0.1" date="2026-04-27" author="UI Tests"
+              template="tools/templates/HLRs.md.j2"         output="doc/HLRs.md"/>
+    <document id="LLRs"         title="Low-Level Requirements"       source="doc/LLRs.md"
+              version="0.1" date="2026-04-27" author="UI Tests"
+              template="tools/templates/LLRs.md.j2"         output="doc/LLRs.md"/>
+    <document id="STP"          title="Software Test Plan"           source="doc/STP.md"
+              version="0.1" date="2026-04-27" author="UI Tests"
+              template="tools/templates/STP.md.j2"          output="doc/STP.md"/>
+    <document id="Traceability" title="Traceability Matrix"          source="doc/Traceability.md"
+              version="0.1" date="2026-04-27" author="UI Tests"
+              template="tools/templates/Traceability.md.j2" output="doc/Traceability.md"/>
+    <counts>
+      <count name="hlrs"       value="2"/>
+      <count name="llrs"       value="1"/>
+      <count name="tests"      value="1"/>
+      <count name="test_files" value="1"/>
+    </counts>
+  </metadata>
+
+  <sdd>
+    <modules>
+      <module path="src/extension.ts" title="Extension entry point">
+        <purpose>Activates the extension and wires commands.</purpose>
+      </module>
+    </modules>
+  </sdd>
+
+  <stp>
+  </stp>
+
+  <hlrs>
+    <section number="1" title="UI Test Section">
+      <hlr id="HLR-T01" name="Sample HLR">
+        <text>A sample high-level requirement for UI testing.</text>
+        <traces>
+          <trace target="SDD" ref="src/extension.ts"/>
+        </traces>
+      </hlr>
+      <hlr id="HLR-T02">
+        <text>An uncovered HLR with no downstream LLR (exercises coverage-gap detection).</text>
+        <traces>
+          <trace target="SDD" ref="src/extension.ts"/>
+        </traces>
+      </hlr>
+    </section>
+  </hlrs>
+
+  <llrs>
+    <function number="1" title="UI Test Function" name="UI Test Function">
+      <llr id="LLR-UT-01">
+        <text>A sample low-level requirement for UI testing.</text>
+        <traces>
+          <trace target="HLR" ref="HLR-T01" name="Sample HLR"/>
+        </traces>
+      </llr>
+    </function>
+  </llrs>
+
+  <tests>
+    <file path="test/ui/treeView.test.ts" role="ui-ts" count="1">
+      <header><![CDATA[ExTester-based UI tests for the Project Spec tree view.]]></header>
+      <test name="test_tree_shows_hlr_leaf">
+        <purpose>Verifies that the HLR leaf appears in the tree.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-UT-01"/>
+        </traces>
+      </test>
+    </file>
+  </tests>
+</project>

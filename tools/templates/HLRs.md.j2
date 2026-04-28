@@ -22,13 +22,13 @@
               .traces        — list of <trace target ref/> SimpleNamespaces
 
   Trace rendering: each <trace target="SDD" ref="X.Y"/> renders as
-  "[SDD.md §X.Y](SDD.md)". The XML schema does not currently carry
+  "[SDD Section X.Y](SDD.md)". The XML schema does not currently carry
   GitHub anchors or section titles, so the link target is the bare
   document. Extend the schema if richer trace links are needed.
 -#}
 {%- macro render_trace(tr) -%}
 {%- if tr.target == "SDD" -%}
-[SDD.md §{{ tr.ref }}](SDD.md)
+[SDD Section {{ tr.ref }}](SDD.md)
 {%- elif tr.target == "HLR" -%}
 [{{ tr.ref }}](HLRs.md){% if tr.name %} ({{ tr.name }}){% endif %}
 {%- elif tr.target == "LLR" -%}

@@ -1,0 +1,13 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".",
+        "outDir": "out",
+        "sourceMap": true,
+        "noUnusedLocals": false,
+        "noUnusedParameters": false,
+        "types": ["node", "mocha", "chai"]
+    },
+    "include": ["test/ui/**/*.ts"],
+    "exclude": ["node_modules", "dist", "out"]
+}

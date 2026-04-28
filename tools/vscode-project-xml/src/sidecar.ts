@@ -6,10 +6,12 @@
 
 import * as vscode from 'vscode';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import {
     describeWorkspaceState,
     getConfig,
+    getProjectFolder,
     getProjectIoScript,
     getToolsDir,
 } from './util/paths';
@@ -292,13 +294,51 @@ export class ProjectIoClient implements vscode.Disposable {
             proc.kill();
         }
     }
+
+    /**
+     * Kill the current process (if any) and clear cached errors so
+     * the next request spawns a fresh sidecar. Used when workspace
+     * folders change and the tools dir / interpreter may differ.
+     */
+    restart(): void {
+        this.startError = undefined;
+        const proc = this.proc;
+        this.proc = undefined;
+        this.failAll(new Error('sidecar restarting'));
+        if (proc && !proc.killed) {
+            try {
+                proc.stdin.end();
+            } catch {
+                // ignore
+            }
+            proc.kill();
+        }
+    }
 }
 
 function pickPython(): string {
+    // 1. Explicit VS Code setting (user / workspace).
     const configured = getConfig().get<string>('pythonPath');
     if (configured && configured.trim() !== '') {
         return configured;
     }
+    // 2. Environment variable set by CI / Makefile (ext-test-ui).
+    const envPy = process.env.PROJECT_XML_PYTHON;
+    if (envPy && envPy.trim() !== '') {
+        return envPy;
+    }
+    // 3. Repo venv created by `make bootstrap` — has jinja2, lxml,
+    //    xmlschema pre-installed.
+    const root = getProjectFolder()?.uri.fsPath;
+    if (root) {
+        const venvPy = process.platform === 'win32'
+            ? path.join(root, '.venv', 'Scripts', 'python.exe')
+            : path.join(root, '.venv', 'bin', 'python');
+        if (fs.existsSync(venvPy)) {
+            return venvPy;
+        }
+    }
+    // 4. Bare system fallback.
     return process.platform === 'win32' ? 'python' : 'python3';
 }
 
@@ -576,6 +616,8 @@ export interface ParsedTest {
     purpose?: string;
     traces?: ParsedTrace[];
     ui?: UiHints | null;
+    /** Parent `<file path="...">` — present on `flat_tests` entries. */
+    file?: string;
 }
 
 export interface ParsedTrace {

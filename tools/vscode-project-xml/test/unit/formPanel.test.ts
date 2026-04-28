@@ -272,3 +272,273 @@ describe('package.json walkthrough contribution (Phase 4)', () => {
         }
     });
 });
+
+// ---------- view/title dropdown menu (LLR-PSP-08) ----------
+
+describe('package.json view/title menu contribution (LLR-PSP-08)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const manifest = require('../../package.json');
+    const viewTitle: Array<{ command: string; when: string; group: string }> =
+        manifest.contributes?.menus?.['view/title'] ?? [];
+    const treeEntries = viewTitle.filter(
+        (e) => e.when === 'view == projectXml.tree',
+    );
+
+    it('contributes the five expected commands to the tree view title menu', () => {
+        const commands = treeEntries.map((e) => e.command);
+        for (const cmd of [
+            'projectXml.refresh',
+            'projectXml.lint',
+            'projectXml.renderAll',
+            'projectXml.resolveMergeConflicts',
+            'projectXml.initProject',
+        ]) {
+            assert.ok(
+                commands.includes(cmd),
+                `view/title menu missing command ${cmd}`,
+            );
+        }
+    });
+
+    it('groups actions and project commands into separate menu groups', () => {
+        const actionEntries = treeEntries.filter((e) =>
+            e.group.startsWith('1_actions'),
+        );
+        const projectEntries = treeEntries.filter((e) =>
+            e.group.startsWith('2_project'),
+        );
+        assert.ok(actionEntries.length >= 3, 'expected at least 3 entries in 1_actions group');
+        assert.ok(projectEntries.length >= 2, 'expected at least 2 entries in 2_project group');
+    });
+
+    it('keeps refresh in the navigation group as an icon button', () => {
+        const navEntries = treeEntries.filter(
+            (e) => e.group === 'navigation',
+        );
+        const navCommands = navEntries.map((e) => e.command);
+        assert.ok(
+            navCommands.includes('projectXml.refresh'),
+            'refresh must remain in the navigation group',
+        );
+    });
+});
+
+// ---------- computeCoverage (LLR-FRM-08) ----------
+
+import { computeCoverage } from '../../src/forms/FormPanelProvider';
+import type { ParsedProject } from '../../src/sidecar';
+
+function makeParsed(): ParsedProject {
+    return {
+        flat_hlrs: [
+            {
+                id: 'HLR-001', name: 'First HLR',
+                traces: [{ target: 'SDD', ref: '3.1' }],
+            },
+            {
+                id: 'HLR-002', name: 'Second HLR',
+                traces: [{ target: 'SDD', ref: '3.2' }],
+            },
+        ],
+        flat_llrs: [
+            {
+                id: 'LLR-A-01',
+                traces: [{ target: 'HLR', ref: 'HLR-001' }],
+            },
+        ],
+        flat_tests: [
+            {
+                name: 'test_alpha',
+                file: 'test/test_alpha.py',
+                traces: [
+                    { target: 'HLR', ref: 'HLR-001' },
+                    { target: 'LLR', ref: 'LLR-A-01' },
+                ],
+            },
+        ],
+    };
+}
+
+describe('computeCoverage (LLR-FRM-08 — inline coverage hints)', () => {
+    it('computeCoverage returns downstream LLRs and tests for an HLR', () => {
+        const info = computeCoverage(makeParsed(), 'Hlr', { id: 'HLR-001' });
+        assert.ok(info);
+        assert.ok(info.summary.includes('1 LLR'));
+        assert.ok(info.summary.includes('1 test'));
+        const llrSec = info.sections.find((s) => s.heading === 'Downstream LLRs');
+        assert.ok(llrSec);
+        assert.equal(llrSec.items[0].label, 'LLR-A-01');
+        assert.equal(llrSec.items[0].tag, 'llr');
+        const testSec = info.sections.find((s) => s.heading === 'Direct tests');
+        assert.ok(testSec);
+        assert.equal(testSec.items[0].label, 'test_alpha');
+        assert.equal(testSec.items[0].sublabel, 'test/test_alpha.py');
+    });
+
+    it('computeCoverage returns upstream HLRs and tests for an LLR', () => {
+        const info = computeCoverage(makeParsed(), 'Llr', { id: 'LLR-A-01' });
+        assert.ok(info);
+        assert.ok(info.summary.includes('1 HLR trace'));
+        assert.ok(info.summary.includes('1 test'));
+        const hlrSec = info.sections.find((s) => s.heading === 'Upstream HLRs');
+        assert.ok(hlrSec);
+        assert.equal(hlrSec.items[0].label, 'HLR-001');
+        assert.equal(hlrSec.items[0].sublabel, 'First HLR');
+        const testSec = info.sections.find((s) => s.heading === 'Tests');
+        assert.ok(testSec);
+        assert.equal(testSec.items[0].sublabel, 'test/test_alpha.py');
+    });
+
+    it('computeCoverage returns upstream traces for a test', () => {
+        const info = computeCoverage(makeParsed(), 'Test', { name: 'test_alpha' });
+        assert.ok(info);
+        assert.ok(info.summary.includes('1 HLR'));
+        assert.ok(info.summary.includes('1 LLR'));
+        const hlrSec = info.sections.find((s) => s.heading === 'Upstream HLRs');
+        assert.ok(hlrSec);
+        assert.equal(hlrSec.items[0].label, 'HLR-001');
+        const llrSec = info.sections.find((s) => s.heading === 'Upstream LLRs');
+        assert.ok(llrSec);
+        assert.equal(llrSec.items[0].label, 'LLR-A-01');
+        // Source file section carries the parent file path as a clickable link
+        const fileSec = info.sections.find((s) => s.heading === 'Source file');
+        assert.ok(fileSec, 'expected a Source file section');
+        assert.equal(fileSec.items[0].label, 'test/test_alpha.py');
+        assert.equal(fileSec.items[0].tag, 'file');
+        assert.equal(fileSec.items[0].value, 'test/test_alpha.py');
+    });
+
+    it('computeCoverage returns HLRs tracing to an SDD module', () => {
+        const info = computeCoverage(makeParsed(), 'SddModule', { path: '3.1' });
+        assert.ok(info);
+        assert.ok(info.summary.includes('1 HLR'));
+        const sec = info.sections.find((s) => s.heading === 'HLRs tracing to this module');
+        assert.ok(sec);
+        assert.equal(sec.items[0].label, 'HLR-001');
+        assert.equal(sec.items[0].sublabel, 'First HLR');
+    });
+
+    it('computeCoverage propagates parent file path when flat_tests is absent', () => {
+        // When the sidecar omits flat_tests, the coverage index falls
+        // back to collectTests() which walks project.tests.  The file
+        // path must be copied from the parent <file> entry onto each
+        // test so that coverage sublabels render the clickable link.
+        const nested: ParsedProject = {
+            flat_hlrs: [
+                { id: 'HLR-001', name: 'H1', traces: [{ target: 'SDD', ref: '3' }] },
+            ],
+            flat_llrs: [],
+            // NO flat_tests — forces the nested fallback path
+            tests: [
+                {
+                    path: 'test/test_nested.py',
+                    tests: [
+                        { name: 'test_n1', traces: [{ target: 'HLR', ref: 'HLR-001' }] },
+                    ],
+                },
+            ],
+        } as unknown as ParsedProject;
+        const info = computeCoverage(nested, 'Hlr', { id: 'HLR-001' });
+        assert.ok(info);
+        const testSec = info.sections.find((s) => s.heading === 'Direct tests');
+        assert.ok(testSec, 'expected a Direct tests section');
+        assert.equal(testSec.items[0].sublabel, 'test/test_nested.py',
+            'sublabel should carry the parent file path');
+        assert.equal(testSec.items[0].tag, 'test');
+    });
+});
+
+// ---------- resolveFormParams (coverage link → form navigation) ----------
+
+import { resolveFormParams } from '../../src/forms/FormPanelProvider';
+
+function makeNestedParsed(): ParsedProject {
+    return {
+        hlrs: [
+            {
+                number: '1', title: 'Section One',
+                hlrs: [
+                    { id: 'HLR-001', name: 'First HLR', traces: [] },
+                ],
+            },
+        ],
+        llrs: [
+            {
+                name: 'alpha', number: '1', title: 'Alpha',
+                llrs: [
+                    { id: 'LLR-A-01', traces: [] },
+                ],
+            },
+        ],
+        tests: [
+            {
+                path: 'test/test_alpha.py',
+                tests: [
+                    { name: 'test_alpha', purpose: 'test something', traces: [] },
+                ],
+            },
+        ],
+        sdd: {
+            modules: [{ path: '3.1', title: 'Module One' }],
+        },
+    } as unknown as ParsedProject;
+}
+
+describe('resolveFormParams (coverage link → open form)', () => {
+    it('resolves an HLR locator to form params with correct basePath', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'hlr', value: 'HLR-001' },
+        );
+        assert.ok(result);
+        assert.equal(result.type, 'Hlr');
+        assert.equal(result.basePath, '/hlrs/section[number=1]/hlr[id=HLR-001]');
+        assert.equal((result.initial as { id: string }).id, 'HLR-001');
+    });
+
+    it('resolves an LLR locator to form params with correct basePath', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'llr', value: 'LLR-A-01' },
+        );
+        assert.ok(result);
+        assert.equal(result.type, 'Llr');
+        assert.equal(result.basePath, '/llrs/function[number=1]/llr[id=LLR-A-01]');
+    });
+
+    it('resolves a test locator to form params with correct basePath', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'test', attr: 'name', value: 'test_alpha' },
+        );
+        assert.ok(result);
+        assert.equal(result.type, 'Test');
+        assert.equal(result.basePath, '/tests/file[path=test/test_alpha.py]/test[name=test_alpha]');
+    });
+
+    it('resolves an SDD module locator to form params', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'module', value: '3.1' },
+        );
+        assert.ok(result);
+        assert.equal(result.type, 'SddModule');
+        assert.equal(result.basePath, '/sdd/modules/module[path=3.1]');
+    });
+
+    it('returns undefined for a non-existent item', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'hlr', value: 'HLR-999' },
+        );
+        assert.equal(result, undefined);
+    });
+
+    it('returns undefined for an unknown tag', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'unknown', value: 'X' },
+        );
+        assert.equal(result, undefined);
+    });
+});

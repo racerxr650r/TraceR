@@ -27,7 +27,7 @@ export class LintStatusBar implements vscode.Disposable {
             50,
         );
         this.item.command = COMMAND_SHOW_PROBLEMS;
-        this.item.name = 'Project Spec';
+        this.item.name = 'TraceR';
 
         this.disposables.push(
             vscode.commands.registerCommand(COMMAND_SHOW_PROBLEMS, () =>
@@ -76,21 +76,28 @@ export class LintStatusBar implements vscode.Disposable {
             this.item.backgroundColor = new vscode.ThemeColor(
                 'statusBarItem.errorBackground',
             );
+            this.item.color = new vscode.ThemeColor(
+                'statusBarItem.errorForeground',
+            );
         } else if (warnings > 0) {
             icon = '$(warning)';
             this.item.backgroundColor = new vscode.ThemeColor(
                 'statusBarItem.warningBackground',
             );
+            this.item.color = new vscode.ThemeColor(
+                'statusBarItem.warningForeground',
+            );
         } else {
             icon = '$(check)';
             this.item.backgroundColor = undefined;
+            this.item.color = undefined;
         }
 
-        this.item.text = `${icon} Project Spec: ${errors} ${plural(errors, 'error')} / ${warnings} ${plural(warnings, 'warning')}`;
+        this.item.text = `${icon} TraceR: ${errors} ${plural(errors, 'error')} / ${warnings} ${plural(warnings, 'warning')}`;
 
         const tooltip = new vscode.MarkdownString();
         tooltip.isTrusted = true;
-        tooltip.appendMarkdown(`**Project Spec lint**\n\n`);
+        tooltip.appendMarkdown(`**TraceR lint**\n\n`);
         tooltip.appendMarkdown(`- Errors: ${this.latestErrors}\n`);
         tooltip.appendMarkdown(`- Warnings: ${this.latestWarnings}\n`);
         tooltip.appendMarkdown(`- Notes: ${this.latestNotes}\n\n`);

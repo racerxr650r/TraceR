@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import {
     ParsedNode,
     ParsedProject,
+    ParsedTrace,
     ProjectIoClient,
     UiHintEntry,
 } from '../sidecar';
@@ -26,6 +27,17 @@ export interface RevealLocator {
 }
 
 export class ProjectSpecNode extends vscode.TreeItem {
+    /**
+     * LLR-PSP-07: when set, double-click and the "Edit" context-menu
+     * entry open the schema-driven popup edit dialog for this element.
+     */
+    editArgs: EditPayloadArgs | undefined;
+
+    /** Document id (e.g. `"HLRs"`, `"SDD"`) for group nodes that map
+     *  to a generated document, enabling "Render & Preview" from the
+     *  context menu. */
+    docId: string | undefined;
+
     constructor(
         label: string,
         collapsibleState: vscode.TreeItemCollapsibleState,
@@ -49,6 +61,31 @@ export class ProjectSpecNode extends vscode.TreeItem {
         if (!base.includes('aiTargetable')) {
             this.contextValue = base ? `${base} aiTargetable` : 'aiTargetable';
         }
+    }
+
+    /**
+     * LLR-PSP-07: mark this leaf as editable via the popup dialog.
+     * Stores the args for `projectXml.editPayload` and adds the
+     * `editable` contextValue token so the "Edit" context-menu entry
+     * appears. Does NOT set `TreeItem.command` — double-click is
+     * handled by the `TreeView.onDidChangeSelection` listener in
+     * `extension.ts` so that single-click selection (and therefore
+     * right-click context menus) keeps working normally.
+     */
+    markEditable(args: EditPayloadArgs): void {
+        this.editArgs = args;
+        const base = this.contextValue ?? '';
+        if (!base.includes('editable')) {
+            this.contextValue = base ? `${base} editable` : 'editable';
+        }
+        // Single-click opens the popup edit dialog (standard VS Code
+        // tree UX).  Right-click context menus are independent and
+        // continue to work normally.
+        this.command = {
+            command: 'projectXml.editPayload',
+            title: 'Edit in Form…',
+            arguments: [args],
+        };
     }
 }
 
@@ -99,7 +136,19 @@ export class ProjectSpecProvider
         }
         try {
             const xmlPath = getProjectXmlPath();
-            const params = xmlPath ? { xml_path: xmlPath } : {};
+            if (!xmlPath) {
+                // No workspace folder open yet (or doc/Project.xml
+                // not found). Return a placeholder; the
+                // onDidChangeWorkspaceFolders handler in extension.ts
+                // will refresh the tree once a workspace appears.
+                const item = new ProjectSpecNode(
+                    'Open a folder containing doc/Project.xml',
+                    vscode.TreeItemCollapsibleState.None,
+                );
+                item.iconPath = new vscode.ThemeIcon('info');
+                return [item];
+            }
+            const params = { xml_path: xmlPath };
             const project = await this.client.parseToJson(params);
             const badges = badgesEnabled() ? this.badges : undefined;
             this.cached = buildTopLevel(project, badges);
@@ -198,6 +247,18 @@ export function locatorMeta(
     return { tag, idAttr };
 }
 
+/**
+ * LLR-PSP-07: arguments shape stored on editable leaves so that
+ * double-click and the "Edit" context-menu entry can open
+ * `projectXml.editPayload`.
+ */
+export interface EditPayloadArgs {
+    readonly type: string;
+    readonly basePath: string;
+    readonly formData: Record<string, unknown>;
+    readonly title: string;
+}
+
 function leafLocator(
     meta: LeafLocatorMeta,
     value: string,
@@ -208,6 +269,16 @@ function leafLocator(
     return meta.idAttr === 'id'
         ? { tag: meta.tag, value }
         : { tag: meta.tag, attr: meta.idAttr, value };
+}
+
+/** Convert parsed traces to the shape RJSF expects ({target, ref}). */
+function tracesForForm(
+    traces: ParsedTrace[] | undefined,
+): Array<{ target: string; ref: string }> {
+    if (!traces || traces.length === 0) { return []; }
+    return traces
+        .filter((tr) => tr.target && tr.ref)
+        .map((tr) => ({ target: tr.target!, ref: tr.ref! }));
 }
 
 /**
@@ -265,6 +336,14 @@ function buildGenericGroup(
                 : undefined,
         );
         applyHintsToNode(leaf, n.ui ?? undefined);
+        if (value && entry.form && entry.form.length > 0) {
+            leaf.markEditable({
+                type: key,
+                basePath: `/${tag}[${idAttr}=${value}]`,
+                formData: { ...n.attrs },
+                title: `Edit ${value}`,
+            });
+        }
         return leaf;
     });
     const node = new ProjectSpecNode(
@@ -358,6 +437,14 @@ function buildHlrsNode(
                             leafLocator(meta, h.id),
                         );
                         applyHintsToNode(leaf, h.ui);
+                        if (h.id && sec.number) {
+                            leaf.markEditable({
+                                type: 'Hlr',
+                                basePath: `/hlrs/section[number=${sec.number}]/hlr[id=${h.id}]`,
+                                formData: { id: h.id, name: h.name ?? '', text: h.text ?? '', traces: tracesForForm(h.traces) },
+                                title: `Edit ${h.id}`,
+                            });
+                        }
                         return leaf;
                     },
                 ),
@@ -365,6 +452,8 @@ function buildHlrsNode(
         }),
     );
     node.iconPath = new vscode.ThemeIcon('symbol-namespace');
+    node.contextValue = 'hlrsGroup';
+    node.docId = 'HLRs';
     return node;
 }
 
@@ -398,6 +487,14 @@ function buildLlrsNode(
                             leafLocator(meta, l.id),
                         );
                         applyHintsToNode(leaf, l.ui);
+                        if (l.id && g.number) {
+                            leaf.markEditable({
+                                type: 'Llr',
+                                basePath: `/llrs/function[number=${g.number}]/llr[id=${l.id}]`,
+                                formData: { id: l.id, text: l.text ?? '', traces: tracesForForm(l.traces) },
+                                title: `Edit ${l.id}`,
+                            });
+                        }
                         return leaf;
                     },
                 ),
@@ -405,6 +502,8 @@ function buildLlrsNode(
         }),
     );
     node.iconPath = new vscode.ThemeIcon('symbol-method');
+    node.contextValue = 'llrsGroup';
+    node.docId = 'LLRs';
     return node;
 }
 
@@ -436,6 +535,14 @@ function buildTestsNode(
                             leafLocator(meta, t.name),
                         );
                         applyHintsToNode(leaf, t.ui);
+                        if (t.name && f.path) {
+                            leaf.markEditable({
+                                type: 'Test',
+                                basePath: `/tests/file[path=${f.path}]/test[name=${t.name}]`,
+                                formData: { name: t.name, purpose: t.purpose ?? '', traces: tracesForForm(t.traces) },
+                                title: `Edit ${t.name}`,
+                            });
+                        }
                         return leaf;
                     },
                 ),
@@ -444,6 +551,8 @@ function buildTestsNode(
         }),
     );
     node.iconPath = new vscode.ThemeIcon('beaker');
+    node.contextValue = 'testsGroup';
+    node.docId = 'STP';
     return node;
 }
 
@@ -466,11 +575,21 @@ function buildSddNode(
                     leafLocator(meta, m.path ?? ''),
                 );
                 applyHintsToNode(leaf, m.ui);
+                if (m.path) {
+                    leaf.markEditable({
+                        type: 'SddModule',
+                        basePath: `/sdd/modules/module[path=${m.path}]`,
+                        formData: { path: m.path, title: m.title ?? '' },
+                        title: `Edit ${m.path}`,
+                    });
+                }
                 return leaf;
             },
         ),
     );
     node.iconPath = new vscode.ThemeIcon('book');
+    node.contextValue = 'sddGroup';
+    node.docId = 'SDD';
     return node;
 }
 
@@ -486,5 +605,6 @@ function buildStpNode(project: ParsedProject): ProjectSpecNode {
         node.contextValue = 'revealable';
     }
     node.iconPath = new vscode.ThemeIcon('checklist');
+    node.docId = 'STP';
     return node;
 }

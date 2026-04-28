@@ -69,10 +69,17 @@ function resolveAgainstProject(rel: string): string | undefined {
         return rel;
     }
     const folder = getProjectFolder();
-    if (!folder) {
-        return undefined;
+    if (folder) {
+        return path.join(folder.uri.fsPath, rel);
     }
-    return path.join(folder.uri.fsPath, rel);
+    // Fallback: CI / Makefile sets PROJECT_XML_WORKSPACE to the
+    // workspace root when headless mode prevents VS Code from
+    // properly opening a folder (workspaceFolders stays empty).
+    const envWorkspace = process.env.PROJECT_XML_WORKSPACE;
+    if (envWorkspace) {
+        return path.join(envWorkspace, rel);
+    }
+    return undefined;
 }
 
 export function getProjectXmlPath(): string | undefined {
@@ -87,16 +94,37 @@ export function getProjectXmlUri(): vscode.Uri | undefined {
 
 export function getXsdPath(): string | undefined {
     const rel = getConfig().get<string>('xsdPath') ?? 'tools/project.xsd';
-    return resolveAgainstProject(rel);
+    const resolved = resolveAgainstProject(rel);
+    if (resolved && fs.existsSync(resolved)) {
+        return resolved;
+    }
+    // Fallback: derive from the tools directory (covers CI where
+    // workspace-relative path doesn't resolve).
+    const toolsDir = getToolsDir();
+    if (toolsDir) {
+        const candidate = path.join(toolsDir, 'project.xsd');
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+    return resolved;
 }
 
 export function getToolsDir(): string | undefined {
+    // 1. Explicit setting.
     const rel = getConfig().get<string>('toolsDir') ?? 'tools';
     const resolved = resolveAgainstProject(rel);
     if (resolved && fs.existsSync(path.join(resolved, 'project_io.py'))) {
         return resolved;
     }
-    // Phase 6 (LLR-PKG-02): fall back to the bundled copy shipped
+    // 2. Environment variable set by CI / Makefile (ext-test-ui).
+    //    Provides an absolute path to the repo tools/ so the bundled
+    //    fallback is never reached when the real toolchain exists.
+    const envTools = process.env.PROJECT_XML_TOOLS_DIR;
+    if (envTools && fs.existsSync(path.join(envTools, 'project_io.py'))) {
+        return envTools;
+    }
+    // 3. Phase 6 (LLR-PKG-02): fall back to the bundled copy shipped
     // inside the .vsix at `<extensionPath>/dist/python`. The
     // workspace's tools/ remains authoritative whenever it exists,
     // so this only fires for fresh / empty workspaces.

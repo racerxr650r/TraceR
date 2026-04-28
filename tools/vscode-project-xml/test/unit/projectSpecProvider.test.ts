@@ -7,7 +7,6 @@ import { strict as assert } from 'assert';
 import * as vscode from 'vscode';
 import {
     COVERED_TYPE_KEYS,
-    ProjectSpecNode,
     _buildGenericPayloadNodes,
     _renderLabel,
     locatorMeta,
@@ -229,5 +228,107 @@ describe('locatorMeta (Phase 2.5b Slice H)', () => {
         };
         const meta = locatorMeta(partial, 'Document', 'document', 'id');
         assert.deepEqual(meta, { tag: 'document', idAttr: 'id' });
+    });
+});
+
+// LLR-PSP-07: clicking a leaf opens the schema-driven popup edit dialog.
+describe('leaf edit wiring (LLR-PSP-07)', () => {
+    // Build a hint index with a form-annotated type ("Widget") and a
+    // form-less type ("Plan") so we can verify the command is only
+    // stamped on types that have editable form fields.
+    const WIDGET_HINT: UiHintsIndex = {
+        Widget: {
+            tree_node: { label: '@id', id_attr: 'id', group: 'widgets' },
+            form: [
+                { target: 'id', kind: 'attr', field: 'text', required: true },
+                { target: 'label', kind: 'attr', field: 'text', required: false },
+            ],
+            lenses: [],
+            document: false,
+            element: 'widget',
+        },
+        Plan: {
+            tree_node: { label: '@version', id_attr: 'version', group: 'plan' },
+            form: [],
+            lenses: [],
+            document: false,
+            element: 'plan',
+        },
+    };
+
+    const WIDGET_NODES: ParsedNode[] = [
+        { tag: 'widget', attrs: { id: 'W-001', label: 'Alpha' }, ui: null, text: null },
+        { tag: 'widget', attrs: { id: 'W-002', label: 'Beta' }, ui: null, text: null },
+    ];
+
+    function makeWidgetProject(nodes: ParsedNodesIndex): ParsedProject {
+        return {
+            name: 'TestProj',
+            schema_version: '1.0',
+            _ui_hints_index: WIDGET_HINT,
+            _nodes: nodes,
+        };
+    }
+
+    it('marks leaves as editable with editArgs when type has form fields', () => {
+        const project = makeWidgetProject({ Widget: WIDGET_NODES });
+        const [group] = _buildGenericPayloadNodes(project);
+        const leaves = group.children ?? [];
+        assert.equal(leaves.length, 2);
+        for (const leaf of leaves) {
+            assert.ok(leaf.editArgs, 'leaf should have editArgs');
+            assert.equal(leaf.editArgs!.type, 'Widget');
+            assert.ok(leaf.editArgs!.basePath.startsWith('/widget[id='));
+            assert.ok(
+                (leaf.contextValue ?? '').includes('editable'),
+                'contextValue should include editable',
+            );
+        }
+        // Verify first leaf's specific values.
+        const first = leaves[0];
+        assert.equal(first.editArgs!.basePath, '/widget[id=W-001]');
+        assert.equal(first.editArgs!.title, 'Edit W-001');
+        assert.deepEqual(first.editArgs!.formData, { id: 'W-001', label: 'Alpha' });
+        // TreeItem.command should be set so single-click opens the dialog.
+        assert.ok(first.command, 'leaf should have TreeItem.command');
+        assert.equal(first.command!.command, 'projectXml.editPayload');
+    });
+
+    it('does not mark leaves as editable when type has no form fields', () => {
+        const project = makeWidgetProject({
+            Plan: [{ tag: 'plan', attrs: { version: '0.1' }, ui: null, text: null }],
+        });
+        const [group] = _buildGenericPayloadNodes(project);
+        const leaf = (group.children ?? [])[0];
+        assert.ok(leaf, 'leaf should exist');
+        assert.equal(leaf.editArgs, undefined, 'leaf without form fields should not have editArgs');
+        assert.ok(
+            !(leaf.contextValue ?? '').includes('editable'),
+            'contextValue should not include editable',
+        );
+        assert.equal(leaf.command, undefined, 'leaf without form fields should not have TreeItem.command');
+    });
+
+    it('does not mark leaves as editable when the id attribute is empty', () => {
+        const project = makeWidgetProject({
+            Widget: [{ tag: 'widget', attrs: { id: '', label: 'NoId' }, ui: null, text: null }],
+        });
+        const [group] = _buildGenericPayloadNodes(project);
+        const leaf = (group.children ?? [])[0];
+        assert.equal(leaf.editArgs, undefined, 'leaf with empty id should not have editArgs');
+    });
+});
+
+describe('group node docId (Render & Preview from context menu)', () => {
+    // Imports already available: ProjectSpecNode from the existing
+    // test fixtures (the _buildGenericPayloadNodes export requires
+    // only the public property we assert on).
+    const { ProjectSpecNode } = require('../../src/treeView/ProjectSpecProvider');
+
+    it('ProjectSpecNode exposes a docId property', () => {
+        const node = new ProjectSpecNode('HLRs (5)', vscode.TreeItemCollapsibleState.Collapsed);
+        assert.equal(node.docId, undefined, 'docId should be undefined by default');
+        node.docId = 'HLRs';
+        assert.equal(node.docId, 'HLRs');
     });
 });
