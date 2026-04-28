@@ -69,10 +69,17 @@ function resolveAgainstProject(rel: string): string | undefined {
         return rel;
     }
     const folder = getProjectFolder();
-    if (!folder) {
-        return undefined;
+    if (folder) {
+        return path.join(folder.uri.fsPath, rel);
     }
-    return path.join(folder.uri.fsPath, rel);
+    // Fallback: CI / Makefile sets PROJECT_XML_WORKSPACE to the
+    // workspace root when headless mode prevents VS Code from
+    // properly opening a folder (workspaceFolders stays empty).
+    const envWorkspace = process.env.PROJECT_XML_WORKSPACE;
+    if (envWorkspace) {
+        return path.join(envWorkspace, rel);
+    }
+    return undefined;
 }
 
 export function getProjectXmlPath(): string | undefined {
@@ -87,7 +94,20 @@ export function getProjectXmlUri(): vscode.Uri | undefined {
 
 export function getXsdPath(): string | undefined {
     const rel = getConfig().get<string>('xsdPath') ?? 'tools/project.xsd';
-    return resolveAgainstProject(rel);
+    const resolved = resolveAgainstProject(rel);
+    if (resolved && fs.existsSync(resolved)) {
+        return resolved;
+    }
+    // Fallback: derive from the tools directory (covers CI where
+    // workspace-relative path doesn't resolve).
+    const toolsDir = getToolsDir();
+    if (toolsDir) {
+        const candidate = path.join(toolsDir, 'project.xsd');
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+    return resolved;
 }
 
 export function getToolsDir(): string | undefined {

@@ -419,7 +419,7 @@ ext-test-ui:
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi
-	@export PROJECT_XML_PYTHON="$(VENV_PYTHON)" PROJECT_XML_TOOLS_DIR="$(REPO_ROOT)/tools" ; \
+	@export PROJECT_XML_PYTHON="$(VENV_PYTHON)" PROJECT_XML_TOOLS_DIR="$(REPO_ROOT)/tools" PROJECT_XML_WORKSPACE="$(EXT_DIR)/test/ui/fixtures" ; \
 	if [[ -z "$${DISPLAY:-}" ]]; then \
 	    echo "  (no DISPLAY — using xvfb-run)" ; \
 	    cd "$(EXT_DIR)" && xvfb-run -a npm run test:ui ; \
@@ -432,7 +432,7 @@ ext-screenshots: ext-build
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi
-	@export PROJECT_XML_PYTHON="$(VENV_PYTHON)" PROJECT_XML_TOOLS_DIR="$(REPO_ROOT)/tools" ; \
+	@export PROJECT_XML_PYTHON="$(VENV_PYTHON)" PROJECT_XML_TOOLS_DIR="$(REPO_ROOT)/tools" PROJECT_XML_WORKSPACE="$(EXT_DIR)/test/ui/fixtures" ; \
 	if [[ -z "$${DISPLAY:-}" ]]; then \
 	    echo "  (no DISPLAY — using xvfb-run)" ; \
 	    cd "$(EXT_DIR)" && xvfb-run -a npm run test:screenshots ; \
