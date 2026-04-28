@@ -41,6 +41,59 @@ maintain them.
 * The **TraceR project's own** PVD, SDP, SDD, HLRs, LLRs, STP, and
   Traceability Matrix — i.e. TraceR is built using TraceR.
 
+## Installation
+
+### VS Code extension (recommended)
+
+1. Go to the
+   [Releases](https://github.com/racerxr650r/TraceR/releases) page
+   and download the `.vsix` file attached to the latest release
+   (e.g. `vscode-project-xml-0.2.0.vsix`).
+
+2. Install the extension using **one** of these methods:
+
+   **From the command line:**
+
+   ```bash
+   code --install-extension vscode-project-xml-*.vsix
+   ```
+
+   **From VS Code:**
+
+   Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`), run
+   **Extensions: Install from VSIX…**, and select the downloaded
+   file.
+
+3. Reload VS Code when prompted. The extension activates
+   automatically when it detects a `doc/Project.xml` in the open
+   workspace.
+
+> **Tip:** The `.vsix` is self-contained — it bundles the Python
+> sidecar toolchain so you can start authoring immediately. For
+> CLI and CI use, run the **Project Spec: Scaffold tools/ into
+> workspace…** command to copy the toolchain into your project.
+
+### Python CLI toolchain (standalone)
+
+If you only need the command-line tools (lint, render, edit) without
+the VS Code extension:
+
+```bash
+git clone https://github.com/racerxr650r/TraceR.git
+cd TraceR
+make -C tools bootstrap   # creates .venv with all dependencies
+```
+
+Then use the tools directly:
+
+```bash
+.venv/bin/python tools/lint_project.py --xml doc/Project.xml --xsd tools/project.xsd
+.venv/bin/python tools/render_doc.py tools/templates/HLRs.md.j2 HLRs --xml doc/Project.xml --out doc/HLRs.md
+```
+
+See [`tools/User_Manual.md`](tools/User_Manual.md) for full CLI
+usage.
+
 ## Where to start
 
 | You are… | Read… |
