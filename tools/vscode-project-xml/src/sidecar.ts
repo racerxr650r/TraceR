@@ -297,12 +297,18 @@ export class ProjectIoClient implements vscode.Disposable {
 }
 
 function pickPython(): string {
+    // 1. Explicit VS Code setting (user / workspace).
     const configured = getConfig().get<string>('pythonPath');
     if (configured && configured.trim() !== '') {
         return configured;
     }
-    // Prefer the repo venv created by `make bootstrap` — it has the
-    // required dependencies (jinja2, lxml, xmlschema) pre-installed.
+    // 2. Environment variable set by CI / Makefile (ext-test-ui).
+    const envPy = process.env.PROJECT_XML_PYTHON;
+    if (envPy && envPy.trim() !== '') {
+        return envPy;
+    }
+    // 3. Repo venv created by `make bootstrap` — has jinja2, lxml,
+    //    xmlschema pre-installed.
     const root = getProjectFolder()?.uri.fsPath;
     if (root) {
         const venvPy = process.platform === 'win32'
@@ -312,6 +318,7 @@ function pickPython(): string {
             return venvPy;
         }
     }
+    // 4. Bare system fallback.
     return process.platform === 'win32' ? 'python' : 'python3';
 }
 

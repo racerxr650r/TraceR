@@ -419,7 +419,8 @@ ext-test-ui:
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi
-	@if [[ -z "$${DISPLAY:-}" ]]; then \
+	@export PROJECT_XML_PYTHON="$(VENV_PYTHON)" ; \
+	if [[ -z "$${DISPLAY:-}" ]]; then \
 	    echo "  (no DISPLAY — using xvfb-run)" ; \
 	    cd "$(EXT_DIR)" && xvfb-run -a npm run test:ui ; \
 	else \
@@ -431,7 +432,8 @@ ext-screenshots: ext-build
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi
-	@if [[ -z "$${DISPLAY:-}" ]]; then \
+	@export PROJECT_XML_PYTHON="$(VENV_PYTHON)" ; \
+	if [[ -z "$${DISPLAY:-}" ]]; then \
 	    echo "  (no DISPLAY — using xvfb-run)" ; \
 	    cd "$(EXT_DIR)" && xvfb-run -a npm run test:screenshots ; \
 	else \
