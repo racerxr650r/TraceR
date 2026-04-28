@@ -32,6 +32,39 @@ const FIXTURE_WORKSPACE = path.resolve(
     'fixtures',
 );
 
+/**
+ * Poll until a tree group whose label starts with `prefix` appears in
+ * the TraceR section. Used in `before()` to ensure the sidecar has
+ * finished parsing before tests run.
+ */
+async function waitForTreeGroup(
+    prefix: string,
+    timeout = 30_000,
+): Promise<void> {
+    const sidebar = new SideBarView();
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        try {
+            const section = (await sidebar
+                .getContent()
+                .getSection('TraceR')) as CustomTreeSection;
+            const items = await section.getVisibleItems();
+            for (const item of items) {
+                const label = await item.getLabel();
+                if (label.startsWith(prefix)) {
+                    return;
+                }
+            }
+        } catch {
+            // section may not exist yet
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error(
+        `Tree group "${prefix}" not found within ${timeout}ms`,
+    );
+}
+
 describe('Editor, status bar, and diagnostics (UI)', function () {
     this.timeout(120_000);
     let driver: WebDriver;
@@ -48,6 +81,9 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
             await viewControl.openView();
         }
         await driver.sleep(3000);
+        // Wait until the tree has real groups before starting tests.
+        // In CI the sidecar may take longer to parse.
+        await waitForTreeGroup('HLRs', 30_000);
     });
 
     afterEach(async function () {

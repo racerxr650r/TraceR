@@ -63,26 +63,33 @@ async function getProjectSpecSection(
 
 /**
  * Expand a top-level tree group (e.g. "HLRs (1)") by matching the
- * prefix, then return its child items.
+ * prefix, then return its child items.  Polls until the group appears
+ * or `timeout` expires — the sidecar may still be parsing when the
+ * first call arrives.
  */
 async function expandGroup(
     section: CustomTreeSection,
     prefix: string,
+    timeout = 30_000,
 ): Promise<ViewItem[]> {
-    // Top-level items include the count, e.g. "HLRs (1)"
-    const items = await section.getVisibleItems();
-    for (const item of items) {
-        const label = await item.getLabel();
-        if (label.startsWith(prefix)) {
-            if (await item.isExpandable()) {
-                await item.select();
-                // Wait for the tree to expand
-                await new Promise((r) => setTimeout(r, 1000));
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        const items = await section.getVisibleItems();
+        for (const item of items) {
+            const label = await item.getLabel();
+            if (label.startsWith(prefix)) {
+                if (await item.isExpandable()) {
+                    await item.select();
+                    await new Promise((r) => setTimeout(r, 1000));
+                }
+                return section.getVisibleItems();
             }
-            return section.getVisibleItems();
         }
+        await new Promise((r) => setTimeout(r, 1000));
     }
-    throw new Error(`No tree group starting with "${prefix}" found`);
+    throw new Error(
+        `No tree group starting with "${prefix}" found (waited ${timeout}ms)`,
+    );
 }
 
 describe('Project Spec tree view (UI)', function () {
@@ -104,6 +111,10 @@ describe('Project Spec tree view (UI)', function () {
             await viewControl.openView();
         }
         await driver.sleep(3000);
+        // Wait until the tree has real groups (not just a placeholder)
+        // before starting tests. CI may be slower to parse.
+        const section = await getProjectSpecSection();
+        await expandGroup(section, 'HLRs');
     });
 
     afterEach(async function () {
