@@ -73,10 +73,13 @@ async function expandGroup(
     timeout = 30_000,
 ): Promise<ViewItem[]> {
     const deadline = Date.now() + timeout;
+    let lastLabels: string[] = [];
     while (Date.now() < deadline) {
         const items = await section.getVisibleItems();
+        lastLabels = [];
         for (const item of items) {
             const label = await item.getLabel();
+            lastLabels.push(label);
             if (label.startsWith(prefix)) {
                 if (await item.isExpandable()) {
                     await item.select();
@@ -88,7 +91,8 @@ async function expandGroup(
         await new Promise((r) => setTimeout(r, 1000));
     }
     throw new Error(
-        `No tree group starting with "${prefix}" found (waited ${timeout}ms)`,
+        `No tree group starting with "${prefix}" found (waited ${timeout}ms). ` +
+        `Visible items: [${lastLabels.join(', ')}]`,
     );
 }
 

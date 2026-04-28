@@ -91,12 +91,20 @@ export function getXsdPath(): string | undefined {
 }
 
 export function getToolsDir(): string | undefined {
+    // 1. Explicit setting.
     const rel = getConfig().get<string>('toolsDir') ?? 'tools';
     const resolved = resolveAgainstProject(rel);
     if (resolved && fs.existsSync(path.join(resolved, 'project_io.py'))) {
         return resolved;
     }
-    // Phase 6 (LLR-PKG-02): fall back to the bundled copy shipped
+    // 2. Environment variable set by CI / Makefile (ext-test-ui).
+    //    Provides an absolute path to the repo tools/ so the bundled
+    //    fallback is never reached when the real toolchain exists.
+    const envTools = process.env.PROJECT_XML_TOOLS_DIR;
+    if (envTools && fs.existsSync(path.join(envTools, 'project_io.py'))) {
+        return envTools;
+    }
+    // 3. Phase 6 (LLR-PKG-02): fall back to the bundled copy shipped
     // inside the .vsix at `<extensionPath>/dist/python`. The
     // workspace's tools/ remains authoritative whenever it exists,
     // so this only fires for fresh / empty workspaces.

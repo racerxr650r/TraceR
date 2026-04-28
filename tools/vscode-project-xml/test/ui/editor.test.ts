@@ -43,14 +43,19 @@ async function waitForTreeGroup(
 ): Promise<void> {
     const sidebar = new SideBarView();
     const deadline = Date.now() + timeout;
+    let lastLabels: string[] = [];
+    let sectionFound = false;
     while (Date.now() < deadline) {
         try {
             const section = (await sidebar
                 .getContent()
                 .getSection('TraceR')) as CustomTreeSection;
+            sectionFound = true;
             const items = await section.getVisibleItems();
+            lastLabels = [];
             for (const item of items) {
                 const label = await item.getLabel();
+                lastLabels.push(label);
                 if (label.startsWith(prefix)) {
                     return;
                 }
@@ -61,7 +66,9 @@ async function waitForTreeGroup(
         await new Promise((r) => setTimeout(r, 1000));
     }
     throw new Error(
-        `Tree group "${prefix}" not found within ${timeout}ms`,
+        `Tree group "${prefix}" not found within ${timeout}ms. ` +
+        `Section found: ${sectionFound}. ` +
+        `Visible items: [${lastLabels.join(', ')}]`,
     );
 }
 
