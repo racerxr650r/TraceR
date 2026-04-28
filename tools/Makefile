@@ -412,6 +412,10 @@ ext-test-unit:
 
 ext-test-ui:
 	@echo ">>> Running VS Code extension UI tests (ExTester)..."
+	@echo "  Preflight: checking sidecar can start with venv Python..."
+	@echo '{"id":1,"method":"parse_to_json","params":{"xml_path":"$(PROJECT_XML)"}}' \
+	    | "$(VENV_PYTHON)" "$(REPO_ROOT)/tools/project_io.py" >/dev/null \
+	    || { echo "ERROR: sidecar preflight failed — check Python venv and dependencies." >&2; exit 1; }
 	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
 	fi

@@ -6,10 +6,12 @@
 
 import * as vscode from 'vscode';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import {
     describeWorkspaceState,
     getConfig,
+    getProjectFolder,
     getProjectIoScript,
     getToolsDir,
 } from './util/paths';
@@ -298,6 +300,17 @@ function pickPython(): string {
     const configured = getConfig().get<string>('pythonPath');
     if (configured && configured.trim() !== '') {
         return configured;
+    }
+    // Prefer the repo venv created by `make bootstrap` — it has the
+    // required dependencies (jinja2, lxml, xmlschema) pre-installed.
+    const root = getProjectFolder()?.uri.fsPath;
+    if (root) {
+        const venvPy = process.platform === 'win32'
+            ? path.join(root, '.venv', 'Scripts', 'python.exe')
+            : path.join(root, '.venv', 'bin', 'python');
+        if (fs.existsSync(venvPy)) {
+            return venvPy;
+        }
     }
     return process.platform === 'win32' ? 'python' : 'python3';
 }
