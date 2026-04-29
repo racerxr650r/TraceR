@@ -21,6 +21,7 @@ import {
     WebDriver,
     Workbench,
 } from 'vscode-extension-tester';
+import { dismissWelcomeOverlay } from './helpers';
 
 const FIXTURE_WORKSPACE = path.resolve(
     __dirname,
@@ -107,6 +108,8 @@ describe('Project Spec tree view (UI)', function () {
         // Allow time for the extension to activate and the sidecar to
         // parse the fixture Project.xml.
         await driver.sleep(8000);
+        // Dismiss the VS Code onboarding overlay that blocks clicks in CI.
+        await dismissWelcomeOverlay(driver);
         // Open the Project Spec view via the Activity Bar. The view is
         // contributed under the view container 'projectXml'.
         const activityBar = new ActivityBar();

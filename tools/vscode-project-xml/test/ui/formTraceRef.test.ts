@@ -18,6 +18,7 @@ import {
     WebDriver,
     WebView,
 } from 'vscode-extension-tester';
+import { dismissWelcomeOverlay } from './helpers';
 
 const FIXTURE_WORKSPACE = path.resolve(
     __dirname,
@@ -61,6 +62,8 @@ describe('Form panel trace ref display (UI)', function () {
         driver = VSBrowser.instance.driver;
         await VSBrowser.instance.openResources(FIXTURE_WORKSPACE);
         await driver.sleep(8000);
+        // Dismiss the VS Code onboarding overlay that blocks clicks in CI.
+        await dismissWelcomeOverlay(driver);
         const activityBar = new ActivityBar();
         const viewControl = await activityBar.getViewControl('TraceR');
         if (viewControl) {
