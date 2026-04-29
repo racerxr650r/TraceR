@@ -117,7 +117,7 @@ describe('Form panel trace ref display (UI)', function () {
         // Expand the tests group and file node.
         await section.openItem(
             await testsGroup!.getLabel(),
-            'treeView.test.ts (2)',
+            'test/ui/treeView.test.ts (2)',
         );
         await driver.sleep(1000);
 
@@ -181,7 +181,7 @@ describe('Form panel trace ref display (UI)', function () {
 
         await section.openItem(
             await testsGroup!.getLabel(),
-            'treeView.test.ts (2)',
+            'test/ui/treeView.test.ts (2)',
         );
         await driver.sleep(1000);
 
