@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TraceR — AI-graceful software traceability. Turn a single Project.xml into a fully linked specification stack with VS Code, Python CLI, and AI assistance." />
+  <title>TraceR · AI-Graceful Software Traceability</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/png" href="images/TraceR.png" />
+</head>
+<body>
+
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <!-- ── Navigation ─────────────────────────────────────────────── -->
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="container">
+      <a class="nav-brand" href="#main-content" aria-label="TraceR home">
+        <img src="images/TraceR.png" alt="" aria-hidden="true" width="32" height="32" />
+        TraceR
+      </a>
+      <ul class="nav-links" role="list">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#screenshots">Screenshots</a></li>
+        <li><a href="#get-started">Get started</a></li>
+        <li><a href="https://github.com/racerxr650r/TraceR" target="_blank" rel="noopener noreferrer">GitHub ↗</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main-content">
+
+    <!-- ── Hero ─────────────────────────────────────────────────── -->
+    <section class="hero" aria-labelledby="hero-heading">
+      <div class="container">
+        <img
+          src="images/TraceR.png"
+          alt="TraceR logo"
+          class="hero-logo"
+          width="160"
+          height="160"
+          loading="eager"
+        />
+        <h1 id="hero-heading">TraceR</h1>
+        <p class="hero-tagline">
+          AI-graceful software traceability — turn a single
+          <code>Project.xml</code> into a fully linked specification stack
+          with VS Code, Python CLI, and AI assistance.
+        </p>
+        <div class="cta-group">
+          <a class="hero-cta" href="#get-started">Get started</a>
+          <a
+            class="hero-cta-secondary"
+            href="https://github.com/racerxr650r/TraceR"
+            target="_blank"
+            rel="noopener noreferrer"
+          >View on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Features ──────────────────────────────────────────────── -->
+    <section id="features" aria-labelledby="features-heading">
+      <div class="container">
+        <p class="section-label">Features</p>
+        <h2 id="features-heading" class="section-title">Everything you need for traceable software</h2>
+        <p class="section-desc">
+          From safety-critical certification to everyday quality assurance,
+          TraceR keeps your requirements, design, and tests in perfect sync.
+        </p>
+
+        <div class="features-grid" role="list">
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">📄</div>
+            <h3>Single Source of Truth</h3>
+            <p>
+              One <code>doc/Project.xml</code> drives every specification
+              document. Edit in one place; all generated documents update
+              automatically.
+            </p>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">🔗</div>
+            <h3>Full Traceability Matrix</h3>
+            <p>
+              Forward and reverse links from SDD through HLRs and LLRs all
+              the way to individual tests — always up to date.
+            </p>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">🧩</div>
+            <h3>VS Code Extension</h3>
+            <p>
+              Structural Project Spec tree, lint diagnostics, coverage
+              status-bar, code lenses, schema-driven form panels, and an
+              AI chat participant — all inside your editor.
+            </p>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">🐍</div>
+            <h3>Python CLI Toolchain</h3>
+            <p>
+              Lint, render, and edit <code>Project.xml</code> from the
+              command line or a Makefile with no VS Code required.
+            </p>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">🤖</div>
+            <h3>AI Assistance</h3>
+            <p>
+              <code>@projectspec</code> chat participant with grounded slash
+              commands, plus deterministic + AI-assisted three-way merge
+              resolution for <code>Project.xml</code>.
+            </p>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">✅</div>
+            <h3>Certified-Friendly</h3>
+            <p>
+              Designed for safety and certification environments. TraceR
+              itself is built using TraceR — complete with SDP, SDD, HLRs,
+              LLRs, STP, and Traceability Matrix.
+            </p>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── How it works ──────────────────────────────────────────── -->
+    <section id="how-it-works" aria-labelledby="how-it-works-heading">
+      <div class="container">
+        <p class="section-label">How it works</p>
+        <h2 id="how-it-works-heading" class="section-title">From one file to a full specification stack</h2>
+        <p class="section-desc">
+          TraceR follows a simple, repeatable workflow that keeps every
+          artefact consistent with your source of truth.
+        </p>
+
+        <ol class="steps" aria-label="Workflow steps">
+
+          <li class="step">
+            <h3>Author <code>Project.xml</code></h3>
+            <p>
+              Define your project's metadata, high-level requirements,
+              low-level requirements, design, and tests in a single
+              structured XML file — or let the VS Code form panels do it
+              for you.
+            </p>
+          </li>
+
+          <li class="step">
+            <h3>Lint and validate</h3>
+            <p>
+              The built-in linter and XSD schema catch broken trace
+              references, missing fields, and structural errors before
+              any documents are generated.
+            </p>
+          </li>
+
+          <li class="step">
+            <h3>Render documents</h3>
+            <p>
+              Run <code>make render</code> (or let the extension do it
+              on save) to produce SDD, HLRs, LLRs, STP, and the
+              Traceability Matrix as Markdown files.
+            </p>
+          </li>
+
+          <li class="step">
+            <h3>Review and iterate</h3>
+            <p>
+              Use code lenses to jump between requirements and tests,
+              check coverage stats in the status bar, and ask
+              <code>@projectspec</code> for AI-guided suggestions.
+            </p>
+          </li>
+
+        </ol>
+      </div>
+    </section>
+
+    <!-- ── Screenshots / Images ──────────────────────────────────── -->
+    <section id="screenshots" aria-labelledby="screenshots-heading">
+      <div class="container">
+        <p class="section-label">Screenshots</p>
+        <h2 id="screenshots-heading" class="section-title">See TraceR in action</h2>
+        <p class="section-desc">
+          A clean, editor-native experience for every role — from
+          requirements authors to test engineers.
+        </p>
+
+        <div class="screenshots-grid" role="list">
+
+          <figure class="screenshot-frame" role="listitem">
+            <img
+              src="images/TraceR.png"
+              alt="TraceR application logo"
+              loading="lazy"
+            />
+            <figcaption>TraceR — AI-graceful software traceability</figcaption>
+          </figure>
+
+          <figure class="screenshot-frame" role="listitem">
+            <img
+              src="images/TraceR.png"
+              alt="TraceR logo representing the VS Code extension"
+              loading="lazy"
+            />
+            <figcaption>VS Code extension with Project Spec tree and lint diagnostics</figcaption>
+          </figure>
+
+          <figure class="screenshot-frame" role="listitem">
+            <img
+              src="images/TraceR.png"
+              alt="TraceR logo representing the Python CLI toolchain"
+              loading="lazy"
+            />
+            <figcaption>Python CLI toolchain for lint, render, and CI pipelines</figcaption>
+          </figure>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Getting Started ───────────────────────────────────────── -->
+    <section id="get-started" aria-labelledby="get-started-heading">
+      <div class="container">
+        <p class="section-label">Getting started</p>
+        <h2 id="get-started-heading" class="section-title">Up and running in minutes</h2>
+        <p class="section-desc">
+          Choose the integration that fits your workflow — VS Code extension
+          for the full authoring experience, or the Python CLI for headless
+          and CI environments.
+        </p>
+
+        <div class="getting-started-grid">
+
+          <div class="card">
+            <h3>VS Code Extension (recommended)</h3>
+            <p>
+              Download the <code>.vsix</code> from the latest GitHub Release
+              and install it with one command. The extension bundles the
+              Python sidecar — no separate Python install needed.
+            </p>
+            <pre><code>code --install-extension vscode-project-xml-*.vsix</code></pre>
+            <a
+              class="card-link"
+              href="https://github.com/racerxr650r/TraceR/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >Latest release ↗</a>
+          </div>
+
+          <div class="card">
+            <h3>Python CLI Toolchain</h3>
+            <p>
+              Clone the repo and bootstrap the virtual environment with Make.
+              Use lint, render, and edit commands standalone or from CI.
+            </p>
+            <pre><code>git clone https://github.com/racerxr650r/TraceR.git
+cd TraceR
+make -C tools bootstrap</code></pre>
+            <a
+              class="card-link"
+              href="https://github.com/racerxr650r/TraceR/blob/develop/README.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >Read the README ↗</a>
+          </div>
+
+          <div class="card">
+            <h3>Documentation</h3>
+            <p>Explore the full documentation to get the most out of TraceR.</p>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.25rem;">
+              <li>
+                <a
+                  href="https://github.com/racerxr650r/TraceR/blob/develop/doc/PVD.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >Product Vision Document ↗</a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/racerxr650r/TraceR/blob/develop/tools/User_Manual.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >User Manual ↗</a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/racerxr650r/TraceR/blob/develop/tools/Developers_Guide.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >Developer's Guide ↗</a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/racerxr650r/TraceR/blob/develop/doc/SDP.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >Software Development Plan ↗</a>
+              </li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── Footer ────────────────────────────────────────────────────── -->
+  <footer class="site-footer" aria-label="Site footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src="images/TraceR.png" alt="" aria-hidden="true" width="28" height="28" />
+          TraceR
+        </div>
+        <nav aria-label="Footer navigation">
+          <ul class="footer-links" role="list">
+            <li><a href="https://github.com/racerxr650r/TraceR" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="https://github.com/racerxr650r/TraceR/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
+            <li><a href="https://github.com/racerxr650r/TraceR/blob/develop/README.md" target="_blank" rel="noopener noreferrer">README</a></li>
+            <li><a href="https://github.com/racerxr650r/TraceR/blob/develop/LICENSE" target="_blank" rel="noopener noreferrer">License</a></li>
+            <li><a href="https://github.com/racerxr650r/TraceR/issues" target="_blank" rel="noopener noreferrer">Issues</a></li>
+          </ul>
+        </nav>
+        <p class="footer-copy">
+          © 2024 TraceR contributors. Released under the
+          <a href="https://github.com/racerxr650r/TraceR/blob/develop/LICENSE" target="_blank" rel="noopener noreferrer">project license</a>.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
