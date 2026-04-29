@@ -4,7 +4,7 @@ on:
   push:
     branches: [develop]
     paths:
-      - 'docs/**'
+      - 'landing_page/**'
       - 'images/**'
   workflow_dispatch:
 
@@ -28,10 +28,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Copy images into docs/
+      - name: Copy images into landing_page/
         run: |
-          mkdir -p docs/images
-          cp -r images/. docs/images/
+          mkdir -p landing_page/images
+          cp -r images/. landing_page/images/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -39,7 +39,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: landing_page
 
       - name: Deploy to GitHub Pages
         id: deployment
