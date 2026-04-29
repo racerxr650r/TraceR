@@ -1,0 +1,8 @@
+{
+    "workbench.startupEditor": "none",
+    "workbench.welcomePage.walkthroughs.openOnInstall": false,
+    "workbench.tips.enabled": false,
+    "extensions.ignoreRecommendations": true,
+    "update.showReleaseNotes": false,
+    "terminal.integrated.showExitAlert": false
+}
