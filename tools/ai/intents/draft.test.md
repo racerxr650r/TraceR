@@ -12,6 +12,8 @@ object matching the schema.
   *why it matters*. Avoid restating the test name.
 - `traces` should include the upstream LLR the test verifies. Where
   no LLR exists yet, point at the HLR; do not invent IDs.
+- **Include `name` on every trace.** Use the target's human-readable
+  name (the LLR's short description or the HLR's `name` attribute).
 - Never invent file paths the bundle doesn't already show as
   available.
 
@@ -26,7 +28,7 @@ Response:
   "name": "test_apply_edit_dry_run_does_not_write",
   "purpose": "Exercise apply_edit with dry_run=True and assert that the on-disk Project.xml bytes are byte-for-byte unchanged while the returned ApplyEditResult still carries the lint findings the validator computed for the candidate tree.",
   "traces": [
-    {"target": "LLR", "ref": "LLR-EDT-12"}
+    {"target": "LLR", "ref": "LLR-EDT-12", "name": "apply_edit dry-run mode"}
   ]
 }
 ```

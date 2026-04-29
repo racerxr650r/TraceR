@@ -4,10 +4,11 @@ on:
   push:
     branches: ['**']
   pull_request:
-    branches: [main]
+    branches: [develop]
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   ci:
@@ -38,3 +39,18 @@ jobs:
         # lint, validate-xml, render, test-py, ext-test-unit,
         # ext-test-ui, ext-typecheck, ext-build
         run: make -C tools ci
+
+      - name: Run coverage (Python + extension)
+        run: |
+          make -C tools coverage
+          make -C tools ext-coverage
+          make -C tools coverage_report
+
+      - name: Coverage summary in job log
+        run: cat test_reports/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post coverage to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: test_reports/report.md

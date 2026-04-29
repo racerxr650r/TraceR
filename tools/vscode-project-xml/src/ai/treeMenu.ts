@@ -23,11 +23,12 @@ import { intentsForActions, IntentSpec } from './intents';
 import {
     AiRequestResult,
     AiTarget,
+    LintFinding,
     ProjectIoClient,
     UiHintsIndex,
 } from '../sidecar';
 import { ProjectSpecNode } from '../treeView/ProjectSpecProvider';
-import { getProjectXmlPath } from '../util/paths';
+import { getProjectXmlPath, getXsdPath } from '../util/paths';
 
 export const AI_RUN_COMMAND = 'projectXml.ai.runOnTreeItem';
 
@@ -104,7 +105,15 @@ async function runOnTreeItem(
     if (userPrompt === undefined) {
         return; // cancelled
     }
-    await runIntentInteractive(ctx, intent, target, userPrompt || `Run ${intent.id}.`);
+    try {
+        await runIntentInteractive(ctx, intent, target, userPrompt || `Run ${intent.id}.`);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.output.appendLine(`[ai] runOnTreeItem error: ${msg}`);
+        vscode.window.showWarningMessage(
+            `Project Spec AI: ${msg}`,
+        );
+    }
 }
 
 async function pickIntent(intents: IntentSpec[]): Promise<IntentSpec | undefined> {
@@ -129,6 +138,23 @@ async function runIntentInteractive(
     target: AiTarget,
     userPrompt: string,
 ): Promise<void> {
+    // For gap.fix, fetch the current lint findings so the model knows
+    // what kind of gap (HLR→LLR vs LLR→Test) to close.
+    let lintFindings: LintFinding[] | undefined;
+    if (intent.id === 'gap.fix') {
+        try {
+            const xmlPath = getProjectXmlPath();
+            const params: Record<string, unknown> = {};
+            if (xmlPath) { params.xml_path = xmlPath; }
+            const xsdPath = getXsdPath();
+            if (xsdPath) { params.xsd_path = xsdPath; }
+            const result = await ctx.sidecar.lint(params);
+            lintFindings = result.items;
+        } catch {
+            // lint fetch failure is non-fatal; the model can still try
+        }
+    }
+
     const outcome = await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -141,6 +167,7 @@ async function runIntentInteractive(
                 target,
                 userPrompt,
                 token,
+                lintFindings,
             }),
     );
     await renderInteractiveOutcome(ctx, intent, target, outcome, userPrompt);

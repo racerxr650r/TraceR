@@ -90,11 +90,13 @@ class FakeWorkspaceConfiguration {
 interface WorkspaceState {
     folders: WorkspaceFolder[] | undefined;
     config: ConfigStore;
+    trusted: boolean;
 }
 
 const state: WorkspaceState = {
     folders: undefined,
     config: {},
+    trusted: true,
 };
 
 // ---------------- workspace + configuration change events ----------
@@ -102,7 +104,13 @@ const state: WorkspaceState = {
 type ConfigChangeListener = (e: { affectsConfiguration: (key: string) => boolean }) => void;
 const configChangeListeners: ConfigChangeListener[] = [];
 
+type TrustListener = () => void;
+const trustListeners: TrustListener[] = [];
+
 export const workspace = {
+    get isTrusted(): boolean {
+        return state.trusted;
+    },
     get workspaceFolders(): WorkspaceFolder[] | undefined {
         return state.folders;
     },
@@ -117,6 +125,15 @@ export const workspace = {
                 if (i >= 0) {
                     configChangeListeners.splice(i, 1);
                 }
+            },
+        };
+    },
+    onDidGrantWorkspaceTrust(listener: TrustListener): Disposable {
+        trustListeners.push(listener);
+        return {
+            dispose(): void {
+                const idx = trustListeners.indexOf(listener);
+                if (idx >= 0) { trustListeners.splice(idx, 1); }
             },
         };
     },
@@ -262,12 +279,40 @@ export const __test = {
     reset(): void {
         state.folders = undefined;
         state.config = {};
+        state.trusted = true;
         configChangeListeners.length = 0;
+        trustListeners.length = 0;
         windowState.messages.length = 0;
         windowState.nextChoice = undefined;
         windowState.statusBarItems.length = 0;
         commandRegistry.clear();
         commandInvocations.length = 0;
+        lmState.models = [];
+    },
+    setTrusted(trusted: boolean): void {
+        state.trusted = trusted;
+    },
+    /** Install fake language models visible to `vscode.lm.selectChatModels`. */
+    setLmModels(models: FakeLanguageModelChat[]): void {
+        lmState.models = [...models];
+    },
+    /** Build a fake LanguageModelChat that returns `response` from `sendRequest`. */
+    fakeModel(
+        response: string,
+        id = 'test-model',
+        family = 'test-family',
+    ): FakeLanguageModelChat {
+        return {
+            id,
+            family,
+            async sendRequest() {
+                return {
+                    text: (async function* () {
+                        yield response;
+                    })(),
+                };
+            },
+        };
     },
     folder(fsPath: string, name = 'fixture', index = 0): WorkspaceFolder {
         return { uri: Uri.file(fsPath), name, index };
@@ -299,6 +344,72 @@ export const __test = {
 export interface Disposable {
     dispose(): void;
 }
+
+// ---------------- EventEmitter -------------------------------------
+
+export class EventEmitter<T> {
+    private listeners: Array<(e: T) => void> = [];
+    readonly event = (listener: (e: T) => void): Disposable => {
+        this.listeners.push(listener);
+        return {
+            dispose: () => {
+                const idx = this.listeners.indexOf(listener);
+                if (idx >= 0) { this.listeners.splice(idx, 1); }
+            },
+        };
+    };
+    fire(data: T): void {
+        for (const l of [...this.listeners]) { l(data); }
+    }
+    dispose(): void { this.listeners.length = 0; }
+}
+
+// ---------------- Language Model (vscode.lm) -----------------------
+
+export class LanguageModelChatMessage {
+    constructor(public readonly role: string, public readonly content: string) {}
+    static User(content: string): LanguageModelChatMessage {
+        return new LanguageModelChatMessage('user', content);
+    }
+    static Assistant(content: string): LanguageModelChatMessage {
+        return new LanguageModelChatMessage('assistant', content);
+    }
+}
+
+interface FakeLanguageModelChat {
+    id: string;
+    family: string;
+    sendRequest(
+        messages: LanguageModelChatMessage[],
+        options?: Record<string, unknown>,
+        token?: unknown,
+    ): Promise<{ text: AsyncIterable<string> }>;
+}
+
+const lmState: { models: FakeLanguageModelChat[] } = { models: [] };
+
+type LmChangeListener = () => void;
+const lmChangeListeners: LmChangeListener[] = [];
+
+export const lm = {
+    async selectChatModels(
+        selector?: { family?: string },
+    ): Promise<FakeLanguageModelChat[]> {
+        if (selector?.family) {
+            return lmState.models.filter((m) => m.family === selector.family);
+        }
+        return [...lmState.models];
+    },
+    onDidChangeChatModels(listener: LmChangeListener): Disposable {
+        lmChangeListeners.push(listener);
+        return {
+            dispose(): void {
+                const idx = lmChangeListeners.indexOf(listener);
+                if (idx >= 0) { lmChangeListeners.splice(idx, 1); }
+            },
+        };
+    },
+};
 
 // ---------------- TreeItem / ThemeIcon / ThemeColor ----------------
 //

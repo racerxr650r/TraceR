@@ -27,7 +27,7 @@
     <counts>
       <count name="hlrs"       value="2"/>
       <count name="llrs"       value="1"/>
-      <count name="tests"      value="1"/>
+      <count name="tests"      value="2"/>
       <count name="test_files" value="1"/>
     </counts>
   </metadata>
@@ -72,12 +72,18 @@
   </llrs>
 
   <tests>
-    <file path="test/ui/treeView.test.ts" role="ui-ts" count="1">
+    <file path="test/ui/treeView.test.ts" role="ui-ts" count="2">
       <header><![CDATA[ExTester-based UI tests for the Project Spec tree view.]]></header>
       <test name="test_tree_shows_hlr_leaf">
         <purpose>Verifies that the HLR leaf appears in the tree.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-UT-01"/>
+        </traces>
+      </test>
+      <test name="test_direct_hlr_trace">
+        <purpose>Verifies a test tracing directly to an HLR displays correctly.</purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-T01"/>
         </traces>
       </test>
     </file>

@@ -15,6 +15,8 @@ matching the schema. Do not return XML, prose, or Markdown.
 - `traces` should include at least one upstream HLR (`target: "HLR"`)
   unless the bundle explicitly says no parent HLR exists. Add SDD
   module traces when the implementation surface is known.
+- **Include `name` on every trace.** Use the target's human-readable
+  name (HLR `name` attribute, SDD module title/path, LLR text summary).
 - The LLR belongs to the function/prefix indicated in the target. Do
   not propose a different prefix; the translator places the row under
   exactly that `<function>`.
@@ -29,7 +31,7 @@ Response:
 {
   "text": "The project_io sidecar SHALL accept an `apply_edit` JSON-RPC request whose params carry a `dry_run: true` flag and SHALL respond with the candidate lint result without writing Project.xml.",
   "traces": [
-    {"target": "HLR", "ref": "HLR-008"},
+    {"target": "HLR", "ref": "HLR-008", "name": "Sidecar Dry-Run Support"},
     {"target": "SDD", "ref": "tools/project_io.py", "name": "project_io"}
   ]
 }
