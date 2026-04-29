@@ -144,8 +144,12 @@ describe('Form panel trace ref display (UI)', function () {
                 'Expected at least one target select element',
             ).to.be.greaterThan(0);
 
-            const targetValue = await targetSelects[0].getAttribute('value');
-            expect(targetValue, 'target select should show HLR').to.equal('HLR');
+            // RJSF renders enum values as indices; read the selected option text.
+            const targetText = await driver.executeScript<string>(
+                'var s = arguments[0]; return s.options[s.selectedIndex].text;',
+                targetSelects[0],
+            );
+            expect(targetText, 'target select should show HLR').to.equal('HLR');
 
             const refSelects = await webview.findWebElements(
                 By.css('select[id*="ref"]'),
@@ -155,9 +159,12 @@ describe('Form panel trace ref display (UI)', function () {
                 'Expected at least one ref select element',
             ).to.be.greaterThan(0);
 
-            // The first (and only) trace row should have value "HLR-T01".
-            const value = await refSelects[0].getAttribute('value');
-            expect(value, 'ref select should show HLR-T01, not be empty').to.equal(
+            // The first (and only) trace row should have ref "HLR-T01".
+            const refText = await driver.executeScript<string>(
+                'var s = arguments[0]; return s.options[s.selectedIndex].text;',
+                refSelects[0],
+            );
+            expect(refText, 'ref select should show HLR-T01, not be empty').to.equal(
                 'HLR-T01',
             );
         } finally {
@@ -204,8 +211,12 @@ describe('Form panel trace ref display (UI)', function () {
                 'Expected at least one target select element',
             ).to.be.greaterThan(0);
 
-            const targetValue = await targetSelects[0].getAttribute('value');
-            expect(targetValue, 'target select should show LLR').to.equal('LLR');
+            // RJSF renders enum values as indices; read the selected option text.
+            const targetText = await driver.executeScript<string>(
+                'var s = arguments[0]; return s.options[s.selectedIndex].text;',
+                targetSelects[0],
+            );
+            expect(targetText, 'target select should show LLR').to.equal('LLR');
 
             const refSelects = await webview.findWebElements(
                 By.css('select[id*="ref"]'),
@@ -215,8 +226,11 @@ describe('Form panel trace ref display (UI)', function () {
                 'Expected at least one ref select element',
             ).to.be.greaterThan(0);
 
-            const value = await refSelects[0].getAttribute('value');
-            expect(value, 'ref select should show LLR-UT-01, not be empty').to.equal(
+            const refText = await driver.executeScript<string>(
+                'var s = arguments[0]; return s.options[s.selectedIndex].text;',
+                refSelects[0],
+            );
+            expect(refText, 'ref select should show LLR-UT-01, not be empty').to.equal(
                 'LLR-UT-01',
             );
         } finally {
