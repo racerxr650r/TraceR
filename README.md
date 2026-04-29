@@ -4,6 +4,8 @@
 
 # TraceR
 
+> **Product landing page:** [racerxr650r.github.io/TraceR](https://racerxr650r.github.io/TraceR/)
+
 Vibe coding with AI doesn't have to be haphazard or even dangerous.
 
 Is your software fielded in safety/certified environments requiring
