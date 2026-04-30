@@ -33,7 +33,7 @@
   absent, only the bare ID is emitted.
 -#}
 {%- macro render_trace(tr) -%}
-{{ tr.ref }}{% if tr.name %} ({{ tr.name }}){% endif %}
+{{ tr.ref }}{% if tr.name | default('') %} ({{ tr.name }}){% endif %}
 {%- endmacro -%}
 # {{ project.metadata.title }}
 

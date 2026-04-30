@@ -18,6 +18,10 @@
 #   validate-xml    Validate doc/Project.xml against tools/project.xsd.
 #   render          Render all five spec templates (catches template/schema drift).
 #   test-py         Run the Python unit tests under test/.
+#   coverage        Run Python tests with coverage; produce term, XML, HTML reports.
+#   coverage-report Regenerate coverage reports from the last .coverage data file.
+#   ext-coverage    Run extension unit tests with coverage (c8); HTML+Cobertura output.
+#   coverage_report Generate consolidated Markdown report from coverage XML files.
 #   ext-typecheck   Run 'tsc --noEmit' on the VS Code extension.
 #   ext-build       Bundle the VS Code extension via esbuild.
 #   ext-package     Produce a .vsix via 'vsce package'.
@@ -75,6 +79,7 @@ endif
         ext-build ext-typecheck ext-package ext \
         ext-test-unit ext-test-ui \
         lint validate-xml render test test-py ci \
+        coverage coverage-report coverage_report ext-coverage \
         clean clean-docs clean-ext distclean
 
 help:
@@ -326,7 +331,7 @@ bootstrap:
 	fi
 	@echo ">>> Installing Python dependencies (jinja2, lxml, xmlschema)..."
 	"$(VENV_PIP)" install --upgrade pip
-	"$(VENV_PIP)" install jinja2 lxml xmlschema
+	"$(VENV_PIP)" install jinja2 lxml xmlschema coverage
 	@echo ">>> Installing VS Code extension npm dependencies..."
 	@if [[ -f "$(EXT_DIR)/package.json" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
@@ -402,6 +407,45 @@ render:
 test-py:
 	@echo ">>> Running Python unit tests..."
 	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m unittest discover -s test -p 'test_*.py'
+
+coverage:
+	@echo ">>> Running Python tests with coverage measurement..."
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage run \
+	    --rcfile="$(REPO_ROOT)/.coveragerc" \
+	    -m unittest discover -s test -p 'test_*.py'
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage report --show-missing
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage xml -o test_reports/coverage.xml
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage html -d test_reports/html
+	@echo ""
+	@echo "Coverage XML:  $(REPO_ROOT)/test_reports/coverage.xml"
+	@echo "Coverage HTML: $(REPO_ROOT)/test_reports/html/index.html"
+
+ext-coverage:
+	@echo ">>> Running VS Code extension unit tests with coverage (c8)..."
+	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
+	    cd "$(EXT_DIR)" && npm install ; \
+	fi
+	cd "$(EXT_DIR)" && npm run test:coverage
+	mv "$(REPO_ROOT)/test_reports/ext/cobertura-coverage.xml" "$(REPO_ROOT)/test_reports/ext-coverage.xml"
+	@echo ""
+	@echo "Extension coverage HTML: $(REPO_ROOT)/test_reports/ext/index.html"
+	@echo "Extension coverage XML:  $(REPO_ROOT)/test_reports/ext-coverage.xml"
+
+coverage_report:
+	@echo ">>> Generating consolidated coverage report..."
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" "$(REPO_ROOT)/tools/coverage_report.py" \
+	    --py-xml test_reports/coverage.xml \
+	    --ext-xml test_reports/ext-coverage.xml \
+	    --out test_reports/report.md
+
+coverage-report:
+	@echo ">>> Generating coverage report (no test re-run)..."
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage report --show-missing
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage xml -o test_reports/coverage.xml
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" -m coverage html -d test_reports/html
+	@echo ""
+	@echo "Coverage XML:  $(REPO_ROOT)/test_reports/coverage.xml"
+	@echo "Coverage HTML: $(REPO_ROOT)/test_reports/html/index.html"
 
 ext-test-unit:
 	@echo ">>> Running VS Code extension unit tests (mocha)..."

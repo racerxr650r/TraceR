@@ -65,6 +65,24 @@ else:
 _CDATA_TRIGGERS = re.compile(r"[<>&]|\]\]>|\[[^\]]*\]\([^)]*\)|`")
 
 
+def _beautify(xml_bytes: bytes) -> bytes:
+    """Normalize indentation of serialized Project.xml.
+
+    Re-parses with ``remove_blank_text=True`` and applies
+    ``etree.indent`` so every element sits on its own line with
+    consistent 2-space indentation.  CDATA sections and comments are
+    preserved.
+    """
+    parser = etree.XMLParser(
+        remove_blank_text=True,
+        strip_cdata=False,
+        remove_comments=False,
+    )
+    tree = etree.fromstring(xml_bytes, parser).getroottree()
+    etree.indent(tree.getroot(), space="  ")
+    return etree.tostring(tree, xml_declaration=True, encoding="UTF-8")
+
+
 # --------------------------------------------------------------------- #
 # JSON-Schema deriver                                                   #
 # --------------------------------------------------------------------- #
@@ -171,10 +189,6 @@ def derive_form_schema(
             widget.setdefault("ui:options", {"rows": 8})
         else:
             property_schema = {"type": "string", "title": target}
-            if target == "id" and type_name == "Hlr":
-                property_schema["pattern"] = r"^HLR-\d{3,}$"
-            elif target == "id" and type_name == "Llr":
-                property_schema["pattern"] = r"^LLR-[A-Z0-9]+-\d{2,}$"
 
         schema["properties"][target] = property_schema
         if widget:
@@ -202,11 +216,23 @@ def _trace_array_schema(
     """JSON Schema for a `<traces>` subtree, projected as an array of
     `{target, ref, name?}` objects so RJSF renders one editable row
     per trace with add/remove buttons.
+
+    The ``ref`` enum contains the *union* of all known ids across every
+    target kind so that:
+    1. A Test tracing directly to an HLR still displays the ref value.
+    2. The RJSF ``select`` widget always has a populated option list.
     """
     target_enum = sorted({primary_target, "SDD", "HLR", "LLR"})
     ref_schema: dict[str, Any] = {"type": "string", "title": "ref"}
-    if primary_target in refs:
-        ref_schema["enum"] = list(refs[primary_target])
+
+    # Merge all ref-id pools into a single enum for the select widget.
+    all_refs: list[str] = []
+    for ids in refs.values():
+        all_refs.extend(ids)
+    if all_refs:
+        # Deduplicate, keep stable order (sorted).
+        ref_schema["enum"] = sorted(set(all_refs))
+
     return {
         "type": "array",
         "title": "traces",
@@ -356,6 +382,10 @@ def apply_edit(
         encoding="UTF-8",
     )
 
+    # Beautify: normalize indentation so AI-inserted elements match the
+    # hand-authored style (2-space indent, one element per line).
+    candidate = _beautify(candidate)
+
     # Validate the candidate without touching the original file.
     fd, tmp_name = tempfile.mkstemp(
         prefix=".project_io_apply_edit.",
@@ -453,7 +483,29 @@ _STEP_RE = re.compile(
 def _split_path(path: str) -> list[str]:
     if not path or not path.startswith("/"):
         raise ValueError(f"path must start with '/': {path!r}")
-    return [p for p in path.split("/")[1:] if p != ""]
+    # Split on '/' but not inside bracket predicates (e.g.
+    # file[path=test/foo.py] must remain a single step).
+    steps: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in path[1:]:  # skip leading '/'
+        if ch == "[":
+            depth += 1
+            current.append(ch)
+        elif ch == "]":
+            depth -= 1
+            current.append(ch)
+        elif ch == "/" and depth == 0:
+            segment = "".join(current)
+            if segment:
+                steps.append(segment)
+            current = []
+        else:
+            current.append(ch)
+    segment = "".join(current)
+    if segment:
+        steps.append(segment)
+    return steps
 
 
 def _parse_predicate(pred: str) -> dict[str, str] | int | None:
@@ -556,6 +608,23 @@ def _select_child(
     return None
 
 
+def _cascade_id_rename(
+    root: "etree._Element",
+    parent_tag: str,
+    old_id: str,
+    new_id: str,
+) -> None:
+    """Update all <trace> refs that point to the renamed element."""
+    # Determine the target value used in <trace target="..." ref="...">
+    target_map = {"hlr": "HLR", "llr": "LLR"}
+    trace_target = target_map.get(parent_tag)
+    if not trace_target:
+        return
+    for trace_el in root.iter("trace"):
+        if trace_el.get("target") == trace_target and trace_el.get("ref") == old_id:
+            trace_el.set("ref", new_id)
+
+
 def _apply_operation(root: "etree._Element", op: dict[str, Any]) -> None:
     op_kind = op.get("op")
     path = op.get("path")
@@ -613,7 +682,12 @@ def _apply_operation(root: "etree._Element", op: dict[str, Any]) -> None:
             return
         if value is None:
             raise ValueError(f"replace/add @{attr} requires a value")
+        old_value = parent.get(attr)
         parent.set(attr, str(value))
+        # Cascade: when renaming an id on an hlr/llr element, update
+        # all <trace> elements that reference the old id.
+        if attr == "id" and old_value and old_value != str(value):
+            _cascade_id_rename(root, parent.tag, old_value, str(value))
         return
 
     if tag == "-":
@@ -740,17 +814,58 @@ def next_free_llr_id(
     function_prefix: str,
     xml_path: Path | str = PROJECT_XML,
 ) -> str:
-    """Return the next free ``LLR-<PREFIX>-NN`` id."""
+    """Return the next free ``LLR-<PREFIX>-NN`` id.
+
+    Discovers the established prefix by inspecting existing LLRs under
+    the named ``<function>``. Falls back to a sanitized derivation of
+    the function name only when no LLRs exist yet in that function.
+    """
+    import re
     import xml.etree.ElementTree as ET
 
-    upper = function_prefix.upper()
     root = ET.parse(xml_path).getroot()
-    ids = [
+
+    # Find the <function name="..."> element matching function_prefix.
+    func_el = None
+    for f in root.findall("llrs/function"):
+        if f.get("name") == function_prefix:
+            func_el = f
+            break
+
+    # Collect IDs from that specific function (for prefix discovery).
+    func_ids = [
+        l.get("id", "")
+        for l in (func_el.findall("llr") if func_el is not None else [])
+    ]
+
+    # Discover the established prefix from existing LLRs in this function.
+    # Pattern: LLR-<PREFIX>-<NN>
+    established_prefix: str | None = None
+    llr_id_re = re.compile(r"^LLR-([A-Z0-9]+)-\d+$")
+    for fid in func_ids:
+        m = llr_id_re.match(fid)
+        if m:
+            established_prefix = m.group(1)
+            break
+
+    if established_prefix:
+        upper = established_prefix
+    else:
+        # No existing LLRs — derive a short prefix from the function name.
+        upper = re.sub(r"[^A-Z0-9]", "", function_prefix.upper())
+        if not upper:
+            upper = "GEN"
+        # Limit to a reasonable length (3-4 chars typical).
+        if len(upper) > 4:
+            upper = upper[:4]
+
+    # Scan ALL LLR ids (not just this function) to avoid collisions.
+    all_ids = [
         l.get("id", "")
         for l in root.findall("llrs/function/llr")
     ]
     return _next_id_for_pattern(
-        ids, prefix=f"LLR-{upper}-", default_width=2,
+        all_ids, prefix=f"LLR-{upper}-", default_width=2,
     )
 
 

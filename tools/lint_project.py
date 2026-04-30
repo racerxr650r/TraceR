@@ -286,6 +286,29 @@ def check_semantics(tree: ET.ElementTree, findings: Findings) -> None:
             findings.error(f"duplicate LLR id: {lid}", code="id-format")
         llr_ids[lid] = llr
 
+    # Per-function prefix consistency: warn when a <function> contains
+    # LLRs whose dominant prefix is clearly established (≥4 members)
+    # while another prefix has very few (≤2), suggesting the minority
+    # entries are naming mistakes (e.g. unsanitized AI-generated IDs).
+    for func in root.findall("llrs/function"):
+        prefix_counts: dict[str, int] = {}
+        for llr in func.findall("llr"):
+            lid = llr.get("id", "")
+            m = LLR_ID_RE.match(lid)
+            if m:
+                pfx = lid[4:lid.rfind("-")]
+                prefix_counts[pfx] = prefix_counts.get(pfx, 0) + 1
+        if len(prefix_counts) > 1:
+            dominant = max(prefix_counts.values())
+            minority = min(prefix_counts.values())
+            if dominant >= 4 and minority <= 2:
+                fname = func.get("name", func.get("number", "?"))
+                findings.warn(
+                    f"function '{fname}' mixes LLR prefixes: "
+                    f"{', '.join(sorted(prefix_counts))}",
+                    code="mixed-prefix",
+                )
+
     # --- Tests --------------------------------------------------------
     test_owner: dict[str, str] = {}
     for tfile in root.findall("tests/file"):

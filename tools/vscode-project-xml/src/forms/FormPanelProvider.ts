@@ -628,6 +628,7 @@ function buildReplaceOperations(
     isAttribute: (key: string) => boolean,
 ): EditOperation[] {
     const ops: EditOperation[] = [];
+    let idOp: EditOperation | undefined;
     for (const [key, value] of Object.entries(formData)) {
         if (value === undefined) {
             continue;
@@ -641,11 +642,18 @@ function buildReplaceOperations(
             continue;
         }
         if (isAttribute(key)) {
-            ops.push({
+            const op: EditOperation = {
                 op: 'replace',
                 path: `${basePath}/@${key}`,
                 value: String(value ?? ''),
-            });
+            };
+            // Defer @id to the end so earlier ops still resolve against
+            // the original id in the basePath predicate.
+            if (key === 'id') {
+                idOp = op;
+            } else {
+                ops.push(op);
+            }
             continue;
         }
         // Plain text body.
@@ -654,6 +662,9 @@ function buildReplaceOperations(
             path: `${basePath}/${key}`,
             value: value ?? '',
         });
+    }
+    if (idOp) {
+        ops.push(idOp);
     }
     return ops;
 }
@@ -752,7 +763,7 @@ function renderFormHtml(
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'none'; img-src ${webview.cspSource} data:;
                    style-src ${webview.cspSource} 'unsafe-inline';
-                   script-src 'nonce-${nonce}';" />
+                   script-src 'nonce-${nonce}' 'unsafe-eval';" />
     <title>${escapeHtml(title)}</title>
     <style>
       body { font-family: var(--vscode-font-family); padding: 1rem; color: var(--vscode-foreground); background: var(--vscode-editor-background); }

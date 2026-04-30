@@ -411,5 +411,61 @@ class UiHintsTests(unittest.TestCase):
         schema.assertValid(LET.parse(str(xml_path)))
 
 
+class CliSedEditTests(unittest.TestCase):
+    """HLR-041: no runtime service dependency — a plain CLI text tool
+    (sed) can modify Project.xml; render and lint use only local files."""
+
+    def setUp(self) -> None:
+        import shutil
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.xml_path = self.tmp / "Project.xml"
+        self.pvd_path = self.tmp / "PVD.md"
+        init_project(
+            name="SedTest", short_name="st", author="Tester",
+            xml_path=self.xml_path, pvd_path=self.pvd_path,
+        )
+        # Copy templates so render_document can find them.
+        dst = self.tmp / "templates"
+        shutil.copytree(_paths.TEMPLATES_DIR, dst)
+
+    def test_cli_sed_edit_no_runtime_service(self) -> None:
+        import subprocess
+        from lint_project import lint
+
+        # 1. Verify the freshly-init'd file has project name "SedTest".
+        original = self.xml_path.read_text()
+        self.assertIn('name="SedTest"', original)
+
+        # 2. Use sed (a plain CLI text tool) to rename the project.
+        result = subprocess.run(
+            ["sed", "-i", 's/name="SedTest"/name="SedEdited"/', str(self.xml_path)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"sed failed: {result.stderr}")
+
+        # 3. Confirm the edit took effect in the plain-text file.
+        edited = self.xml_path.read_text()
+        self.assertIn('name="SedEdited"', edited)
+        self.assertNotIn('name="SedTest"', edited)
+
+        # 4. Parse and render the sed-edited file — no service needed.
+        parsed = parse_project_to_dict(self.xml_path)
+        self.assertEqual(parsed["name"], "SedEdited")
+        md = render_document(
+            self.tmp / "templates" / "HLRs.md.j2",
+            metadata_id="HLRs",
+            xml_path=self.xml_path,
+        )
+        self.assertIsInstance(md, str)
+        self.assertTrue(len(md) > 0)
+
+        # 5. Lint the sed-edited file — only local XSD, no network.
+        findings = lint(self.xml_path, _paths.PROJECT_XSD)
+        self.assertEqual(len(findings.errors), 0,
+                         f"Unexpected errors: {findings.errors}")
+
+
 if __name__ == "__main__":
     unittest.main()

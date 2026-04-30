@@ -78,7 +78,7 @@ class Bundle:
     schema_excerpt: str           # XSD subtree for ``target.type``
     response_schema: dict[str, Any]   # the intent's JSON Schema
     next_free_ids: dict[str, str] = field(default_factory=dict)
-    available_refs: dict[str, list[str]] = field(default_factory=dict)
+    available_refs: dict[str, list[Any]] = field(default_factory=dict)
     upstream: dict[str, Any] = field(default_factory=dict)
     siblings: list[dict[str, Any]] = field(default_factory=list)
     pvd_excerpt: str = ""
@@ -145,16 +145,19 @@ def _summarise_list(label: str, ids: Sequence[str], sample: int = 5) -> str:
     return f"{label} ({len(ids)}): {head} … {tail}"
 
 
-def _collect_refs(project: Mapping[str, Any]) -> dict[str, list[str]]:
+def _collect_refs(project: Mapping[str, Any]) -> dict[str, list[str | dict[str, str]]]:
     """Collect the closed sets the LM is allowed to reference, sourced from
     the parsed tree. Used both for prompt grounding and (TS side) for the
     typed-response validator's ``ref:HLR`` / ``ref:LLR`` enums.
+
+    HLR entries include {id, name} so the LM can populate the trace
+    ``name`` attribute without guessing.
     """
     flat_hlrs = project.get("flat_hlrs") or []
     flat_llrs = project.get("flat_llrs") or []
     sdd_modules = (project.get("sdd") or {}).get("modules") or []
     return {
-        "HLR": [h.get("id") for h in flat_hlrs if h.get("id")],
+        "HLR": [{"id": h["id"], "name": h.get("name", "")} for h in flat_hlrs if h.get("id")],
         "LLR": [l.get("id") for l in flat_llrs if l.get("id")],
         "SDD": [m.get("path") or m.get("title") for m in sdd_modules if m.get("path") or m.get("title")],
     }

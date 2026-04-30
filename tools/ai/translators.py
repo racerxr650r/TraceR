@@ -80,6 +80,21 @@ def _test_file_path(file_path: str | None) -> str:
     return f"/tests/file[path={file_path}]/test/-"
 
 
+def _first_test_file(xml_path: Path) -> str | None:
+    """Return the path attribute of the first <file> under <tests>, or None."""
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(xml_path)
+        tests_el = tree.getroot().find("tests")
+        if tests_el is not None:
+            first = tests_el.find("file")
+            if first is not None:
+                return first.get("path") or None
+    except (ET.ParseError, OSError):
+        pass
+    return None
+
+
 def _module_path() -> str:
     return "/sdd/modules/module/-"
 
@@ -311,22 +326,125 @@ def translate_gap_fix(
     **_: Any,
 ) -> list[dict[str, Any]]:
     """``gap.fix`` returns either ``{kind: "llr", llr: {...}}`` or
-    ``{kind: "test", test: {...}}``. Translator dispatches to the matching
-    draft translator.
+    ``{kind: "test", test: {...}}``. Optionally carries ``new_llr``,
+    ``new_hlr``, ``new_module`` for cascading creation when upstream
+    refs are missing.
+
+    Translator builds operations bottom-up (module → HLR → LLR → test)
+    so that each parent exists before the child referencing it is added.
+    Placeholder refs (``$new_module``, ``$new_hlr``, ``$new_llr``) are
+    resolved to the allocated ids/paths.
     """
     kind = response.get("kind")
-    if kind == "llr":
-        return translate_draft_llr(
-            response.get("llr") or {},
-            target_section=target_section,
+    ops: list[dict[str, Any]] = []
+
+    # ── Optional new_module ───────────────────────────────────────
+    new_module_path: str | None = None
+    if response.get("new_module"):
+        mod_data = response["new_module"]
+        mod_ops = translate_draft_module(mod_data)
+        ops.extend(mod_ops)
+        new_module_path = (mod_data.get("path") or "").strip()
+
+    # ── Optional new_hlr ──────────────────────────────────────────
+    new_hlr_id: str | None = None
+    if response.get("new_hlr"):
+        hlr_data = dict(response["new_hlr"])
+        # Resolve $new_module placeholder in traces.
+        if new_module_path and hlr_data.get("traces"):
+            hlr_data["traces"] = _resolve_placeholder(
+                hlr_data["traces"], "$new_module", new_module_path
+            )
+        hlr_ops = translate_draft_hlr(
+            hlr_data,
+            target_section=target_section or "1",
             xml_path=xml_path,
         )
-    if kind == "test":
-        return translate_draft_test(
-            response.get("test") or {},
-            target_file=target_file,
+        ops.extend(hlr_ops)
+        # Extract the allocated ID from the op value.
+        new_hlr_id = hlr_ops[0]["value"].get("@id") if hlr_ops else None
+
+    # ── Optional new_llr ──────────────────────────────────────────
+    new_llr_id: str | None = None
+    if response.get("new_llr"):
+        llr_data = dict(response["new_llr"])
+        # Resolve $new_hlr placeholder in traces.
+        if new_hlr_id and llr_data.get("traces"):
+            llr_data["traces"] = _resolve_placeholder(
+                llr_data["traces"], "$new_hlr", new_hlr_id
+            )
+        # Determine function/prefix for the new LLR.
+        llr_section = target_section or _first_llr_function(xml_path) or "GEN"
+        llr_ops = translate_draft_llr(
+            llr_data,
+            target_section=llr_section,
+            xml_path=xml_path,
         )
-    raise TranslatorError(f"gap.fix response has unsupported kind: {kind!r}")
+        ops.extend(llr_ops)
+        new_llr_id = llr_ops[0]["value"].get("@id") if llr_ops else None
+
+    # ── Primary item (llr or test) ────────────────────────────────
+    if kind == "llr":
+        llr_data = dict(response.get("llr") or {})
+        # Resolve $new_hlr placeholder.
+        if new_hlr_id and llr_data.get("traces"):
+            llr_data["traces"] = _resolve_placeholder(
+                llr_data["traces"], "$new_hlr", new_hlr_id
+            )
+        llr_section = target_section or _first_llr_function(xml_path) or "GEN"
+        primary_ops = translate_draft_llr(
+            llr_data,
+            target_section=llr_section,
+            xml_path=xml_path,
+        )
+        ops.extend(primary_ops)
+    elif kind == "test":
+        test_data = dict(response.get("test") or {})
+        # Resolve $new_llr placeholder.
+        if new_llr_id and test_data.get("traces"):
+            test_data["traces"] = _resolve_placeholder(
+                test_data["traces"], "$new_llr", new_llr_id
+            )
+        file_path = target_file or _first_test_file(xml_path)
+        primary_ops = translate_draft_test(
+            test_data,
+            target_file=file_path,
+        )
+        ops.extend(primary_ops)
+    else:
+        raise TranslatorError(f"gap.fix response has unsupported kind: {kind!r}")
+
+    return ops
+
+
+def _resolve_placeholder(
+    traces: list[dict[str, Any]],
+    placeholder: str,
+    resolved: str,
+) -> list[dict[str, Any]]:
+    """Replace a placeholder ref value (e.g. '$new_llr') with the real id."""
+    out = []
+    for t in traces:
+        t = dict(t)
+        if t.get("ref") == placeholder:
+            t["ref"] = resolved
+        out.append(t)
+    return out
+
+
+def _first_llr_function(xml_path: Path) -> str | None:
+    """Return the name attribute of the first <function> under <llrs>, or None."""
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(xml_path)
+        llrs_el = tree.getroot().find("llrs")
+        if llrs_el is not None:
+            first = llrs_el.find("function")
+            if first is not None:
+                return first.get("name") or None
+    except (ET.ParseError, OSError):
+        pass
+    return None
 
 
 # --------------------------------------------------------------------- #

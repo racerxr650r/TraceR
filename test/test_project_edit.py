@@ -303,10 +303,9 @@ class FormSchemaTests(unittest.TestCase):
         self.assertIn("name", schema["required"])
         # cdata fields surface as textarea widgets.
         self.assertEqual(out["uiSchema"]["text"]["ui:widget"], "textarea")
-        # The HLR id pattern is lifted from HlrId.
-        self.assertTrue(
-            schema["properties"]["id"]["pattern"].startswith("^HLR-"),
-        )
+        # id field is a plain string (pattern validation deferred to
+        # server-side lint to avoid CSP issues in the webview).
+        self.assertEqual(schema["properties"]["id"]["type"], "string")
         # Field order is preserved.
         self.assertEqual(out["uiSchema"]["ui:order"][:2], ["id", "name"])
 
@@ -319,11 +318,71 @@ class FormSchemaTests(unittest.TestCase):
         self.assertEqual(
             traces["items"]["properties"]["target"]["default"], "HLR",
         )
-        # The ref selector is populated from the refs snapshot.
+        # The ref selector enum contains the union of all known ids so
+        # that existing values (regardless of target) display correctly.
         self.assertEqual(
             traces["items"]["properties"]["ref"]["enum"],
             ["HLR-001", "HLR-002"],
         )
+
+    def test_trace_ref_enum_union_of_all_targets(self) -> None:
+        """When both HLR and LLR ids are available the ref enum contains
+        the sorted union — a Test tracing directly to an HLR will still
+        render its ref value in the select widget."""
+        refs = {"HLR": ["HLR-001", "HLR-002"], "LLR": ["LLR-NAV-01", "LLR-NAV-02"]}
+        out = derive_form_schema("Test", refs=refs)
+        traces = out["schema"]["properties"]["traces"]
+        ref_enum = traces["items"]["properties"]["ref"]["enum"]
+        # All ids appear in one merged, sorted list.
+        self.assertEqual(
+            ref_enum,
+            ["HLR-001", "HLR-002", "LLR-NAV-01", "LLR-NAV-02"],
+        )
+        # An HLR id present in formData will match the enum → renders.
+        self.assertIn("HLR-001", ref_enum)
+
+    def test_trace_ref_no_enum_when_refs_empty(self) -> None:
+        """With no refs snapshot the ref field is free-text (no enum)."""
+        out = derive_form_schema("Test", refs={})
+        traces = out["schema"]["properties"]["traces"]
+        self.assertNotIn("enum", traces["items"]["properties"]["ref"])
+
+
+class CascadeIdRenameTests(WorkspaceMixin, unittest.TestCase):
+    """Verify that renaming an LLR or HLR id cascades to traces."""
+
+    def test_rename_llr_cascades_to_test_traces(self) -> None:
+        """Renaming an LLR id should update <trace ref=...> in tests."""
+        result = apply_edit(
+            [{"op": "replace",
+              "path": "/llrs/function[number=1]/llr[id=LLR-CORE-01]/@id",
+              "value": "LLR-CORE-99"}],
+            xml_path=str(self.xml_path),
+        )
+        self.assertTrue(result.ok, result.findings.get("errors"))
+        # Verify the test trace was updated on disk.
+        from lxml import etree
+        tree = etree.parse(str(self.xml_path))
+        traces = tree.xpath("//trace[@target='LLR']")
+        refs = [t.get("ref") for t in traces]
+        self.assertIn("LLR-CORE-99", refs)
+        self.assertNotIn("LLR-CORE-01", refs)
+
+    def test_rename_hlr_cascades_to_llr_and_test_traces(self) -> None:
+        """Renaming an HLR id should update traces in LLRs and tests."""
+        result = apply_edit(
+            [{"op": "replace",
+              "path": "/hlrs/section[number=1]/hlr[id=HLR-001]/@id",
+              "value": "HLR-099"}],
+            xml_path=str(self.xml_path),
+        )
+        self.assertTrue(result.ok, result.findings.get("errors"))
+        from lxml import etree
+        tree = etree.parse(str(self.xml_path))
+        traces = tree.xpath("//trace[@target='HLR']")
+        refs = [t.get("ref") for t in traces]
+        self.assertIn("HLR-099", refs)
+        self.assertNotIn("HLR-001", refs)
 
 
 if __name__ == "__main__":  # pragma: no cover

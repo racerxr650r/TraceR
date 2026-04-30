@@ -157,9 +157,9 @@ export class AiClient {
         });
 
         if (
-            evaluation.kind === 'rejected' &&
             evaluation.retry_feedback &&
-            evaluation.retry_feedback.length > 0
+            evaluation.retry_feedback.length > 0 &&
+            (evaluation.kind === 'rejected' || evaluation.kind === 'prompt')
         ) {
             retries += 1;
             const retryPrompt = await this.sidecar.aiRequest(baseParams);
@@ -181,6 +181,16 @@ export class AiClient {
                     });
                 }
             }
+        }
+
+        // If the sidecar still wants another retry but we've exhausted
+        // our retry budget, treat it as a rejection.
+        if (evaluation.kind === 'prompt') {
+            evaluation = {
+                ...evaluation,
+                kind: 'rejected',
+                failures: evaluation.retry_feedback ?? ['validation failed after retry'],
+            };
         }
 
         const pendingApply =

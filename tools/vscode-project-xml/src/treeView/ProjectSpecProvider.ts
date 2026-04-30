@@ -181,9 +181,77 @@ function buildTopLevel(
         buildStpNode(project),
         ...buildGenericPayloadNodes(project),
     ];
+    propagateBadges(topLevel);
     decorateAiTargetable(topLevel, hints);
     decorateTooltips(topLevel, project);
     return topLevel;
+}
+
+/**
+ * Walk the tree bottom-up and propagate the worst badge severity from
+ * children to parents.  A parent inherits the error icon if any child
+ * has an error, or a yellow warning icon if any child has a warning.
+ */
+function propagateBadges(nodes: ProjectSpecNode[]): void {
+    for (const node of nodes) {
+        if (!node.children?.length) {
+            // Leaf: set iconPath if it carries a badge in its label.
+            applyBadgeIcon(node);
+            continue;
+        }
+        // Recurse first so children are resolved before we inspect them.
+        propagateBadges(node.children);
+        const worst = worstSeverity(node.children);
+        if (worst === 'error') {
+            node.iconPath = new vscode.ThemeIcon(
+                'error',
+                new vscode.ThemeColor('list.errorForeground'),
+            );
+        } else if (worst === 'warning') {
+            node.iconPath = new vscode.ThemeIcon(
+                'warning',
+                new vscode.ThemeColor('list.warningForeground'),
+            );
+        }
+    }
+}
+
+function applyBadgeIcon(node: ProjectSpecNode): void {
+    const label = (node.label ?? '') as string;
+    if (label.startsWith('❌')) {
+        node.iconPath = new vscode.ThemeIcon(
+            'error',
+            new vscode.ThemeColor('list.errorForeground'),
+        );
+    } else if (label.startsWith('⚠')) {
+        node.iconPath = new vscode.ThemeIcon(
+            'warning',
+            new vscode.ThemeColor('list.warningForeground'),
+        );
+    }
+}
+
+function worstSeverity(nodes: ProjectSpecNode[]): 'error' | 'warning' | undefined {
+    let hasWarning = false;
+    for (const n of nodes) {
+        const label = (n.label ?? '') as string;
+        if (label.startsWith('❌')) {
+            return 'error';
+        }
+        if (label.startsWith('⚠')) {
+            hasWarning = true;
+        }
+        // Also check children's iconPath (for propagated parents).
+        if (n.iconPath instanceof vscode.ThemeIcon) {
+            if (n.iconPath.id === 'error') {
+                return 'error';
+            }
+            if (n.iconPath.id === 'warning') {
+                hasWarning = true;
+            }
+        }
+    }
+    return hasWarning ? 'warning' : undefined;
 }
 
 /**

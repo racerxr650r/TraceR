@@ -190,6 +190,10 @@ problems:
 * ❌ — at least one error refers to this item.
 * ⚠ — at least one warning refers to this item.
 
+Badges propagate upward: if any child item has a badge, its parent
+group node also shows the worst-severity badge so you can spot
+problems without expanding every group.
+
 ![Tree view with all groups collapsed](../images/screenshots/tree-view-collapsed.png)
 
 Click any group to expand it and reveal its children:
@@ -460,6 +464,11 @@ The edit form includes these additional features:
 Submit to apply the change (validated and lint-checked just like
 an add).
 
+**Renaming an item's ID:** When you change an item's `@id` field in
+the edit form, TraceR automatically updates every trace reference
+that pointed to the old ID. You don't need to hunt for stale
+cross-references — they cascade automatically.
+
 ### AI assistance (optional)
 
 When a language model is available in VS Code and AI is enabled in
@@ -468,6 +477,10 @@ settings, you also get:
 * The **`@projectspec`** chat participant, with slash commands like
   `/draft-hlr`, `/draft-llr`, `/draft-test`, `/expand`, `/review`,
   `/suggest-traces`, and `/gap-fill`.
+* **`/gap-fill` cascading creation** — when a gap requires not just a
+  test but also an upstream LLR, HLR, or module, the AI creates the
+  full chain in one action. You review and accept a single diff that
+  adds all the needed elements with correct cross-references.
 * **AI items** in the right-click menu of every Project Spec tree
   node, so you can draft or expand from the tree itself.
 * A diff-preview-and-apply step on every AI suggestion: nothing
@@ -538,6 +551,13 @@ python3 tools/lint_project.py
 Exits with status `0` if everything is clean, non-zero if there
 are any errors. Warnings are reported but don't fail the run
 unless you pass `--warnings-as-errors`.
+
+Notable lint warnings include:
+
+* **`mixed-prefix`** — a function's LLRs use two different id
+  prefixes (e.g. both `LLR-PPD-*` and `LLR-PRJP-*`). This usually
+  means AI-generated ids didn't adopt the established naming
+  convention. Rename the outliers to match.
 
 ### `Makefile` — common tasks
 

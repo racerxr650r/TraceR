@@ -21,6 +21,7 @@ import {
     VSBrowser,
     WebDriver,
 } from 'vscode-extension-tester';
+import { dismissWelcomeOverlay } from './helpers';
 
 const FIXTURE_WORKSPACE = path.resolve(
     __dirname,
@@ -80,6 +81,8 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
         driver = VSBrowser.instance.driver;
         await VSBrowser.instance.openResources(FIXTURE_WORKSPACE);
         await driver.sleep(8000);
+        // Dismiss the VS Code onboarding overlay that blocks clicks in CI.
+        await dismissWelcomeOverlay(driver);
         // Open the Project Spec view so tree-dependent tests can
         // navigate to leaves for Reveal commands.
         const activityBar = new ActivityBar();

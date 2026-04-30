@@ -76,6 +76,7 @@ blocker.
 | ---- | --------------- | ------- |
 | **Python** | 3.10 | Runs `tools/render_doc.py`, `tools/lint_project.py`, `tools/project_io.py`, `tools/project_merge.py`, and the `tools/ai/` pipeline. The extension shells out to the user's interpreter — no bundled runtime. |
 | **Jinja2** | 3.x | Required by the renderer. Installed via `pip install jinja2`. |
+| **coverage** | 7.x | Dev-only. Code coverage measurement for `make -C tools coverage`. Installed via `pip install coverage`. |
 | **lxml** *or* **xmllint** | any | Optional XSD validator used by the linter; lint degrades gracefully when neither is present. Recommended in CI for strict validation. |
 | **Node.js** | 20 LTS | Builds the TypeScript extension and the webview bundles (forms, walkthrough, diff preview). |
 | **npm** | 10 | Bundled with Node 20; used for dependency management under `tools/vscode-project-xml/`. |
@@ -94,7 +95,7 @@ blocker.
 ```sh
 # Python side
 python3 -m venv .venv && source .venv/bin/activate
-pip install jinja2 lxml pytest
+pip install jinja2 lxml coverage
 
 # Extension side
 cd tools/vscode-project-xml
