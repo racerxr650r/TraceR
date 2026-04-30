@@ -151,19 +151,22 @@ describe('Form panel trace ref display (UI)', function () {
             );
             expect(targetText, 'target select should show HLR').to.equal('HLR');
 
-            const refSelects = await webview.findWebElements(
-                By.css('select[id*="ref"]'),
-            );
-            expect(
-                refSelects.length,
-                'Expected at least one ref select element',
-            ).to.be.greaterThan(0);
-
-            // The first (and only) trace row should have ref "HLR-T01".
-            const refText = await driver.executeScript<string>(
-                'var s = arguments[0]; return s.options[s.selectedIndex].text;',
-                refSelects[0],
-            );
+            // Poll for ref select to populate (form renders async).
+            let refText = '';
+            const refDeadline = Date.now() + 10_000;
+            while (Date.now() < refDeadline) {
+                const refSelects = await webview.findWebElements(
+                    By.css('select[id*="ref"]'),
+                );
+                if (refSelects.length > 0) {
+                    refText = await driver.executeScript<string>(
+                        'var s = arguments[0]; return s.options[s.selectedIndex] ? s.options[s.selectedIndex].text : "";',
+                        refSelects[0],
+                    );
+                    if (refText) break;
+                }
+                await driver.sleep(500);
+            }
             expect(refText, 'ref select should show HLR-T01, not be empty').to.equal(
                 'HLR-T01',
             );
@@ -218,18 +221,22 @@ describe('Form panel trace ref display (UI)', function () {
             );
             expect(targetText, 'target select should show LLR').to.equal('LLR');
 
-            const refSelects = await webview.findWebElements(
-                By.css('select[id*="ref"]'),
-            );
-            expect(
-                refSelects.length,
-                'Expected at least one ref select element',
-            ).to.be.greaterThan(0);
-
-            const refText = await driver.executeScript<string>(
-                'var s = arguments[0]; return s.options[s.selectedIndex].text;',
-                refSelects[0],
-            );
+            // Poll for ref select to populate (form renders async).
+            let refText = '';
+            const refDeadline = Date.now() + 10_000;
+            while (Date.now() < refDeadline) {
+                const refSelects = await webview.findWebElements(
+                    By.css('select[id*="ref"]'),
+                );
+                if (refSelects.length > 0) {
+                    refText = await driver.executeScript<string>(
+                        'var s = arguments[0]; return s.options[s.selectedIndex] ? s.options[s.selectedIndex].text : "";',
+                        refSelects[0],
+                    );
+                    if (refText) break;
+                }
+                await driver.sleep(500);
+            }
             expect(refText, 'ref select should show LLR-UT-01, not be empty').to.equal(
                 'LLR-UT-01',
             );
