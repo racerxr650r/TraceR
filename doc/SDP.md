@@ -18,6 +18,13 @@
 | 5b    | Inline AI assistance — TypeScript surfaces. | ✅ Done — `@projectspec` chat participant (`vscode.chat.createChatParticipant`) with slash commands `/draft-hlr`, `/draft-llr`, `/draft-test`, `/draft-module`, `/draft-pvd`, `/expand`, `/review`, `/suggest-traces`, `/gap-fill`; schema-driven AI tree context-menu entries projected from `ui_hints_index.ai_actions`; AI Quick Fix variant on `broken-trace`; diff-preview-and-apply with timestamped backup under `.edit_doc/backups/`; settings UI for `projectXml.ai.{enabled,modelFamily,maxTokens,autoApplyValidated,historyLog}`; graceful degradation per HLR-044/045 — when `vscode.lm.selectChatModels` returns no models, the workspace is untrusted, or `projectXml.ai.enabled` is false, every AI surface is hidden cleanly while every deterministic surface (tree, diagnostics, lenses, form panels, render, Stage A merge) remains fully functional. |
 | 5.5   | AI-assisted merge conflict resolution. | ✅ Done — `tools/project_merge.py` deterministic Stage A three-way merger (lxml-based, preserves comments / CDATA / attribute order; unions disjoint adds and `<traces>` rows; reallocates colliding ids; recomputes `<metadata>/<counts>`; refuses cleanly when the Git merge base is unavailable per HLR-034); sidecar JSON-RPC methods `merge_three_way` and `apply_merge_resolution`; four `merge.*` AI intents (`merge.body`, `merge.trace`, `merge.rename`, `merge.schema_bump`) with `kind="merge"` skipping the `apply_edit` path; `projectXml.resolveMergeConflicts` command + `MergeConflictResolver` (Git extension API to detect MERGE state, three-way blob fetch via `git show :1/:2/:3`, per-region "✨ AI suggestion" badging, accept/reject in the merge editor — never writes automatically per SDP §5.9); `@projectspec /resolve-conflicts` slash command; per-region provenance to `.edit_doc/ai_history.jsonl` (sha-1 of base/ours/theirs + intent + rationale); settings `projectXml.merge.{enabled,aiResidualResolution}` (the latter forced off when `projectXml.ai.enabled=false`). |
 | 6     | Marketplace polish. | ✅ Done — extension `prepackage` script bundles `tools/{project_io,render_doc,lint_project,project_edit,project_merge}.py`, `project.xsd`, `templates/`, and `ai/` into `tools/vscode-project-xml/dist/python/` and writes the source XSD's `version` attribute into `dist/python/.bundle_version`; `.vscodeignore` retains the bundled tree so the shipped `.vsix` is fully self-contained (HLR-060). `getToolsDir()` falls back to `<extensionPath>/dist/python` when the workspace has no `tools/`. New `Project Spec: Scaffold tools/ into workspace…` command (chained automatically from `Project Spec: Initialise Project.xml…` when the new workspace lacks `tools/`) drops the bundled tree into the workspace, with a single modal collision prompt offering Overwrite all / Skip existing / Cancel (HLR-061). At activation, when the bundled `.bundle_version` is strictly newer than the workspace's `tools/project.xsd` `version`, a one-shot information notification offers a `Re-scaffold tools/` action (HLR-062 — never an error, never blocking). New status-bar item shows `n errors / m warnings` for `doc/Project.xml`; honours `projectXml.warningsAsErrors` (escalates severity, NEVER suppresses; HLR-042); click focuses the Problems panel. Activation events widened to `onCommand:projectXml.{initProject,scaffoldTools}` so the bootstrap and scaffold flows run in an empty workspace. New `.github/workflows/publish-vsix.yml` builds the `.vsix` on `vscode-v*` tag pushes (running `prepackage` before `vsce package`), uploads it as an artifact, and gates `vsce publish` on a `VSCE_PAT` secret (no auto-publish from this commit). |
+| 7     | User documentation and additional polish. | ✅ Complete |
+| 8     | Popup for editing leaf objects — user does not have to edit XML. | ✅ Complete |
+| 9     | Create agents to implement common steps of the daily workflow. | 🔲 Not started |
+| 10    | Refactor VS Code extension providers to extract testable logic (humble object pattern). | 🔲 Not started |
+| 11    | Record/replay test harness for AI authoring pipeline. | 🔲 Not started |
+| 12    | Create a SDP template (similar to PVD template); update `render_doc` to generate it on init. | 🔲 Not started |
+| TBD   | Address lint warnings and vulnerabilities; security audit report. | 🔲 Not started |
 
 
 **Owner:** TBD
@@ -1242,20 +1249,54 @@ AI Prompt:
    a link will close the current dialog box and open a new one
    for the linked object. 
 
-### Phase 9 - Address Lint Warnings and Vulnerabilities
-1. Address the remaining lint warnings.
-2. Scan the third party packages for vulnerabilities and 
-   address any GitHub dependbot issues and clear them on
-   Github.
-3. Create a Known Anomalies Report and perform a security
-   review of the source code and flag any potential issues.
-   In addition perform a safety review of the source code
-   and flag any potential issues.
+### Phase 9 — Create agents
+1. Create agents to implement common steps of the daily workflow.
 
-## Phase 10 - Publish
-1. Create a release tag v1.0.
-2. Publish the package to the market place.
-3. Upload the package to the GitHub project page.
+### Phase 10 — Refactor VS Code extension providers (humble object pattern)
+1.  Apply the humble object pattern to each low-coverage provider
+    (`LintDiagnosticsProvider`, `CoverageCodeLensProvider`,
+    `ProjectSpecProvider`, `coverageTooltips`, `diffPreview`,
+    `FormPanelProvider`).
+2.  Extract pure decision-making logic into standalone modules
+    (e.g. `src/forms/formLogic.ts`, `src/treeView/treeLogic.ts`,
+    `src/diagnostics/lintMapping.ts`).
+3.  Keep provider classes as thin wrappers that call the extracted
+    functions and pass results to VS Code APIs.
+4.  Write mocha unit tests for the extracted modules covering the
+    paths currently untested.
+5.  Acceptance: extension coverage reaches ≥80% line coverage;
+    `make -C tools ext-coverage` passes; no functional regressions.
+
+### Phase 11 — Record/replay test harness for AI authoring pipeline
+1.  Add a `TRACER_AI_RECORD_DIR` env var to `pipeline.py`. When set,
+    write each model response (raw JSON) plus the input bundle to a
+    fixture directory as paired `.bundle.json` / `.response.json`
+    files, named by intent and timestamp.
+2.  Create `test/fixtures/ai_recordings/` with a curated set of
+    captured responses covering the key intents: `draft.hlr`,
+    `draft.llr`, `draft.test`, `gap.fix` (including cascading),
+    `suggest.traces`, `review.item`, and `expand.*`.
+3.  Add `test/test_ai_integration.py` that loads each fixture pair,
+    calls the translator with the recorded response, applies the
+    resulting ops to a known-good `Project.xml` snapshot, and asserts
+    the output XML is valid (lint-clean) with expected elements and
+    correctly resolved placeholder refs.
+4.  Acceptance: all fixtures replay through translator → `apply_edit`
+    producing lint-clean XML; no dependency on a live model or network
+    access during `make -C tools test-py`.
+
+### Phase 12 — Create a SDP template
+1.  Create a SDP template similar to the PVD template.
+2.  Update `render_doc` to generate it on `init`.
+
+### Phase TBD — Address Lint Warnings and Vulnerabilities
+1.  Address the remaining lint warnings.
+2.  Scan third-party packages for vulnerabilities and address any
+    GitHub Dependabot issues.
+3.  Create a Known Anomalies Report and perform a security review
+    of the source code; flag potential safety issues.
+4.  Create a Security Audit Report tracking CVEs and static
+    application security analysis.
 
 ## 9. Risks & Open Questions
 
@@ -1312,9 +1353,9 @@ AI Prompt:
 
 ## 10. Estimated Effort
 
-Phases 0–5.5 are all required for the v1.0 baseline product
-([PVD §5, §7.1](PVD.md)). Phase 6 is the public-release
-polish layer.
+Phases 0–8 are complete and form the baseline product
+([PVD §5, §7.1](PVD.md)). Phases 9–12 and the TBD phase are
+post-baseline improvements tracked as open GitHub issues.
 
 | Phase | Scope | Skill mix | Rough size | Baseline? |
 | ----- | ----- | --------- | ---------- | --------- |
@@ -1326,6 +1367,13 @@ polish layer.
 | 5 | Inline AI assistance | Python (prompts/schemas) + TS (chat API) | medium-large | ✅ |
 | 5.5 | AI-assisted merge resolution | Python (3-way merger) + TS (merge editor) | medium | ✅ |
 | 6 | Marketplace polish | Polish | small | release-only |
+| 7 | User documentation and polish | Markdown + npm packaging | small | release-only |
+| 8 | Popup for editing leaf objects | TS + React (webview) | medium | ✅ |
+| 9 | Create agents | AI agent config | small | post-baseline |
+| 10 | Refactor providers (humble object) | TypeScript | medium | post-baseline |
+| 11 | Record/replay AI test harness | Python | medium | post-baseline |
+| 12 | SDP template | Python + Jinja2 | small | post-baseline |
+| TBD | Lint warnings + security audit | Python + toolchain | small-medium | post-baseline |
 
 ## 11. Out-of-Scope Follow-ups
 
