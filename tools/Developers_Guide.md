@@ -10,8 +10,8 @@ This guide is for two audiences:
 2.  **Repository maintainers and contributors** — anyone extending
     the schema, the renderer, the linter, or the VS Code extension.
     [§11 Editing and Authoring Notes](#11-editing-and-authoring-notes),
-    [§15 Linter Contract](#15-linter-contract-finding-findingsitems-code-values),
-    and [§16 UI Hint Vocabulary](#16-ui-hint-vocabulary) cover the
+    [§16 Linter Contract](#16-linter-contract-finding-findingsitems-code-values),
+    and [§17 UI Hint Vocabulary](#17-ui-hint-vocabulary) cover the
     day-to-day contracts; the underlying `Project.xml` schema and
     renderer data surface live in
     [Appendix A: Schema Reference for `Project.xml`](#appendix-a-schema-reference-for-projectxml).
@@ -312,7 +312,60 @@ automatically; you do not need to teach it about the new id.
     visualisations** that go beyond a generic tree node, form, or
     code lens.
 
-## 14. `<plan>` — Phase 2.5 Retrofit Demo Payload
+## 14. Agents and Prompts
+
+TraceR ships reusable VS Code agent and prompt definitions under
+`.github/agents/` and `.github/prompts/`. These are consumed by AI
+coding assistants (such as GitHub Copilot) that support agent and
+prompt discovery.
+
+### Agents
+
+Agent files (`.agent.md`) define interactive assistants that ask
+questions, gather context, and perform tasks. Each has a YAML
+frontmatter header specifying its description, tools, and
+optional sub-agent dependencies.
+
+| File | Scope | Description |
+| ---- | ----- | ----------- |
+| `ci.agent.md` | Generic | GitHub Actions workflow generator. Presents a menu of common workflow categories and generates YAML. |
+| `makefile.agent.md` | Generic | Makefile generator. Prompts for targets and implements them with the `awk`-based self-documenting help hack. |
+| `TracerDevelop.agent.md` | Project-specific | Expert developer agent. Understands the TraceR architecture: Python sidecar, XSD schema, VS Code extension, AI pipeline, and the schema-driven surfaces contract. |
+| `build.agent.md` | Project-specific | Builds the VS Code extension (`npm run build`). |
+| `package.agent.md` | Project-specific | Packages the extension into a `.vsix` (delegates to `build`, then runs `vsce package`). |
+
+### Prompts
+
+Prompt files (`.prompt.md`) define automated multi-step workflows
+with user approval gates. They execute a fixed sequence of
+operations.
+
+| File | Scope | Description |
+| ---- | ----- | ----------- |
+| `UpdateDocs.prompt.md` | Generic | Scans the current branch's changes and updates spec documents (SDD, HLRs, LLRs, Tests in Project.xml; SDP, SAR, User Manual, Developers Guide) to match the implemented work. |
+| `PR.prompt.md` | Generic | Updates the SDP status, generates a release-note-quality commit message, commits, pushes, and opens a pull request. |
+| `PrepRelease.prompt.md` | Generic | Prepares a release branch: bumps VERSION, triages Dependabot alerts, updates the Vulnerability Report, commits, pushes, opens a release PR. |
+| `Release.prompt.md` | Generic | Creates a GitHub Release from the VERSION file with auto-generated categorised release notes. |
+
+### Adding a new agent or prompt
+
+1.  Create a `.agent.md` or `.prompt.md` file under
+    `.github/agents/` or `.github/prompts/`.
+2.  Add a YAML frontmatter header with `description`, `mode`
+    (for prompts), and `tools`.
+3.  Write the body as markdown instructions. Agents should
+    describe their interaction flow and constraints. Prompts
+    should describe numbered steps with approval gates.
+4.  Mark the agent or prompt as **Generic** (works in any TraceR
+    repository) or **Project-specific** (references this
+    project's specific files/architecture).
+
+Generic agents and prompts discover paths dynamically (tools
+directory, test directory, doc directory) and check for the
+existence of optional files (SDP.md, SAR.md, VR.md) before
+attempting to update them.
+
+## 15. `<plan>` — Phase 2.5 Retrofit Demo Payload
 
 The `<plan>` element is the canonical example of a **payload that the
 toolchain learns about purely through `<metadata><document>` and the
@@ -386,7 +439,7 @@ document can either:
     template. The `<plan>` proof remains in the test fixture so
     the schema-driven contract continues to be exercised.
 
-## 15. Linter Contract (`Finding`, `Findings.items[]`, `code` values)
+## 16. Linter Contract (`Finding`, `Findings.items[]`, `code` values)
 
 The linter exposes two complementary surfaces. Earlier phases
 contracted only the human-readable string lists; Phase 2.5 adds a
@@ -403,7 +456,7 @@ Each lint finding is a `Finding` record:
 |------------|-------------------------------------------|-------|
 | `severity` | `"error"` &#124; `"warning"` &#124; `"note"` | Determines how the CLI report and the VS Code Problems panel categorise the entry. |
 | `message`  | `str`                                     | Canonical user-facing text. The CLI report and the legacy `errors` / `warnings` / `notes` lists hold this verbatim — pinned by HLR-043 cross-surface equivalence. |
-| `code`     | `str` &#124; `None`                       | Stable machine identifier. Optional today; populated for the rules listed in §15.3. |
+| `code`     | `str` &#124; `None`                       | Stable machine identifier. Optional today; populated for the rules listed in §16.3. |
 
 `Findings.to_dict()` is the JSON-RPC `lint` method's return shape:
 
@@ -459,7 +512,7 @@ Findings raised before the `code` field was introduced (e.g.
 New rules added in future phases will document their `code` here;
 existing values are stable and may be relied on by external tooling.
 
-## 16. UI Hint Vocabulary
+## 17. UI Hint Vocabulary
 
 [tools/project.xsd](../tools/project.xsd) publishes a small UI-hint
 vocabulary in the namespace `urn:tracer:ui:v1` (prefix `ui:`). The
@@ -559,7 +612,7 @@ standalone tree leaf to decorate.
 
 ### 16.4 Stability
 
-The vocabulary's element and attribute names listed in §16.1 are
+The vocabulary's element and attribute names listed in §17.1 are
 **stable** for any consumer reading the XSD. New `ui:lens` kinds and
 new `ui:field` `kind=` values may be added; existing values will not
 change meaning.
@@ -586,7 +639,7 @@ on the new payload too.
 
 This appendix is the canonical structural reference for
 `doc/Project.xml`: every element, attribute, cardinality, and
-renderer-side projection. The body of this guide (§11–§16) covers
+renderer-side projection. The body of this guide (§11–§17) covers
 authoring rules, the linter contract, and the UI hint vocabulary
 that build on top of the schema. Any change to
 [project.xsd](project.xsd) or [render_doc.py](render_doc.py) MUST be
@@ -627,7 +680,7 @@ breaking existing files. The `urn:tracer:ui:v1` namespace is also
 used by `<xs:appinfo>` blocks inside
 [tools/project.xsd](../tools/project.xsd) to publish a per-element
 UI hint vocabulary (`ui:treeNode`, `ui:form`, `ui:lens`,
-`ui:document`); see [§16. UI Hint Vocabulary](#16-ui-hint-vocabulary).
+`ui:document`); see [§17. UI Hint Vocabulary](#17-ui-hint-vocabulary).
 
 Children may appear in any order; the renderer looks them up by tag.
 The XSD declares `<project>`'s children with `xs:all`, so an
@@ -1172,7 +1225,7 @@ When extending the schema with a new payload root, add a corresponding
 
 Out-of-band of the `project.*` namespace consumed by Jinja templates,
 [tools/render_doc.py](../tools/render_doc.py) also exposes the
-`<xs:appinfo>` UI vocabulary documented in [§16. UI Hint
+`<xs:appinfo>` UI vocabulary documented in [§17. UI Hint
 Vocabulary](#16-ui-hint-vocabulary) as a JSON-serialisable index:
 
 ```python
@@ -1224,7 +1277,7 @@ Templates do **not** consume this index — it is dedicated to
 non-Jinja consumers (the VS Code tree provider, lens provider,
 locator, and Phase 3 form panels). Adding a new `<ui:lens>` `kind=`
 or a new `<ui:field>` `kind=` requires a matching change in the
-consumer (and a §16 update); the index walker itself accepts any
+consumer (and a §17 update); the index walker itself accepts any
 attribute set without further code changes.
 
 ## 10. Regeneration

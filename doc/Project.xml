@@ -393,9 +393,11 @@ Schema for each form-target subtree on demand.]]></interface>
         <purpose><![CDATA[is the document renderer: it turns `doc/Project.xml` plus a
 Jinja2 template into one Markdown spec document.
 
-**Status:** as-built (Phase 1). CLI, `--init` bootstrap, and
+**Status:** as-built (Phase 1 + Phase 9/12). CLI, `--init` bootstrap,
 the template data-surface (cross-reference indexes, coverage
-gap lists, `gh_slug` filter) are all shipping.]]></purpose>
+gap lists, `gh_slug` filter), and `--generate-doc` for
+hand-authored document templates (PVD, SAR, VR, SDP) are all
+shipping.]]></purpose>
         <responsibility><![CDATA[Parse `Project.xml` into a `SimpleNamespace` tree (the
 `project.*` namespace consumed by every template).]]></responsibility>
         <responsibility><![CDATA[Compute derived projections used by templates: flat lists
@@ -412,11 +414,18 @@ doc_id, project_xml)`, `parse_project_to_dict(project_xml)`)
 used by the sidecar so the same code path is used by CLI,
 extension, web form, and AI pipeline.]]></responsibility>
         <responsibility><![CDATA[Provide an `--init` mode that bootstraps a new project's
-`Project.xml` and `PVD.md` from skeletons.]]></responsibility>
+`Project.xml` and hand-authored documents (PVD, SAR, VR, SDP)
+from templates. Prompts before overwriting existing files.]]></responsibility>
+        <responsibility><![CDATA[Provide a `--generate-doc` CLI and `generate_doc()` /
+`generate_all_docs()` library APIs for generating individual
+hand-authored documents from templates under
+`tools/templates/*.template`.]]></responsibility>
         <interfaces title_suffix="(public)">
           <interface title="CLI"><![CDATA[`python3 tools/render_doc.py <template_path>
 <document_id> [--out <path>]` — render one document.
-`python3 tools/render_doc.py --init` — bootstrap.]]></interface>
+`python3 tools/render_doc.py --init` — bootstrap.
+`python3 tools/render_doc.py --generate-doc <id|all>` —
+generate hand-authored document(s) from templates.]]></interface>
           <interface title="Library"><![CDATA[`render_to_str(template_path: Path, document_id: str,
 project_xml: Path) -> str` — render to a string.
 `parse_project_to_dict(project_xml: Path) -> dict` — return
@@ -480,11 +489,13 @@ right Quick Fix.]]></interface>
       </module>
       <module path="tools/templates/">
         <purpose><![CDATA[holds the per-document Jinja2 templates that own all spec-doc
-scaffolding (titles, headings, numbering, tables, anchors).
+scaffolding (titles, headings, numbering, tables, anchors), plus
+hand-authored document templates for project bootstrap.
 
-**Status:** as-built (Phase 1). All five generated documents
-(`SDD`, `HLRs`, `LLRs`, `STP`, `Traceability`) plus the
-`PVD.md.template` bootstrap are present.]]></purpose>
+**Status:** as-built (Phase 1 + Phase 9/12). All five generated
+documents (`SDD`, `HLRs`, `LLRs`, `STP`, `Traceability`) plus
+four bootstrap templates (`PVD.md.template`, `SAR.md.template`,
+`VR.md.template`, `SDP.md.template`) are present.]]></purpose>
         <responsibility><![CDATA[One template per `<metadata><document>` entry. Each consumes
 the `project.*` namespace exposed by `render_doc.py` and
 emits Markdown.]]></responsibility>
@@ -498,8 +509,10 @@ schema, the renderer, and the template to be updated together.]]></responsibilit
 `Traceability.md.j2`. New documents add a sibling template
 plus a `<metadata><document id="…">` entry; from Phase 2.5
 the extension picks them up automatically.]]></interface>
-          <interface title="Bootstrap template"><![CDATA[`PVD.md.template` is consumed by `render_doc.py --init` to
-seed `doc/PVD.md` for new projects.]]></interface>
+          <interface title="Bootstrap template"><![CDATA[`PVD.md.template`, `SAR.md.template`, `VR.md.template`, and
+`SDP.md.template` are consumed by `render_doc.py --init` and
+`render_doc.py --generate-doc` to seed hand-authored documents
+for new projects.]]></interface>
         </interfaces>
         <dependencies>
           <dep><![CDATA[`jinja2`.]]></dep>

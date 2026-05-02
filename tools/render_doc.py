@@ -182,7 +182,7 @@ def parse_ui_hints_index(
     an ``xs:element``) are walked too and keyed under the parent
     element's local name (e.g. ``Plan/item``).
 
-    Pinned by Developers_Guide.md §16 and consumed by
+    Pinned by Developers_Guide.md §17 and consumed by
     [tools/project_io.py](project_io.py)'s ``ui_hints_index`` and
     ``parse_to_json`` JSON-RPC methods (Phase 2.5b).
     """
@@ -922,6 +922,17 @@ def load_project(xml_path: Path, metadata_for: str) -> SimpleNamespace:
 
 
 PVD_TEMPLATE = Path(__file__).resolve().parent / "templates" / "PVD.md.template"
+SAR_TEMPLATE = Path(__file__).resolve().parent / "templates" / "SAR.md.template"
+VR_TEMPLATE = Path(__file__).resolve().parent / "templates" / "VR.md.template"
+SDP_TEMPLATE = Path(__file__).resolve().parent / "templates" / "SDP.md.template"
+
+# All hand-authored document templates (not Jinja2-rendered from Project.xml)
+AUTHORED_TEMPLATES = {
+    "PVD": {"template": PVD_TEMPLATE, "output": "PVD.md"},
+    "SAR": {"template": SAR_TEMPLATE, "output": "SAR.md"},
+    "VR": {"template": VR_TEMPLATE, "output": "VR.md"},
+    "SDP": {"template": SDP_TEMPLATE, "output": "SDP.md"},
+}
 
 
 def _ns_to_jsonable(value: Any) -> Any:
@@ -1187,6 +1198,155 @@ def init_project(
     }
 
 
+def generate_doc(
+    *,
+    doc_id: str,
+    name: str = "<Product Name>",
+    short_name: str = "<short_name>",
+    author: str = "TBD",
+    output_dir: Path | str | None = None,
+    force: bool = False,
+    interactive: bool = False,
+) -> dict[str, Any]:
+    """Generate a hand-authored document from its template.
+
+    ``doc_id`` must be one of the keys in ``AUTHORED_TEMPLATES``
+    (PVD, SAR, VR, SDP).
+
+    When ``interactive=True`` and the target file exists, the caller is
+    expected to have already prompted the user — this function does not
+    perform I/O prompts itself. Use ``_generate_doc_cli`` for the
+    interactive CLI path.
+
+    Returns a result dict with keys:
+      * ``output_path`` — absolute path of the written file
+      * ``skipped``     — True if the file existed and was not overwritten
+    """
+    from datetime import date as _date
+
+    if doc_id not in AUTHORED_TEMPLATES:
+        raise ProjectXmlError(
+            f"Unknown document id '{doc_id}'. "
+            f"Valid ids: {', '.join(sorted(AUTHORED_TEMPLATES))}"
+        )
+
+    entry = AUTHORED_TEMPLATES[doc_id]
+    template_path = Path(entry["template"])
+    if not template_path.exists():
+        raise ProjectXmlError(
+            f"{doc_id} template not found: {template_path}"
+        )
+
+    if output_dir is None:
+        output_dir = Path(__file__).resolve().parent.parent / "doc"
+    output_dir = Path(output_dir)
+    output_path = output_dir / entry["output"]
+
+    if output_path.exists() and not force:
+        return {"output_path": str(output_path), "skipped": True}
+
+    today = _date.today().isoformat()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    text = template_path.read_text()
+    text = text.replace("<Product Name>", name)
+    text = text.replace("<short_name>", short_name)
+    text = text.replace("<YYYY-MM-DD>", today)
+    text = text.replace("<Your name(s)>", author)
+    output_path.write_text(text)
+
+    return {"output_path": str(output_path), "skipped": False}
+
+
+def generate_all_docs(
+    *,
+    name: str = "<Product Name>",
+    short_name: str = "<short_name>",
+    author: str = "TBD",
+    output_dir: Path | str | None = None,
+    force: bool = False,
+) -> list[dict[str, Any]]:
+    """Generate all hand-authored document templates.
+
+    Returns a list of result dicts (one per document) from generate_doc.
+    """
+    results = []
+    for doc_id in AUTHORED_TEMPLATES:
+        result = generate_doc(
+            doc_id=doc_id,
+            name=name,
+            short_name=short_name,
+            author=author,
+            output_dir=output_dir,
+            force=force,
+        )
+        results.append({"doc_id": doc_id, **result})
+    return results
+
+
+def _generate_doc_cli(
+    *,
+    doc_ids: list[str],
+    name: str,
+    short_name: str,
+    author: str,
+    output_dir: Path,
+    force: bool,
+) -> int:
+    """CLI wrapper for generate_doc: prompts on existing files."""
+    from datetime import date as _date
+
+    had_error = False
+    for doc_id in doc_ids:
+        if doc_id not in AUTHORED_TEMPLATES:
+            sys.stderr.write(
+                f"render_doc.py --generate-doc: unknown document id "
+                f"'{doc_id}'. Valid ids: "
+                f"{', '.join(sorted(AUTHORED_TEMPLATES))}\n"
+            )
+            had_error = True
+            continue
+
+        entry = AUTHORED_TEMPLATES[doc_id]
+        output_path = output_dir / entry["output"]
+
+        do_write = force
+        if output_path.exists() and not force:
+            # Interactive prompt
+            try:
+                answer = input(
+                    f"{output_path} already exists. Replace? [y/N] "
+                )
+            except (EOFError, KeyboardInterrupt):
+                sys.stderr.write("\nAborted.\n")
+                return 1
+            do_write = answer.strip().lower() in ("y", "yes")
+            if not do_write:
+                sys.stderr.write(f"  Skipped {output_path}\n")
+                continue
+
+        try:
+            result = generate_doc(
+                doc_id=doc_id,
+                name=name,
+                short_name=short_name,
+                author=author,
+                output_dir=output_dir,
+                force=True,  # We already prompted
+            )
+        except ProjectXmlError as exc:
+            sys.stderr.write(f"render_doc.py --generate-doc: {exc}\n")
+            had_error = True
+            continue
+
+        if result["skipped"]:
+            sys.stderr.write(f"  Skipped {result['output_path']}\n")
+        else:
+            sys.stderr.write(f"  Wrote {result['output_path']}\n")
+
+    return 1 if had_error else 0
+
+
 def _init_project_cli(
     *,
     name: str,
@@ -1236,6 +1396,38 @@ def _init_project_cli(
 
     sys.stderr.write(f"Wrote skeleton {result['xml_path']}\n")
     sys.stderr.write(f"Wrote {result['pvd_path']}\n")
+
+    # Generate the other hand-authored templates (SAR, VR, SDP)
+    output_dir = pvd_path.parent
+    for doc_id in ("SAR", "VR", "SDP"):
+        entry = AUTHORED_TEMPLATES[doc_id]
+        output_path = output_dir / entry["output"]
+        do_write = force
+        if output_path.exists() and not force:
+            try:
+                answer = input(
+                    f"{output_path} already exists. Replace? [y/N] "
+                )
+            except (EOFError, KeyboardInterrupt):
+                sys.stderr.write(f"\n  Skipped {output_path}\n")
+                continue
+            do_write = answer.strip().lower() in ("y", "yes")
+        if not do_write and output_path.exists():
+            sys.stderr.write(f"  Skipped {output_path}\n")
+            continue
+        try:
+            doc_result = generate_doc(
+                doc_id=doc_id,
+                name=name,
+                short_name=short_name,
+                author=author,
+                output_dir=output_dir,
+                force=True,
+            )
+            sys.stderr.write(f"Wrote {doc_result['output_path']}\n")
+        except ProjectXmlError as exc:
+            sys.stderr.write(f"  Warning: {exc}\n")
+
     sys.stderr.write(
         "Next steps: edit doc/PVD.md, then populate doc/Project.xml "
         "and regenerate the spec documents with render_doc.py.\n"
@@ -1273,11 +1465,19 @@ def main() -> int:
         ),
         epilog=(
             "EXAMPLES\n"
-            "  Bootstrap a new project (writes doc/Project.xml and\n"
-            "  doc/PVD.md from the skeletons):\n"
+            "  Bootstrap a new project (writes doc/Project.xml, PVD.md,\n"
+            "  SAR.md, VR.md, SDP.md from skeletons):\n"
             "    python3 tools/render_doc.py --init \\\n"
             "        --name \"My Product\" --short-name myprod \\\n"
             "        --author \"Jane Doe\"\n"
+            "\n"
+            "  Generate a single hand-authored document:\n"
+            "    python3 tools/render_doc.py --generate-doc SAR \\\n"
+            "        --name \"My Product\" --short-name myprod\n"
+            "\n"
+            "  Generate all hand-authored documents:\n"
+            "    python3 tools/render_doc.py --generate-doc all \\\n"
+            "        --name \"My Product\" --short-name myprod\n"
             "\n"
             "  Render the SDD to stdout:\n"
             "    python3 tools/render_doc.py tools/templates/SDD.md.j2 SDD\n"
@@ -1353,17 +1553,19 @@ def main() -> int:
     )
     init_group = parser.add_argument_group(
         "project bootstrap (--init)",
-        "Create a skeleton Project.xml plus a substituted PVD.md as the "
-        "first step of a new project. When --init is given, TEMPLATE and "
-        "METADATA_ID are not required.",
+        "Create a skeleton Project.xml plus hand-authored document "
+        "templates (PVD, SAR, VR, SDP) as the first step of a new "
+        "project. When --init is given, TEMPLATE and METADATA_ID are "
+        "not required.",
     )
     init_group.add_argument(
         "--init",
         action="store_true",
         help=(
             "Create a skeleton Project.xml at --xml (default doc/Project.xml) "
-            "and a substituted PVD.md at --pvd-out (default doc/PVD.md). "
-            "Refuses to overwrite existing files unless --force is also given."
+            "and hand-authored documents (PVD, SAR, VR, SDP) under the "
+            "output directory. Prompts before overwriting existing files "
+            "unless --force is also given."
         ),
     )
     init_group.add_argument(
@@ -1401,7 +1603,10 @@ def main() -> int:
     init_group.add_argument(
         "--force",
         action="store_true",
-        help="With --init, overwrite existing Project.xml / PVD.md.",
+        help=(
+            "With --init or --generate-doc, overwrite existing files "
+            "without prompting."
+        ),
     )
     init_group.add_argument(
         "--schema-location",
@@ -1415,7 +1620,48 @@ def main() -> int:
             "computed automatically."
         ),
     )
+    gen_group = parser.add_argument_group(
+        "document generation (--generate-doc)",
+        "Generate hand-authored document(s) from their templates. "
+        "Prompts before overwriting existing files unless --force is given. "
+        "Valid document ids: " + ", ".join(sorted(AUTHORED_TEMPLATES)) + ".",
+    )
+    gen_group.add_argument(
+        "--generate-doc",
+        nargs="+",
+        metavar="DOC_ID",
+        help=(
+            "Generate one or more hand-authored documents from templates. "
+            "Use 'all' to generate all available templates. "
+            "Valid ids: " + ", ".join(sorted(AUTHORED_TEMPLATES)) + "."
+        ),
+    )
+    gen_group.add_argument(
+        "--doc-out-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "doc",
+        metavar="PATH",
+        help="Output directory for generated documents. Default: %(default)s.",
+    )
     args = parser.parse_args()
+
+    if args.generate_doc:
+        doc_ids = []
+        for d in args.generate_doc:
+            if d.lower() == "all":
+                doc_ids = list(AUTHORED_TEMPLATES.keys())
+                break
+            doc_ids.append(d.upper() if d.upper() in AUTHORED_TEMPLATES else d)
+        name = args.name or "<Product Name>"
+        short_name = args.short_name or "<short_name>"
+        return _generate_doc_cli(
+            doc_ids=doc_ids,
+            name=name,
+            short_name=short_name,
+            author=args.author,
+            output_dir=args.doc_out_dir,
+            force=args.force,
+        )
 
     if args.init:
         if not args.name or not args.short_name:
