@@ -20,10 +20,10 @@
 | [6](#phase-6--polish) | Marketplace polish. | ✅ Done — extension `prepackage` script bundles `tools/{project_io,render_doc,lint_project,project_edit,project_merge}.py`, `project.xsd`, `templates/`, and `ai/` into `tools/vscode-project-xml/dist/python/` and writes the source XSD's `version` attribute into `dist/python/.bundle_version`; `.vscodeignore` retains the bundled tree so the shipped `.vsix` is fully self-contained (HLR-060). `getToolsDir()` falls back to `<extensionPath>/dist/python` when the workspace has no `tools/`. New `Project Spec: Scaffold tools/ into workspace…` command (chained automatically from `Project Spec: Initialise Project.xml…` when the new workspace lacks `tools/`) drops the bundled tree into the workspace, with a single modal collision prompt offering Overwrite all / Skip existing / Cancel (HLR-061). At activation, when the bundled `.bundle_version` is strictly newer than the workspace's `tools/project.xsd` `version`, a one-shot information notification offers a `Re-scaffold tools/` action (HLR-062 — never an error, never blocking). New status-bar item shows `n errors / m warnings` for `doc/Project.xml`; honours `projectXml.warningsAsErrors` (escalates severity, NEVER suppresses; HLR-042); click focuses the Problems panel. Activation events widened to `onCommand:projectXml.{initProject,scaffoldTools}` so the bootstrap and scaffold flows run in an empty workspace. New `.github/workflows/publish-vsix.yml` builds the `.vsix` on `vscode-v*` tag pushes (running `prepackage` before `vsce package`), uploads it as an artifact, and gates `vsce publish` on a `VSCE_PAT` secret (no auto-publish from this commit). |
 | [7](#phase-7---user-documentation-and-additional-polish) | User documentation and additional polish. | ✅ Complete |
 | [8](#phase-8---add-popup-for-editing-leaf-objects) | Popup for editing leaf objects — user does not have to edit XML. | ✅ Complete |
-| [9](#phase-9--create-agents) | Create agents to implement common steps of the daily workflow. | 🔲 Not started |
+| [9](#phase-9--create-agents) | Create agents to implement common steps of the daily workflow. | ✅ Done — agents (`ci`, `makefile`, `TracerDevelop`) and prompts (`PR`, `PrepRelease`, `Release`, `UpdateDocs`) created under `.github/`; document templates (`SAR.md.template`, `VR.md.template`, `SDP.md.template`) and `--generate-doc` CLI added to `render_doc.py`; User Manual and Developers Guide updated with new sections. |
 | [10](#phase-10--refactor-vs-code-extension-providers-humble-object-pattern) | Refactor VS Code extension providers to extract testable logic (humble object pattern). | 🔲 Not started |
 | [11](#phase-11--recordreplay-test-harness-for-ai-authoring-pipeline) | Record/replay test harness for AI authoring pipeline. | 🔲 Not started |
-| [12](#phase-12--create-a-sdp-template) | Create a SDP template (similar to PVD template); update `render_doc` to generate it on init. | 🔲 Not started |
+| [12](#phase-12--create-a-sdp-template) | Create a SDP template (similar to PVD template); update `render_doc` to generate it on init. | ✅ Done — `SDP.md.template`, `SAR.md.template`, and `VR.md.template` created under `tools/templates/`; `render_doc.py` extended with `--generate-doc` CLI and `generate_doc()`/`generate_all_docs()` library APIs; `--init` now generates all four hand-authored documents (PVD, SAR, VR, SDP) with interactive prompts before overwriting existing files. |
 | [TBD](#phase-tbd--address-lint-warnings-and-vulnerabilities) | Address lint warnings and vulnerabilities; security audit report. | 🔲 Not started |
 
 
@@ -557,7 +557,7 @@ payload".
     (`ui:treeNode`, `ui:form`, `ui:lens`, `ui:document`) is
     deferred to Phase 2.5b** — Phase 2.5 only reserves the
     namespace and ships the per-element decoration channel.
-    Developers_Guide.md §14 documents `<plan>` as the example
+    Developers_Guide.md §15 documents `<plan>` as the example
     payload; §15 pins the `Finding` / `LintFinding` / `code`
     contract.
 4.  **Coverage status badges.** Every HLR / LLR leaf in the Project
@@ -627,7 +627,7 @@ lenses, locator, and Phase 3 form panels with no TypeScript edits.
         which ids are renderable targets (today inferred from the
         presence of the `<document>` row itself).
     Document the vocabulary in
-    [Developers_Guide.md](../tools/Developers_Guide.md) alongside §14
+    [Developers_Guide.md](../tools/Developers_Guide.md) alongside §15
     (`<plan>` payload) and §15 (linter contract) shipped in 2.5.
     Bump `<project schema_version>` (1.3 → 1.4).
 2.  **Generic JSON projection.** Replace the hand-typed
@@ -1296,7 +1296,19 @@ Create the following agents and prompts
 
 ### Phase 12 — Create a SDP template
 1.  Create a SDP template similar to the PVD template.
-2.  Update `render_doc` to generate it on `init`.
+2.  Create SAR (Security Audit Report) and VR (Vulnerability Report)
+    templates in the same style.
+3.  Add `--generate-doc` CLI to `render_doc.py` supporting individual
+    document generation (`--generate-doc SAR`) and batch generation
+    (`--generate-doc all`).
+4.  Update `--init` to generate all four hand-authored documents
+    (PVD, SAR, VR, SDP) during project bootstrap, with interactive
+    prompts before overwriting existing files.
+5.  Add `generate_doc()` and `generate_all_docs()` library APIs for
+    programmatic use by the sidecar.
+6.  Acceptance: `python3 tools/render_doc.py --generate-doc all`
+    generates all four documents; `--init` creates them alongside
+    `Project.xml`; existing files prompt before replacement.
 
 ### Phase TBD — Address Lint Warnings and Vulnerabilities
 1.  Address the remaining lint warnings.

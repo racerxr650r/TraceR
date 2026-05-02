@@ -479,7 +479,7 @@ export interface InitProjectResult {
  * locator, and Phase 3 form panels) read this index instead of
  * special-casing per-payload element names.
  *
- * See tools/Developers_Guide.md §16 for the contract.
+ * See tools/Developers_Guide.md §17 for the contract.
  */
 export interface UiTreeNode {
     label: string;

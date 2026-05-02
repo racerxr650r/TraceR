@@ -58,7 +58,7 @@
   <!-- `ui:group` attributes via the existing xs:anyAttribute        -->
   <!-- declarations on Hlr / Llr / Test / SddModule (Phase 2.5).     -->
   <!--                                                               -->
-  <!-- See tools/Developers_Guide.md §16 for the full contract.        -->
+  <!-- See tools/Developers_Guide.md §17 for the full contract.        -->
   <!-- ============================================================ -->
 
   <!-- ============================================================ -->

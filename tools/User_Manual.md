@@ -536,11 +536,25 @@ python3 tools/render_doc.py --all
 # Regenerate just one document by name.
 python3 tools/render_doc.py tools/templates/HLRs.md.j2 HLRs --out doc/HLRs.md
 
-# Bootstrap a brand-new project.
+# Bootstrap a brand-new project (creates Project.xml, PVD, SAR, VR, SDP).
 python3 tools/render_doc.py --init \
     --name "MyProject" --short-name MP --author "Me" \
     --xml doc/Project.xml
+
+# Generate a single hand-authored document from its template.
+python3 tools/render_doc.py --generate-doc SAR \
+    --name "MyProject" --short-name MP
+
+# Generate all hand-authored document templates.
+python3 tools/render_doc.py --generate-doc all \
+    --name "MyProject" --short-name MP
 ```
+
+The `--generate-doc` command generates hand-authored documents
+(PVD, SAR, VR, SDP) from templates under `tools/templates/`. If a
+target file already exists, it prompts before overwriting (use
+`--force` to skip the prompt). The `--init` command generates all
+four automatically alongside `Project.xml`.
 
 ### `lint_project.py` — check for problems
 
@@ -626,6 +640,49 @@ already set up.
 That's the loop. For deeper details — the schema, the linter's
 problem codes, how to add a new kind of generated document —
 see the [Developer's Guide](Developers_Guide.md).
+
+## Agents and Prompts
+
+TraceR ships reusable VS Code agent and prompt files under
+`.github/agents/` and `.github/prompts/`. These work with AI
+coding assistants (such as GitHub Copilot) that support agent
+and prompt discovery.
+
+### Agents (`.github/agents/`)
+
+Agents are interactive — they ask questions and guide you
+through a task.
+
+| Agent | Purpose |
+| ----- | ------- |
+| **ci.agent.md** | Create and maintain GitHub Actions workflows. Presents a menu of common workflow categories (CI, code quality, releases, PR automation, etc.) and generates the YAML. |
+| **makefile.agent.md** | Create and maintain Makefiles. Prompts for targets, implements them with the self-documenting help hack (`make help` lists all targets). |
+| **TracerDevelop.agent.md** | Project-specific development agent. Expert in the TraceR architecture (Python tools, VS Code extension, schema, sidecar, AI pipeline). Use for implementing features. |
+| **build.agent.md** | Build the VS Code extension (`npm run build`). |
+| **package.agent.md** | Package the extension into a `.vsix` (delegates to build, then runs `vsce package`). |
+
+### Prompts (`.github/prompts/`)
+
+Prompts are automated workflows — they execute a fixed sequence of
+steps with approval gates.
+
+| Prompt | Purpose |
+| ------ | ------- |
+| **UpdateDocs.prompt.md** | Scan the current branch's changes and update spec documents (SDD, HLRs, LLRs, Tests in Project.xml; SDP, SAR, User Manual, Developers Guide) to match the work done. |
+| **PR.prompt.md** | Update the SDP status, generate a release-note-quality commit message, commit, push, and open a pull request. |
+| **PrepRelease.prompt.md** | Prepare a release: bump VERSION, triage Dependabot alerts (dismiss with justification where possible), update the Vulnerability Report, commit, push, and open a release PR. |
+| **Release.prompt.md** | Create a GitHub Release using the version from VERSION, with auto-generated categorised release notes. |
+
+### Using agents and prompts
+
+In VS Code with GitHub Copilot, agents and prompts appear in the
+Chat panel. Type `@` to see available agents, or use the prompt
+picker to select a prompt. They can also be invoked from the
+command palette.
+
+All prompts are generic — they discover project paths dynamically
+and work in any repository that uses TraceR to maintain a
+`Project.xml`.
 
 ## Appendix A: AI Skill Reference (SKILL.md)
 
