@@ -19,7 +19,15 @@
 // by a stray click.
 
 import * as vscode from 'vscode';
-import { AiRequestResult, EditOperation } from '../sidecar';
+import {
+    renderPreviewBody as _renderPreviewBody,
+    summarizeOperation as _summarizeOperation,
+} from './diffPreviewLogic';
+export type { DiffPreviewData } from './diffPreviewLogic';
+
+// Re-export for backward compat.
+export const renderPreviewBody = _renderPreviewBody;
+export const summarizeOperation = _summarizeOperation;
 
 export const PREVIEW_SCHEME = 'tracer-ai-preview';
 
@@ -58,15 +66,7 @@ export class AiPreviewProvider
     }
 }
 
-export interface DiffPreviewOptions {
-    intent: string;
-    label: string;
-    /** The validated result whose `patch` and `lint` are being shown. */
-    result: AiRequestResult;
-    /** Markdown rendered before the patch listing (e.g. a one-line
-     *  description of the target). */
-    summary?: string;
-}
+export type DiffPreviewOptions = import('./diffPreviewLogic').DiffPreviewData;
 
 /**
  * Show the proposed patch and lint outcome in a side editor and ask
@@ -96,54 +96,4 @@ export async function showAiDiffPreview(
         'Cancel',
     );
     return choice === 'Apply';
-}
-
-function renderPreviewBody(options: DiffPreviewOptions): string {
-    const { intent, result, summary } = options;
-    const lines: string[] = [];
-    lines.push(`# Project Spec AI — ${intent}`);
-    if (summary) {
-        lines.push('', summary);
-    }
-    lines.push('', `**Status:** ${result.kind}`);
-    if (result.lint?.items) {
-        const errors = result.lint.items.filter((i) => i.severity === 'error');
-        const warnings = result.lint.items.filter((i) => i.severity === 'warning');
-        lines.push(
-            '',
-            `**Lint:** ${errors.length} error(s), ${warnings.length} warning(s).`,
-        );
-        if (result.lint.items.length > 0) {
-            lines.push('', '## Lint findings', '');
-            for (const item of result.lint.items) {
-                const code = item.code ? ` \`${item.code}\`` : '';
-                lines.push(`- **${item.severity}**${code}: ${item.message}`);
-            }
-        }
-    }
-    if (result.advisory && result.advisory.length > 0) {
-        lines.push('', '## Advisory findings', '');
-        for (const item of result.advisory) {
-            lines.push(`- ${JSON.stringify(item)}`);
-        }
-    }
-    if (result.patch && result.patch.length > 0) {
-        lines.push('', '## Proposed patch', '', '```json');
-        lines.push(JSON.stringify(result.patch, null, 2));
-        lines.push('```');
-    } else {
-        lines.push('', '_No patch operations._');
-    }
-    if (result.failures && result.failures.length > 0) {
-        lines.push('', '## Failures', '');
-        for (const f of result.failures) {
-            lines.push(`- ${f}`);
-        }
-    }
-    return lines.join('\n');
-}
-
-/** Render a single JSON-Patch operation as a one-line bullet. */
-export function summarizeOperation(op: EditOperation): string {
-    return `- ${op.op} \`${op.path}\``;
 }
