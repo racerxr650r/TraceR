@@ -888,6 +888,11 @@ implies graceful degradation.]]></dep>
 gives every payload a structured outline with inline
 status badges. From Phase 2.5 it is built entirely from
 the schema's UI hints, with no per-payload TypeScript.
+Phase 10 applies the humble object pattern: pure tree-
+structure logic lives in `treeLogic.ts` and pure tooltip
+Markdown generation in `coverageTooltipLogic.ts`, both
+free of `vscode` imports and testable in a plain Node
+process.
 
 **Status:** Phase 1 ships a payload-aware
 `ProjectSpecProvider` rooted at `doc/Project.xml`. The
@@ -941,7 +946,9 @@ watcher on `doc/Project.xml`) and to the sidecar's
       <module path="tools/vscode-project-xml/src/diagnostics/" title="Diagnostics and Quick Fixes">
         <purpose><![CDATA[mirrors lint findings into the Problems panel as VS Code
 `Diagnostic` objects, with payload-agnostic Quick Fixes for
-the most common findings.
+the most common findings. Phase 10 extracts the severity-
+mapping and finding-to-descriptor logic into
+`lintMapping.ts` (pure, no `vscode` imports).
 
 **Status:** Phase 1 ships `LintDiagnosticsProvider`, which
 mirrors lint findings into the Problems panel. The
@@ -1087,7 +1094,10 @@ vscode.Range | undefined`.]]></interface>
       </module>
       <module path="tools/vscode-project-xml/src/codeLens/" title="Code lenses (planned)">
         <purpose><![CDATA[decorates schema-marked elements in `Project.xml` with
-inline status and click-through actions.
+inline status and click-through actions. Phase 10 extracts
+coverage-index building, related-item lookup, and lens-
+descriptor generation into `coverageLensLogic.ts` (pure,
+no `vscode` imports).
 
 **Status:** planned (Phase 2). No directory ships in the
 current checkout; the design below freezes the contract.]]></purpose>
@@ -1189,7 +1199,9 @@ a command invocation).]]></dep>
         <purpose><![CDATA[hosts the `@projectspec` chat participant, the right-click
 "with AI" actions, and the merge editor integration. The
 TypeScript side of the AI pipeline; the heavy lifting
-lives in `tools/ai/`.
+lives in `tools/ai/`. Phase 10 extracts the diff-preview
+content renderer into `diffPreviewLogic.ts` (pure, no
+`vscode` imports).
 
 **Status:** planned (Phase 5). No directory ships in the
 current checkout.]]></purpose>
@@ -2345,6 +2357,23 @@ remain consumable by toolchains pinned to this
 contract. Bumps `schema_version` from `1.2` to `1.3`.]]></text>
         <traces>
           <trace target="SDD" ref="6"/>
+        </traces>
+      </hlr>
+      <hlr id="HLR-064" name="Humble Object Testability">
+        <text><![CDATA[Every VS Code extension provider that contains non-trivial
+decision logic shall delegate that logic to a pure module
+(free of `vscode` imports) so it can be unit-tested in a
+plain Node process without standing up a VS Code host.
+Providers shall be thin wrappers that call the extracted
+functions and pass results to VS Code APIs. The extracted
+modules shall be: `treeLogic.ts`, `coverageTooltipLogic.ts`,
+`coverageLensLogic.ts`, `lintMapping.ts`, `formLogic.ts`,
+and `diffPreviewLogic.ts`.]]></text>
+        <traces>
+          <trace target="SDD" ref="11"/>
+          <trace target="SDD" ref="12"/>
+          <trace target="SDD" ref="13"/>
+          <trace target="SDD" ref="20"/>
         </traces>
       </hlr>
     </section>
@@ -3673,6 +3702,51 @@ and shall not block the resolution flow.]]></text>
         <text>next_free_llr_id shall discover the established prefix by inspecting existing LLRs under the named function element. When an established prefix exists (e.g. PPD from LLR-PPD-01), new ids shall reuse it; when no LLRs exist yet, the prefix shall be derived from the function name, sanitized to [A-Z0-9] and truncated to 4 characters.</text>
         <traces>
           <trace target="HLR" ref="HLR-005" name="Stable Identifiers"/>
+        </traces>
+      </llr>
+    </function>
+    <function number="30" title="Humble object logic modules ([tools/vscode-project-xml/src/](../tools/vscode-project-xml/src/))" name="humble" source="tools/vscode-project-xml/src/">
+      <intro><![CDATA[Phase 10: pure logic modules extracted from VS Code providers via the humble object pattern. Each module is free of `vscode` imports and testable in a plain Node process.]]></intro>
+      <llr id="LLR-HUM-01">
+        <text><![CDATA[`treeLogic.ts` shall export `TreeNodeDescriptor`, `decorate`, `renderLabel`, `labelSeverity`, `groupSeverity`, `buildLocator`, `filterTraces`, `propagateBadgeSeverity`, and `buildTopLevelDescriptors` as pure functions consuming only `ParsedProject` and `UiHintsIndex` types — no `vscode.*` imports — so tree-structure and label logic is unit-testable without a VS Code host.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-064" name="Humble Object Testability"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+        </traces>
+      </llr>
+      <llr id="LLR-HUM-02">
+        <text><![CDATA[`coverageLensLogic.ts` shall export `buildIndex`, `relatedForHlr`, `relatedForLlr`, `relatedForTest`, `summaryTitle`, and `lensDescriptorsForElement` as pure functions so coverage-lens computation (index building, related-item lookup, and lens-descriptor generation) is testable without a VS Code host.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-064" name="Humble Object Testability"/>
+          <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+        </traces>
+      </llr>
+      <llr id="LLR-HUM-03">
+        <text><![CDATA[`coverageTooltipLogic.ts` shall export `buildCoverageIndex` and `tooltipMarkdownForHlr`, `tooltipMarkdownForLlr`, `tooltipMarkdownForTest` returning raw Markdown strings; the VS Code wrapper in `coverageTooltips.ts` shall wrap them in `vscode.MarkdownString` with `isTrusted = true`. No `vscode.*` imports shall appear in the logic module.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-064" name="Humble Object Testability"/>
+          <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
+        </traces>
+      </llr>
+      <llr id="LLR-HUM-04">
+        <text><![CDATA[`lintMapping.ts` shall export `mapFindingSeverity`, `findingToDescriptor`, and `resultToDescriptors` as pure functions translating sidecar `LintResult` objects to `DiagnosticDescriptor` arrays without referencing `vscode.DiagnosticSeverity`, so severity mapping logic is testable in isolation.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-064" name="Humble Object Testability"/>
+          <trace target="HLR" ref="HLR-023" name="Lint Diagnostics in the Problems Panel"/>
+        </traces>
+      </llr>
+      <llr id="LLR-HUM-05">
+        <text><![CDATA[`formLogic.ts` shall export `buildOperations`, `coverageInfoFor`, `resolveFormParams`, and `escapeHtml` as pure functions so form-data-to-ops transformation and coverage computation are testable without the webview or the VS Code API.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-064" name="Humble Object Testability"/>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
+      <llr id="LLR-HUM-06">
+        <text><![CDATA[`diffPreviewLogic.ts` shall export `renderPreviewBody` and `summarizeOperation` as pure functions producing Markdown from `AiRequestResult` data without `vscode.*` imports, so diff-preview content generation is testable in a plain Node process.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-064" name="Humble Object Testability"/>
+          <trace target="HLR" ref="HLR-044" name="AI Graceful Degradation"/>
         </traces>
       </llr>
     </function>
@@ -5235,6 +5309,249 @@ and shall not block the resolution flow.]]></text>
         <traces>
           <trace target="LLR" ref="LLR-PKG-10"/>
           <trace target="HLR" ref="HLR-042"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/lintMapping.test.ts" role="unit-ts" count="10">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted lint-mapping logic in tools/vscode-project-xml/src/diagnostics/lintMapping.ts. Drives `mapFindingSeverity`, `findingToDescriptor`, and `resultToDescriptors` with hand-rolled `LintFinding` / `LintResult` objects so the severity-mapping and descriptor-building contract is pinned without a VS Code host.]]></header>
+      <test name="maps known severities">
+        <purpose><![CDATA[Pins LLR-HUM-04: error→error, warning→warning, note→info mapping.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="defaults unknown to info">
+        <purpose><![CDATA[Pins LLR-HUM-04: unrecognised severity strings fall back to 'info'.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="maps a structured finding">
+        <purpose><![CDATA[Pins LLR-HUM-04: findingToDescriptor extracts message, severity, and code from a LintFinding.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="prefers structured items when present">
+        <purpose><![CDATA[Pins LLR-HUM-04: resultToDescriptors uses the items array when non-empty.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="falls back to legacy string lists">
+        <purpose><![CDATA[Pins LLR-HUM-04: resultToDescriptors falls back to errors/warnings/notes strings when items is empty.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/coverageLensLogic.test.ts" role="unit-ts" count="24">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted coverage-lens logic in tools/vscode-project-xml/src/codeLens/coverageLensLogic.ts. Drives `buildIndex`, `relatedForHlr`, `relatedForLlr`, `relatedForTest`, `summaryTitle`, and lens-descriptor generation with hand-rolled parsed-project fixtures so coverage-lens computation is pinned without a VS Code host.]]></header>
+      <test name="indexes HLRs, LLRs, and tests">
+        <purpose><![CDATA[Pins LLR-HUM-02: buildIndex populates llrsByHlr, testsByHlr, testsByLlr maps from trace data.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-02"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns LLRs and tests related to an HLR">
+        <purpose><![CDATA[Pins LLR-HUM-02: relatedForHlr returns correct related items.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-02"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="summaryForHlr">
+        <purpose><![CDATA[Pins LLR-HUM-02: summary title for HLR shows LLR and test counts.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-02"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="emits no-coverage lens when related is empty">
+        <purpose><![CDATA[Pins LLR-HUM-02 + LLR-CCL-04: zero related items yields a no-coverage lens descriptor.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-02"/>
+          <trace target="LLR" ref="LLR-CCL-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="emits summary + inline lenses for related items">
+        <purpose><![CDATA[Pins LLR-HUM-02 + LLR-CCL-03: related items emit summary and inline lenses.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-02"/>
+          <trace target="LLR" ref="LLR-CCL-03"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/coverageTooltipLogic.test.ts" role="unit-ts" count="10">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted tooltip-logic in tools/vscode-project-xml/src/treeView/coverageTooltipLogic.ts. Drives `buildCoverageIndex` and `tooltipMarkdownForHlr/Llr/Test` with hand-rolled parsed-project data so tooltip Markdown generation is pinned without a VS Code host.]]></header>
+      <test name="populates all maps">
+        <purpose><![CDATA[Pins LLR-HUM-03: buildCoverageIndex populates llrsByHlr, testsByHlr, testsByLlr, hlrById, llrById, testByName maps.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-03"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="includes HLR id and coverage summary">
+        <purpose><![CDATA[Pins LLR-HUM-03: tooltipMarkdownForHlr includes the HLR id and downstream coverage items.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-03"/>
+          <trace target="HLR" ref="HLR-063"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="includes upstream HLRs and tests">
+        <purpose><![CDATA[Pins LLR-HUM-03: tooltipMarkdownForLlr includes upstream HLRs and verifying tests.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-03"/>
+          <trace target="HLR" ref="HLR-063"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="includes test name and traces">
+        <purpose><![CDATA[Pins LLR-HUM-03: tooltipMarkdownForTest includes the test name and its traced LLRs/HLRs.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-03"/>
+          <trace target="HLR" ref="HLR-063"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/coverageTooltips.test.ts" role="unit-ts" count="6">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 refactored coverageTooltips wrapper in tools/vscode-project-xml/src/treeView/coverageTooltips.ts. Verifies the thin vscode.MarkdownString wrapping layer delegates to the pure logic module and decorates tree nodes correctly.]]></header>
+      <test name="returns MarkdownString for known hlr locator">
+        <purpose><![CDATA[Pins LLR-HUM-03 + LLR-PSP-06: the wrapper returns a trusted MarkdownString for an HLR locator.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-03"/>
+          <trace target="LLR" ref="LLR-PSP-06"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns undefined for unknown tag">
+        <purpose><![CDATA[Pins LLR-HUM-03: unrecognised locator tags return undefined so the tree shows the default tooltip.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-03"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="decorates tree nodes with tooltips">
+        <purpose><![CDATA[Pins LLR-PSP-05: decorateTooltips walks tree nodes and attaches MarkdownString tooltips.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-05"/>
+          <trace target="HLR" ref="HLR-063"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/diffPreviewLogic.test.ts" role="unit-ts" count="8">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted diff-preview logic in tools/vscode-project-xml/src/ai/diffPreviewLogic.ts. Drives `renderPreviewBody` and `summarizeOperation` with hand-rolled AiRequestResult data so the Markdown generation contract is pinned without a VS Code host.]]></header>
+      <test name="renders a minimal preview with kind and no patch">
+        <purpose><![CDATA[Pins LLR-HUM-06: renderPreviewBody produces valid Markdown for a result with no patch.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-06"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="renders lint findings when present">
+        <purpose><![CDATA[Pins LLR-HUM-06: lint findings appear in the Markdown output.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-06"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="renders patch operations as JSON">
+        <purpose><![CDATA[Pins LLR-HUM-06: patch operations are rendered as a fenced JSON block.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-06"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="formats an operation as a bullet">
+        <purpose><![CDATA[Pins LLR-HUM-06: summarizeOperation returns a Markdown bullet with op and path.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-06"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/formLogic.test.ts" role="unit-ts" count="22">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted form logic in tools/vscode-project-xml/src/forms/formLogic.ts. Drives `buildOperations`, `coverageInfoFor`, `resolveFormParams`, and `escapeHtml` with hand-rolled form data so the form-to-ops transformation and coverage computation are pinned without the webview or VS Code API.]]></header>
+      <test name="emits add op in add mode">
+        <purpose><![CDATA[Pins LLR-HUM-05 + LLR-FRM-03: buildOperations in add mode emits a single add op.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-05"/>
+          <trace target="LLR" ref="LLR-FRM-03"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="computes HLR coverage">
+        <purpose><![CDATA[Pins LLR-HUM-05 + LLR-FRM-08: coverageInfoFor returns downstream LLRs and tests for an HLR.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-05"/>
+          <trace target="LLR" ref="LLR-FRM-08"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="resolves hlr locator">
+        <purpose><![CDATA[Pins LLR-HUM-05 + LLR-FRM-11: resolveFormParams returns correct OpenFormParams for an HLR locator.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-05"/>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="escapes all special characters">
+        <purpose><![CDATA[Pins LLR-HUM-05: escapeHtml escapes &, <, >, ", and ' characters.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-05"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/treeLogic.test.ts" role="unit-ts" count="25">
+      <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted tree logic in tools/vscode-project-xml/src/treeView/treeLogic.ts. Drives `decorate`, `renderLabel`, `labelSeverity`, `groupSeverity`, `buildLocator`, `filterTraces`, `propagateBadgeSeverity`, and `buildTopLevelDescriptors` with hand-rolled ParsedProject / UiHintsIndex data so tree-structure logic is pinned without a VS Code host.]]></header>
+      <test name="prepends badge when present">
+        <purpose><![CDATA[Pins LLR-HUM-01: decorate prepends the badge emoji to the label.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="substitutes @attr tokens">
+        <purpose><![CDATA[Pins LLR-HUM-01: renderLabel replaces @attr tokens with node attribute values.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns error when any item has error icon">
+        <purpose><![CDATA[Pins LLR-HUM-01: groupSeverity returns 'error' when any child has error severity.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="propagates error from child to parent">
+        <purpose><![CDATA[Pins LLR-HUM-01 + LLR-PSP-09: propagateBadgeSeverity walks bottom-up and sets error on parent.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="LLR" ref="LLR-PSP-09"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="builds all top-level groups">
+        <purpose><![CDATA[Pins LLR-HUM-01 + LLR-PSP-01: buildTopLevelDescriptors creates descriptor nodes for all payload groups.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
         </traces>
       </test>
     </file>

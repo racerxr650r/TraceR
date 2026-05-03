@@ -149,6 +149,10 @@ export enum StatusBarAlignment {
 export class MarkdownString {
     public value = '';
     public isTrusted = false;
+    public supportHtml = false;
+    constructor(value?: string, _supportThemeIcons?: boolean) {
+        this.value = value ?? '';
+    }
     appendMarkdown(s: string): MarkdownString {
         this.value += s;
         return this;
