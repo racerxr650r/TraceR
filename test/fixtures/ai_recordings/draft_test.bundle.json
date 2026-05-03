@@ -1,0 +1,13 @@
+{
+  "intent": "draft.test",
+  "target": {
+    "type": "Test",
+    "file": "test/test_render_doc.py"
+  },
+  "next_free_ids": {
+    "hlr": "HLR-001",
+    "llr": "LLR-GEN-01"
+  },
+  "schema_excerpt": "<file path=\"test/test_render_doc.py\"/>",
+  "response_schema": {}
+}

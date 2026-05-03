@@ -30,7 +30,9 @@ is ``None``.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -52,6 +54,64 @@ from .translators import TRANSLATORS, TranslatorError, translate
 # Callback signature: (prompt: str, retry_feedback: list[str] | None) -> str
 # The string is the raw model response; the pipeline parses it as JSON.
 ModelCallback = Callable[[str, "list[str] | None"], str]
+
+
+# ------------------------------------------------------------------ #
+# Record mode (opt-in via env var)                                     #
+# ------------------------------------------------------------------ #
+
+def _record_dir() -> Path | None:
+    """Return the recording directory if ``TRACER_AI_RECORD_DIR`` is set."""
+    val = os.environ.get("TRACER_AI_RECORD_DIR")
+    if val:
+        return Path(val)
+    return None
+
+
+def record_exchange(
+    intent_id: str,
+    target: "TargetSpec",
+    bundle: Bundle,
+    raw_response: str,
+    parsed_response: dict[str, Any] | None,
+    *,
+    record_dir: Path | None = None,
+) -> Path | None:
+    """Write a bundle+response fixture pair when recording is enabled.
+
+    Returns the stem path (without extension) or ``None`` when recording
+    is off. Files written:
+
+    *  ``<stem>.bundle.json``   — the grounding bundle (target, intent,
+       schema excerpt, next-free ids).
+    *  ``<stem>.response.json`` — the parsed model response.
+    """
+    if record_dir is None:
+        record_dir = _record_dir()
+    if record_dir is None:
+        return None
+    record_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    safe_id = intent_id.replace(".", "_")
+    stem = record_dir / f"{safe_id}_{ts}"
+
+    bundle_data = {
+        "intent": intent_id,
+        "target": target.to_dict(),
+        "next_free_ids": bundle.next_free_ids,
+        "schema_excerpt": bundle.schema_excerpt[:500],
+        "response_schema": bundle.response_schema,
+    }
+    stem.with_suffix(".bundle.json").write_text(
+        json.dumps(bundle_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    response_data = parsed_response if parsed_response is not None else {"_raw": raw_response}
+    stem.with_suffix(".response.json").write_text(
+        json.dumps(response_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return stem
 
 
 @dataclass
@@ -251,6 +311,9 @@ def run(
                 *schema_errors,
             ]
             continue
+
+        # Record the exchange when TRACER_AI_RECORD_DIR is set.
+        record_exchange(intent_id, target, bundle, raw, parsed)
 
         # Advisory intent: never produce a patch.
         if intent.kind == "advisory":
@@ -501,6 +564,9 @@ def evaluate(
             response=parsed,
             preface="Your previous response failed JSON Schema validation.",
         )
+
+    # Record the exchange when TRACER_AI_RECORD_DIR is set.
+    record_exchange(intent_id, target, bundle, raw_response, parsed)
 
     if intent.kind == "advisory":
         findings = parsed.get("findings") or []

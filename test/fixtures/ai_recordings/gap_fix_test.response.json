@@ -1,0 +1,13 @@
+{
+  "kind": "test",
+  "test": {
+    "name": "test_xsd_validation_failure",
+    "purpose": "Verifies render_doc rejects invalid XML.",
+    "traces": [
+      {
+        "target": "LLR",
+        "ref": "LLR-GEN-01"
+      }
+    ]
+  }
+}

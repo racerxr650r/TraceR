@@ -1,0 +1,13 @@
+{
+  "candidates": [
+    {
+      "text": "render_doc SHALL accept a --format flag.",
+      "traces": [
+        {
+          "target": "HLR",
+          "ref": "HLR-001"
+        }
+      ]
+    }
+  ]
+}

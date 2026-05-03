@@ -1,0 +1,12 @@
+{
+  "kind": "llr",
+  "llr": {
+    "text": "project_edit.apply_edit() SHALL reject ops that target non-existent paths.",
+    "traces": [
+      {
+        "target": "HLR",
+        "ref": "HLR-001"
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "severity": "warning",
+      "message": "HLR text does not contain SHALL/SHOULD/MAY.",
+      "suggestion": "Add a SHALL statement to make the requirement testable."
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "traces": [
+    {
+      "target": "SDD",
+      "ref": "1.1"
+    },
+    {
+      "target": "SDD",
+      "ref": "1.2"
+    }
+  ]
+}

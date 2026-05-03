@@ -2148,6 +2148,17 @@ so a new payload kind gains the AI surface for free.]]></text>
           <trace target="SDD" ref="20"/>
         </traces>
       </hlr>
+      <hlr id="HLR-065" name="Record/Replay Test Harness">
+        <text><![CDATA[The AI pipeline shall support an opt-in recording mode
+(activated by the `TRACER_AI_RECORD_DIR` environment variable)
+that writes a paired `.bundle.json` / `.response.json` fixture
+for every schema-validated model exchange, enabling
+deterministic replay of AI responses through the translator →
+apply_edit path without a live model or network access.]]></text>
+        <traces>
+          <trace target="SDD" ref="10"/>
+        </traces>
+      </hlr>
     </section>
     <section number="8" title="Structured Merge Resolution">
       <intro><![CDATA[Requirements covering the two-stage merge pipeline
@@ -3702,6 +3713,19 @@ and shall not block the resolution flow.]]></text>
         <text>next_free_llr_id shall discover the established prefix by inspecting existing LLRs under the named function element. When an established prefix exists (e.g. PPD from LLR-PPD-01), new ids shall reuse it; when no LLRs exist yet, the prefix shall be derived from the function name, sanitized to [A-Z0-9] and truncated to 4 characters.</text>
         <traces>
           <trace target="HLR" ref="HLR-005" name="Stable Identifiers"/>
+        </traces>
+      </llr>
+      <llr id="LLR-AITR-04">
+        <text><![CDATA[`pipeline.record_exchange()` shall write a `.bundle.json` (intent, target, next-free-ids, schema excerpt) and `.response.json` (parsed model response) pair when `TRACER_AI_RECORD_DIR` is set; when unset, recording shall be a no-op returning `None`.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-065" name="Record/Replay Test Harness"/>
+        </traces>
+      </llr>
+      <llr id="LLR-AITR-05">
+        <text><![CDATA[`test/test_ai_integration.py` shall load each curated fixture from `test/fixtures/ai_recordings/`, translate the response to JSON Patch operations, apply them via `apply_edit` with `expect_clean=True`, and assert that placeholder references (`$new_llr`, `$new_hlr`, `$new_module`) are resolved to allocated IDs and the resulting XML contains the expected elements.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-065" name="Record/Replay Test Harness"/>
+          <trace target="HLR" ref="HLR-051" name="AI-Assisted Trace Suggestion and Gap Fill"/>
         </traces>
       </llr>
     </function>
@@ -5726,6 +5750,285 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies translate_gap_fix raises TranslatorError for an unrecognized kind value.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-01"/>
+        </traces>
+      </test>
+    </file>
+    <file path="test/test_ai_pipeline.py" role="unit" count="11">
+      <test name="test_prepare_returns_prompt">
+        <purpose>Verifies pipeline.prepare() returns a prompt step with user text.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_evaluate_applies_valid_response">
+        <purpose>Verifies pipeline.evaluate() applies a valid response and writes the result.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_evaluate_dry_run_does_not_write">
+        <purpose>Verifies pipeline.evaluate() with write=False validates but does not persist.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_evaluate_returns_retry_prompt_on_schema_failure">
+        <purpose>Verifies pipeline returns retry feedback when schema validation fails.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_evaluate_rejects_after_max_retries">
+        <purpose>Verifies pipeline rejects after max_retries exhausted.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_evaluate_rejects_xml_response">
+        <purpose>Verifies pipeline rejects non-JSON (XML) responses.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_advisory_intent_returns_findings_no_patch">
+        <purpose>Verifies advisory intents return findings without producing a patch.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_pvd_intent_returns_markdown">
+        <purpose>Verifies PVD intent returns markdown content without a patch.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_run_with_stubbed_callback_applies">
+        <purpose>Verifies pipeline.run() end-to-end with a stubbed model callback.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_run_no_model_returns_no_model">
+        <purpose>Verifies pipeline.run() returns no-model when callback raises NoModelError.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_run_retries_then_accepts">
+        <purpose>Verifies pipeline.run() retries on schema failure then accepts on corrected response.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="test/test_ai_context.py" role="unit" count="3">
+      <test name="test_build_context_populates_required_fields">
+        <purpose>Verifies build_context() populates all required Bundle fields.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_render_system_prompt_includes_user_prompt_and_schema">
+        <purpose>Verifies render_system_prompt() includes user prompt and schema in output.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_budget_truncation_keeps_critical_sections">
+        <purpose>Verifies token budget truncation preserves schema and intent sections.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="test/test_ai_provenance.py" role="unit" count="3">
+      <test name="test_append_record_writes_jsonl_line">
+        <purpose>Verifies provenance logger writes a JSONL line to the history file.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_disabled_is_no_op">
+        <purpose>Verifies provenance logger is a no-op when disabled.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_append_record_is_jsonl">
+        <purpose>Verifies each provenance entry is valid JSON on a single line.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="test/test_ai_registry.py" role="unit" count="4">
+      <test name="test_required_intents_registered">
+        <purpose>Verifies all required intents are present in the registry.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_each_intent_has_schema_and_prompt_files">
+        <purpose>Verifies every registered intent has schema and prompt files on disk.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_ai_actions_for_type_matches_targets">
+        <purpose>Verifies get_intent returns intents matching the given target type.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_get_intent_unknown_raises">
+        <purpose>Verifies get_intent raises for an unknown intent id.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="test/test_ai_request.py" role="unit" count="4">
+      <test name="test_first_call_returns_prompt">
+        <purpose>Verifies ai_request sidecar method returns a prompt step on first call.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_evaluate_with_good_response_applies_and_writes_provenance">
+        <purpose>Verifies ai_request applies a good response and logs provenance.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_unknown_intent_returns_invalid_params">
+        <purpose>Verifies ai_request returns invalid-params for unknown intent.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_missing_target_returns_invalid_params">
+        <purpose>Verifies ai_request returns invalid-params when target is missing.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="test/test_ai_integration.py" role="integration" count="19">
+      <test name="test_replay_produces_hlr_element">
+        <purpose>Replays draft_hlr fixture through translator and apply_edit; verifies HLR element appears in XML.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_ops_structure">
+        <purpose>Verifies draft_hlr replay produces correct op count and path structure.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_produces_llr_element">
+        <purpose>Replays draft_llr fixture and verifies LLR element appears in XML.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_produces_test_element">
+        <purpose>Replays draft_test fixture and verifies test element appears in XML.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_produces_module_element">
+        <purpose>Replays draft_module fixture and verifies module element appears in XML.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_replaces_traces">
+        <purpose>Replays suggest_traces fixture and verifies trace replacement.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_advisory_has_no_translator">
+        <purpose>Verifies advisory intents (review.item) have no JSON Patch translator.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_response_has_findings">
+        <purpose>Verifies review.item fixture response contains findings.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_produces_llr_candidates">
+        <purpose>Replays expand.hlr_to_llrs fixture and verifies LLR candidates created.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_produces_test_candidates">
+        <purpose>Replays expand.llr_to_tests fixture and verifies test candidates created.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_creates_llr">
+        <purpose>Replays gap.fix LLR fixture and verifies LLR creation.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_creates_test">
+        <purpose>Replays gap.fix test fixture and verifies test creation.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_replay_creates_four_ops">
+        <purpose>Replays gap.fix cascade (module → HLR → LLR → test) and verifies 4 ops created.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="LLR" ref="LLR-AITR-01"/>
+        </traces>
+      </test>
+      <test name="test_placeholder_resolution">
+        <purpose>Verifies $new_module, $new_hlr, $new_llr placeholders are resolved to allocated IDs in cascade replay.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="LLR" ref="LLR-AITR-02"/>
+        </traces>
+      </test>
+      <test name="test_no_unresolved_placeholders_in_xml">
+        <purpose>Verifies no $new_ placeholders remain in the XML after cascade replay.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="LLR" ref="LLR-AITR-02"/>
+        </traces>
+      </test>
+      <test name="test_lint_clean">
+        <purpose>Verifies cascade replay produces lint-clean XML with no error findings.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-05"/>
+        </traces>
+      </test>
+      <test name="test_writes_bundle_and_response">
+        <purpose>Verifies record_exchange() writes .bundle.json and .response.json files.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_returns_none_when_no_record_dir">
+        <purpose>Verifies record_exchange() returns None when TRACER_AI_RECORD_DIR is unset.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
+        </traces>
+      </test>
+      <test name="test_env_var_triggers_recording">
+        <purpose>Verifies TRACER_AI_RECORD_DIR env var activates recording and creates files.</purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-04"/>
         </traces>
       </test>
     </file>

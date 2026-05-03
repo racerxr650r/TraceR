@@ -1,0 +1,15 @@
+{
+  "candidates": [
+    {
+      "name": "test_gen_accepts_format_flag",
+      "purpose": "Verifies the --format flag is accepted.",
+      "file": "test/test_render_doc.py",
+      "traces": [
+        {
+          "target": "LLR",
+          "ref": "LLR-GEN-01"
+        }
+      ]
+    }
+  ]
+}
