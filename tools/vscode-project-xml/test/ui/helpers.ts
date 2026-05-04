@@ -11,6 +11,7 @@ import {
     Key,
     Notification,
     SideBarView,
+    TreeItem,
     VSBrowser,
     ViewItem,
     WebDriver,
@@ -86,11 +87,22 @@ export async function expandGroup(
     section: CustomTreeSection,
     prefix: string,
     timeout = 30_000,
-): Promise<ViewItem[]> {
+): Promise<TreeItem[]> {
     const deadline = Date.now() + timeout;
     let lastLabels: string[] = [];
     while (Date.now() < deadline) {
-        const items = await section.getVisibleItems();
+        let items: TreeItem[];
+        try {
+            items = await section.getVisibleItems();
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg.includes('element not interactable') ||
+                msg.includes('ElementNotInteractableError')) {
+                await new Promise((r) => setTimeout(r, POLL_MS));
+                continue;
+            }
+            throw e;
+        }
         lastLabels = [];
         for (const item of items) {
             const label = await item.getLabel();
@@ -125,6 +137,9 @@ export async function expandGroup(
  * Poll `section.findItem()` until the item appears or `timeout`
  * expires. Returns the item, or throws.  Replaces the pattern of
  * `driver.sleep(N); section.findItem(label)` which is timing-fragile.
+ *
+ * Uses a `startsWith` predicate so callers can pass a prefix like
+ * `'Tests ('` to match dynamic labels such as `'Tests (5)'`.
  */
 export async function waitForTreeItem(
     section: CustomTreeSection,
@@ -132,14 +147,18 @@ export async function waitForTreeItem(
     timeout = 15_000,
 ): Promise<ViewItem> {
     const deadline = Date.now() + timeout;
+    const predicate = async (el: TreeItem) => {
+        const text = await el.getLabel();
+        return text === label || text.startsWith(label);
+    };
     while (Date.now() < deadline) {
         try {
-            const item = await section.findItem(label);
+            const item = await section.findItem(predicate);
             if (item) {
                 return item;
             }
         } catch {
-            // item not yet rendered
+            // item not yet rendered or stale
         }
         await new Promise((r) => setTimeout(r, POLL_MS));
     }
@@ -197,7 +216,12 @@ export async function retryOnStale<T>(
         } catch (e: unknown) {
             lastErr = e;
             const msg = e instanceof Error ? e.message : String(e);
-            if (!msg.includes('StaleElementReference') && !msg.includes('stale element')) {
+            const retriable =
+                msg.includes('StaleElementReference') ||
+                msg.includes('stale element') ||
+                msg.includes('element not interactable') ||
+                msg.includes('ElementNotInteractableError');
+            if (!retriable) {
                 throw e;
             }
             await new Promise((r) => setTimeout(r, POLL_MS));
