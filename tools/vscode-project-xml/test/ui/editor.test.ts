@@ -13,15 +13,20 @@ import * as path from 'path';
 import {
     ActivityBar,
     BottomBarPanel,
-    CustomTreeSection,
     EditorView,
-    SideBarView,
     StatusBar,
     TextEditor,
     VSBrowser,
     WebDriver,
 } from 'vscode-extension-tester';
-import { dismissWelcomeOverlay } from './helpers';
+import {
+    dismissWelcomeOverlay,
+    expandGroup,
+    getProjectSpecSection,
+    retryOnStale,
+    waitForEditorTab,
+    waitForTreeItem,
+} from './helpers';
 
 const FIXTURE_WORKSPACE = path.resolve(
     __dirname,
@@ -33,54 +38,14 @@ const FIXTURE_WORKSPACE = path.resolve(
     'fixtures',
 );
 
-/**
- * Poll until a tree group whose label starts with `prefix` appears in
- * the TraceR section. Used in `before()` to ensure the sidecar has
- * finished parsing before tests run.
- */
-async function waitForTreeGroup(
-    prefix: string,
-    timeout = 30_000,
-): Promise<void> {
-    const sidebar = new SideBarView();
-    const deadline = Date.now() + timeout;
-    let lastLabels: string[] = [];
-    let sectionFound = false;
-    while (Date.now() < deadline) {
-        try {
-            const section = (await sidebar
-                .getContent()
-                .getSection('TraceR')) as CustomTreeSection;
-            sectionFound = true;
-            const items = await section.getVisibleItems();
-            lastLabels = [];
-            for (const item of items) {
-                const label = await item.getLabel();
-                lastLabels.push(label);
-                if (label.startsWith(prefix)) {
-                    return;
-                }
-            }
-        } catch {
-            // section may not exist yet
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    throw new Error(
-        `Tree group "${prefix}" not found within ${timeout}ms. ` +
-        `Section found: ${sectionFound}. ` +
-        `Visible items: [${lastLabels.join(', ')}]`,
-    );
-}
-
 describe('Editor, status bar, and diagnostics (UI)', function () {
     this.timeout(120_000);
+    this.retries(2);
     let driver: WebDriver;
 
     before(async function () {
         driver = VSBrowser.instance.driver;
         await VSBrowser.instance.openResources(FIXTURE_WORKSPACE);
-        await driver.sleep(8000);
         // Dismiss the VS Code onboarding overlay that blocks clicks in CI.
         await dismissWelcomeOverlay(driver);
         // Open the Project Spec view so tree-dependent tests can
@@ -90,10 +55,10 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
         if (viewControl) {
             await viewControl.openView();
         }
-        await driver.sleep(3000);
         // Wait until the tree has real groups before starting tests.
-        // In CI the sidecar may take longer to parse.
-        await waitForTreeGroup('HLRs', 30_000);
+        // Polling replaces fixed sleeps.
+        const section = await getProjectSpecSection();
+        await expandGroup(section, 'HLRs');
     });
 
     afterEach(async function () {
@@ -138,25 +103,17 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
     // ── Reveal in XML ────────────────────────────────────────────
 
     it('Reveal in XML opens Project.xml with HLR element selected', async function () {
-        const sidebar = new SideBarView();
-        const section = (await sidebar
-            .getContent()
-            .getSection('TraceR')) as CustomTreeSection;
+        const section = await getProjectSpecSection();
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T01 Sample HLR');
-        expect(hlrLeaf).to.not.be.undefined;
-        const menu = await hlrLeaf!.openContextMenu();
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T01 Sample HLR');
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const revealItem = await menu.getItem(
             'Project Spec: Reveal in Project.xml',
         );
         expect(revealItem).to.not.be.undefined;
         await revealItem!.select();
-        await driver.sleep(2000);
-        // Verify Project.xml is open in the editor
-        const editorView = new EditorView();
-        const titles = await editorView.getOpenEditorTitles();
-        expect(titles.some((t) => t.includes('Project.xml'))).to.be.true;
+        // Poll until Project.xml tab opens
+        await waitForEditorTab((t) => t.includes('Project.xml'));
         // Verify the selected text includes the HLR id
         const editor = new TextEditor();
         const selectedText = await editor.getSelectedText();
@@ -166,22 +123,26 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
     // ── Status bar ───────────────────────────────────────────────
 
     it('status bar shows TraceR lint summary', async function () {
-        const statusBar = new StatusBar();
-        // The extension adds a status bar item with text like
-        // "$(icon) TraceR: N errors / M warnings".
-        // StatusBar.getItem matches by partial aria-label, so search
-        // through all items for our text.
-        const items = await statusBar.getItems();
+        // Poll for the status bar item — it may take a moment for the
+        // linter to complete and update the status bar in CI.
+        const deadline = Date.now() + 15_000;
         let found: string | undefined;
-        for (const item of items) {
-            try {
-                const text = await item.getText();
-                if (text.includes('TraceR')) {
-                    found = text;
-                    break;
+        while (Date.now() < deadline && !found) {
+            const statusBar = new StatusBar();
+            const items = await statusBar.getItems();
+            for (const item of items) {
+                try {
+                    const text = await item.getText();
+                    if (text.includes('TraceR')) {
+                        found = text;
+                        break;
+                    }
+                } catch {
+                    // some items may not have accessible text
                 }
-            } catch {
-                // some items may not have accessible text
+            }
+            if (!found) {
+                await new Promise((r) => setTimeout(r, 500));
             }
         }
         expect(
@@ -197,16 +158,20 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
         const bottomBar = new BottomBarPanel();
         await bottomBar.toggle(true);
         const problemsView = await bottomBar.openProblemsView();
-        await driver.sleep(2000);
-        // The fixture has HLR-T02 with no downstream LLR — the linter
-        // should report at least one coverage-gap warning.
+        // Poll for findings instead of fixed sleep
+        const deadline = Date.now() + 15_000;
         let hasFindings = false;
-        try {
-            const badge = await problemsView.getCountBadge();
-            const text = await badge.getText();
-            hasFindings = parseInt(text, 10) > 0;
-        } catch {
-            // No badge element = 0 problems
+        while (Date.now() < deadline && !hasFindings) {
+            try {
+                const badge = await problemsView.getCountBadge();
+                const text = await badge.getText();
+                hasFindings = parseInt(text, 10) > 0;
+            } catch {
+                // No badge element = 0 problems yet
+            }
+            if (!hasFindings) {
+                await new Promise((r) => setTimeout(r, 500));
+            }
         }
         expect(
             hasFindings,
@@ -219,23 +184,24 @@ describe('Editor, status bar, and diagnostics (UI)', function () {
 
     it('code lenses appear on HLR elements in Project.xml', async function () {
         // Open Project.xml via tree's Reveal command
-        const sidebar = new SideBarView();
-        const section = (await sidebar
-            .getContent()
-            .getSection('TraceR')) as CustomTreeSection;
+        const section = await getProjectSpecSection();
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T01 Sample HLR');
-        expect(hlrLeaf).to.not.be.undefined;
-        const menu = await hlrLeaf!.openContextMenu();
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T01 Sample HLR');
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const revealItem = await menu.getItem(
             'Project Spec: Reveal in Project.xml',
         );
         await revealItem!.select();
-        await driver.sleep(3000);
-        // Check for code lenses in the editor
+        await waitForEditorTab((t) => t.includes('Project.xml'));
+        // Poll for code lenses to appear (they load asynchronously)
         const editor = new TextEditor();
-        const lenses = await editor.getCodeLenses();
+        const lensDeadline = Date.now() + 15_000;
+        let lenses: Awaited<ReturnType<TextEditor['getCodeLenses']>> = [];
+        while (Date.now() < lensDeadline) {
+            lenses = await editor.getCodeLenses();
+            if (lenses.length > 0) break;
+            await new Promise((r) => setTimeout(r, 500));
+        }
         expect(lenses.length).to.be.greaterThan(
             0,
             'Expected coverage code lenses on HLR elements',

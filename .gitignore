@@ -19,6 +19,9 @@ test_out.log
 # Staging directory populated by the GitHub Pages workflow at deploy time
 landing_page/images/
 
+# Python virtual environment
+.venv/
+
 # Coverage reports
 test_reports/
 .coverage

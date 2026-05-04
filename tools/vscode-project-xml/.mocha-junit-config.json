@@ -1,0 +1,7 @@
+{
+    "reporterEnabled": "spec, mocha-junit-reporter",
+    "mochaJunitReporterReporterOptions": {
+        "mochaFile": "../../test_reports/ext-results.xml",
+        "suiteTitleSeparatedBy": " > "
+    }
+}

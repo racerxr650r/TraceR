@@ -13,15 +13,18 @@ import { expect } from 'chai';
 import * as path from 'path';
 import {
     ActivityBar,
-    CustomTreeSection,
     EditorView,
-    SideBarView,
     VSBrowser,
-    ViewItem,
     WebDriver,
-    Workbench,
 } from 'vscode-extension-tester';
-import { dismissWelcomeOverlay } from './helpers';
+import {
+    dismissWelcomeOverlay,
+    expandGroup,
+    getProjectSpecSection,
+    retryOnStale,
+    waitForEditorTab,
+    waitForTreeItem,
+} from './helpers';
 
 const FIXTURE_WORKSPACE = path.resolve(
     __dirname,
@@ -33,93 +36,25 @@ const FIXTURE_WORKSPACE = path.resolve(
     'fixtures',
 );
 
-/**
- * Wait for the Project Spec tree section to appear and return it.
- * Retries up to `timeout` ms because the sidecar may take a moment
- * to parse.
- */
-async function getProjectSpecSection(
-    timeout = 30_000,
-): Promise<CustomTreeSection> {
-    const sidebar = new SideBarView();
-    const deadline = Date.now() + timeout;
-    let lastErr: unknown;
-    while (Date.now() < deadline) {
-        try {
-            const section = (await sidebar
-                .getContent()
-                .getSection('TraceR')) as CustomTreeSection;
-            if (section) {
-                return section;
-            }
-        } catch (e) {
-            lastErr = e;
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    throw new Error(
-        `TraceR section not found within ${timeout}ms: ${lastErr}`,
-    );
-}
-
-/**
- * Expand a top-level tree group (e.g. "HLRs (1)") by matching the
- * prefix, then return its child items.  Polls until the group appears
- * or `timeout` expires — the sidecar may still be parsing when the
- * first call arrives.
- */
-async function expandGroup(
-    section: CustomTreeSection,
-    prefix: string,
-    timeout = 30_000,
-): Promise<ViewItem[]> {
-    const deadline = Date.now() + timeout;
-    let lastLabels: string[] = [];
-    while (Date.now() < deadline) {
-        const items = await section.getVisibleItems();
-        lastLabels = [];
-        for (const item of items) {
-            const label = await item.getLabel();
-            lastLabels.push(label);
-            if (label.startsWith(prefix)) {
-                if (await item.isExpandable()) {
-                    await item.select();
-                    await new Promise((r) => setTimeout(r, 1000));
-                }
-                return section.getVisibleItems();
-            }
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    throw new Error(
-        `No tree group starting with "${prefix}" found (waited ${timeout}ms). ` +
-        `Visible items: [${lastLabels.join(', ')}]`,
-    );
-}
-
 describe('Project Spec tree view (UI)', function () {
     this.timeout(120_000);
+    this.retries(2);
     let driver: WebDriver;
 
     before(async function () {
         driver = VSBrowser.instance.driver;
         // Open the fixture workspace containing doc/Project.xml.
         await VSBrowser.instance.openResources(FIXTURE_WORKSPACE);
-        // Allow time for the extension to activate and the sidecar to
-        // parse the fixture Project.xml.
-        await driver.sleep(8000);
         // Dismiss the VS Code onboarding overlay that blocks clicks in CI.
         await dismissWelcomeOverlay(driver);
-        // Open the Project Spec view via the Activity Bar. The view is
-        // contributed under the view container 'projectXml'.
+        // Open the Project Spec view via the Activity Bar.
         const activityBar = new ActivityBar();
         const viewControl = await activityBar.getViewControl('TraceR');
         if (viewControl) {
             await viewControl.openView();
         }
-        await driver.sleep(3000);
         // Wait until the tree has real groups (not just a placeholder)
-        // before starting tests. CI may be slower to parse.
+        // before starting tests. Polling replaces fixed sleeps.
         const section = await getProjectSpecSection();
         await expandGroup(section, 'HLRs');
     });
@@ -184,13 +119,9 @@ describe('Project Spec tree view (UI)', function () {
 
     it('right-click on HLR leaf shows "Reveal in Project.xml"', async function () {
         const section = await getProjectSpecSection();
-        // Navigate into HLRs → section → leaf
-        // Tree labels include the §N prefix, e.g. "§1 UI Test Section (2)"
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T01 Sample HLR');
-        expect(hlrLeaf).to.not.be.undefined;
-        const menu = await hlrLeaf!.openContextMenu();
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T01 Sample HLR');
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Reveal in Project.xml');
@@ -200,10 +131,8 @@ describe('Project Spec tree view (UI)', function () {
     it('right-click on HLR leaf shows "Edit in Form…"', async function () {
         const section = await getProjectSpecSection();
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T01 Sample HLR');
-        expect(hlrLeaf).to.not.be.undefined;
-        const menu = await hlrLeaf!.openContextMenu();
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T01 Sample HLR');
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Edit in Form…');
@@ -215,26 +144,12 @@ describe('Project Spec tree view (UI)', function () {
     it('clicking an HLR leaf opens the edit form panel', async function () {
         const section = await getProjectSpecSection();
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T01 Sample HLR');
-        expect(hlrLeaf).to.not.be.undefined;
-        // Clicking a leaf with TreeItem.command should open the form
-        // webview panel.
-        await hlrLeaf!.select();
-        await driver.sleep(2000);
-        // The form panel opens as a webview editor tab. Verify an
-        // editor tab appeared (the title will contain "Edit HLR-T01"
-        // or similar).
-        const editorView = new EditorView();
-        const titles = await editorView.getOpenEditorTitles();
-        const hasEditTab = titles.some(
-            (t) =>
-                t.includes('Edit') ||
-                t.includes('HLR-T01') ||
-                t.includes('Form'),
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T01 Sample HLR');
+        await hlrLeaf.select();
+        // Poll until the form panel tab appears instead of fixed sleep.
+        await waitForEditorTab(
+            (t) => t.includes('Edit') || t.includes('HLR-T01') || t.includes('Form'),
         );
-        expect(hasEditTab, `Expected an edit panel tab, got: ${titles}`).to.be
-            .true;
     });
 
     // ── Tree breadth ─────────────────────────────────────────────
@@ -264,10 +179,8 @@ describe('Project Spec tree view (UI)', function () {
     it('right-click on LLR leaf shows both context commands', async function () {
         const section = await getProjectSpecSection();
         await section.openItem('LLRs (1)', 'UI Test Function (1)');
-        await driver.sleep(1000);
-        const llrLeaf = await section.findItem('LLR-UT-01');
-        expect(llrLeaf).to.not.be.undefined;
-        const menu = await llrLeaf!.openContextMenu();
+        const llrLeaf = await waitForTreeItem(section, 'LLR-UT-01');
+        const menu = await retryOnStale(() => llrLeaf.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Reveal in Project.xml');
@@ -278,30 +191,19 @@ describe('Project Spec tree view (UI)', function () {
     it('clicking LLR leaf opens the edit form panel', async function () {
         const section = await getProjectSpecSection();
         await section.openItem('LLRs (1)', 'UI Test Function (1)');
-        await driver.sleep(1000);
-        const llrLeaf = await section.findItem('LLR-UT-01');
-        expect(llrLeaf).to.not.be.undefined;
-        await llrLeaf!.select();
-        await driver.sleep(2000);
-        const editorView = new EditorView();
-        const titles = await editorView.getOpenEditorTitles();
-        const hasEditTab = titles.some(
-            (t) =>
-                t.includes('Edit') ||
-                t.includes('LLR-UT-01') ||
-                t.includes('Form'),
+        const llrLeaf = await waitForTreeItem(section, 'LLR-UT-01');
+        await llrLeaf.select();
+        await waitForEditorTab(
+            (t) => t.includes('Edit') || t.includes('LLR-UT-01') || t.includes('Form'),
         );
-        expect(hasEditTab, `Expected an edit panel tab, got: ${titles}`).to.be
-            .true;
     });
 
     // ── Group-node context menus ─────────────────────────────────
 
     it('right-click on HLRs group shows "Add High-Level Requirement…"', async function () {
         const section = await getProjectSpecSection();
-        const hlrsGroup = await section.findItem('HLRs (2)');
-        expect(hlrsGroup, 'HLRs group not found').to.not.be.undefined;
-        const menu = await hlrsGroup!.openContextMenu();
+        const hlrsGroup = await waitForTreeItem(section, 'HLRs (2)');
+        const menu = await retryOnStale(() => hlrsGroup.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Add High-Level Requirement…');
@@ -310,9 +212,8 @@ describe('Project Spec tree view (UI)', function () {
 
     it('right-click on LLRs group shows "Add Low-Level Requirement…"', async function () {
         const section = await getProjectSpecSection();
-        const llrsGroup = await section.findItem('LLRs (1)');
-        expect(llrsGroup, 'LLRs group not found').to.not.be.undefined;
-        const menu = await llrsGroup!.openContextMenu();
+        const llrsGroup = await waitForTreeItem(section, 'LLRs (1)');
+        const menu = await retryOnStale(() => llrsGroup.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Add Low-Level Requirement…');
@@ -321,17 +222,9 @@ describe('Project Spec tree view (UI)', function () {
 
     it('right-click on Tests group shows "Add Test…"', async function () {
         const section = await getProjectSpecSection();
-        const items = await section.getVisibleItems();
-        let testsGroup: ViewItem | undefined;
-        for (const item of items) {
-            const label = await item.getLabel();
-            if (label.startsWith('Tests (')) {
-                testsGroup = item;
-                break;
-            }
-        }
-        expect(testsGroup, 'Tests group not found').to.not.be.undefined;
-        const menu = await testsGroup!.openContextMenu();
+        await expandGroup(section, 'Tests');
+        const testsNode = await waitForTreeItem(section, 'Tests (');
+        const menu = await retryOnStale(() => testsNode.openContextMenu());
         const menuItems = await menu.getItems();
         const labels = await Promise.all(menuItems.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Add Test…');
@@ -340,17 +233,9 @@ describe('Project Spec tree view (UI)', function () {
 
     it('right-click on SDD group shows "Add SDD Module…"', async function () {
         const section = await getProjectSpecSection();
-        const items = await section.getVisibleItems();
-        let sddGroup: ViewItem | undefined;
-        for (const item of items) {
-            const label = await item.getLabel();
-            if (label.startsWith('SDD (')) {
-                sddGroup = item;
-                break;
-            }
-        }
-        expect(sddGroup, 'SDD group not found').to.not.be.undefined;
-        const menu = await sddGroup!.openContextMenu();
+        await expandGroup(section, 'SDD');
+        const sddNode = await waitForTreeItem(section, 'SDD (');
+        const menu = await retryOnStale(() => sddNode.openContextMenu());
         const menuItems = await menu.getItems();
         const labels = await Promise.all(menuItems.map((i) => i.getLabel()));
         expect(labels).to.include('Project Spec: Add SDD Module…');

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [develop]
   pull_request:
     branches: [develop]
 
@@ -40,6 +40,24 @@ jobs:
         # ext-test-ui, ext-typecheck, ext-build
         run: make -C tools ci
 
+      - name: Run tests with JUnit reporting
+        if: always()
+        run: |
+          make -C tools test-py-junit
+          make -C tools ext-test-unit-junit
+          make -C tools test_report
+
+      - name: Test results in job log
+        if: always()
+        run: cat test_reports/test-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post test results to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: test-results
+          path: test_reports/test-report.md
+
       - name: Run coverage (Python + extension)
         run: |
           make -C tools coverage
@@ -53,4 +71,5 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
+          header: coverage
           path: test_reports/report.md
