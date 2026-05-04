@@ -1,0 +1,12 @@
+{
+  "intent": "draft.module",
+  "target": {
+    "type": "SddModule"
+  },
+  "next_free_ids": {
+    "hlr": "HLR-001",
+    "llr": "LLR-GEN-01"
+  },
+  "schema_excerpt": "<modules/>",
+  "response_schema": {}
+}

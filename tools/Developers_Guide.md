@@ -11,9 +11,10 @@ This guide is for two audiences:
     the schema, the renderer, the linter, or the VS Code extension.
     [§11 Editing and Authoring Notes](#11-editing-and-authoring-notes),
     [§16 Linter Contract](#16-linter-contract-finding-findingsitems-code-values),
-    and [§17 UI Hint Vocabulary](#17-ui-hint-vocabulary) cover the
-    day-to-day contracts; the underlying `Project.xml` schema and
-    renderer data surface live in
+    [§17 UI Hint Vocabulary](#17-ui-hint-vocabulary), and
+    [§18 AI Pipeline Recording Mode](#18-ai-pipeline-recording-mode)
+    cover the day-to-day contracts; the underlying `Project.xml`
+    schema and renderer data surface live in
     [Appendix A: Schema Reference for `Project.xml`](#appendix-a-schema-reference-for-projectxml).
 
 `doc/Project.xml` is the **single source of truth** for the project's
@@ -637,11 +638,71 @@ on the new payload too.
 
 # Appendix A: Schema Reference for `Project.xml`
 
+## 18. AI Pipeline Recording Mode
+
+The AI pipeline supports an **opt-in recording mode** for capturing
+model exchanges as fixture files that can be replayed deterministically
+without a live model.
+
+### Activation
+
+Set the `TRACER_AI_RECORD_DIR` environment variable to a directory path
+before running the pipeline:
+
+```bash
+export TRACER_AI_RECORD_DIR=test/fixtures/ai_recordings
+```
+
+When set, every schema-validated model response writes a paired fixture:
+
+*   `<intent>_<timestamp>.bundle.json` — the grounding bundle (intent id,
+    target spec, next-free IDs, schema excerpt, response schema).
+*   `<intent>_<timestamp>.response.json` — the parsed model response.
+
+When the variable is unset (the default), recording is a no-op.
+
+### Fixture format
+
+**Bundle** (`*.bundle.json`):
+```json
+{
+  "intent": "draft.hlr",
+  "target": { "type": "Hlr", "section": "1" },
+  "next_free_ids": { "hlr": "HLR-042" },
+  "schema_excerpt": "<section number=\"1\" .../>",
+  "response_schema": {}
+}
+```
+
+**Response** (`*.response.json`):
+```json
+{
+  "name": "Widget Configuration",
+  "text": "The system SHALL allow users to configure widget parameters.",
+  "traces": [{ "target": "SDD", "ref": "3.1" }]
+}
+```
+
+### Replay testing
+
+`test/test_ai_integration.py` loads each curated fixture pair from
+`test/fixtures/ai_recordings/`, calls the translator with the recorded
+response, applies the resulting operations via `apply_edit`, and asserts
+lint-clean output with expected elements and resolved placeholder
+references.  No network access or model dependency is required.
+
+The fixture directory ships with at least one pair per intent:
+`draft.hlr`, `draft.llr`, `draft.test`, `draft.module`,
+`expand.hlr_to_llrs`, `expand.llr_to_tests`, `suggest.traces`,
+`review.item`, `gap.fix` (simple LLR, simple test, and full cascade).
+
+# Appendix A: Schema Reference for `Project.xml`
+
 This appendix is the canonical structural reference for
 `doc/Project.xml`: every element, attribute, cardinality, and
-renderer-side projection. The body of this guide (§11–§17) covers
-authoring rules, the linter contract, and the UI hint vocabulary
-that build on top of the schema. Any change to
+renderer-side projection. The body of this guide (§11–§18) covers
+authoring rules, the linter contract, the UI hint vocabulary, and
+the AI recording mode that build on top of the schema. Any change to
 [project.xsd](project.xsd) or [render_doc.py](render_doc.py) MUST be
 mirrored in this appendix in the same commit.
 

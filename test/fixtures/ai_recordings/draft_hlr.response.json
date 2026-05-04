@@ -1,0 +1,10 @@
+{
+  "name": "Widget Configuration",
+  "text": "The system SHALL allow users to configure widget parameters via a settings panel.",
+  "traces": [
+    {
+      "target": "SDD",
+      "ref": "1.1"
+    }
+  ]
+}

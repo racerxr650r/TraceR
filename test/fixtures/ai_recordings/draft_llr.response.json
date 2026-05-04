@@ -1,0 +1,9 @@
+{
+  "text": "render_doc.render() SHALL validate the XML against the XSD before writing output.",
+  "traces": [
+    {
+      "target": "HLR",
+      "ref": "HLR-001"
+    }
+  ]
+}

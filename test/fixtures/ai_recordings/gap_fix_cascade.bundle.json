@@ -1,0 +1,13 @@
+{
+  "intent": "gap.fix",
+  "target": {
+    "type": "Test",
+    "file": "test/test_render_doc.py"
+  },
+  "next_free_ids": {
+    "hlr": "HLR-002",
+    "llr": "LLR-GEN-02"
+  },
+  "schema_excerpt": "<file path=\"test/test_render_doc.py\"/>",
+  "response_schema": {}
+}

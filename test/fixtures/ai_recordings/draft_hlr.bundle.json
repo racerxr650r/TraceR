@@ -1,0 +1,13 @@
+{
+  "intent": "draft.hlr",
+  "target": {
+    "type": "Hlr",
+    "section": "1"
+  },
+  "next_free_ids": {
+    "hlr": "HLR-001",
+    "llr": "LLR-GEN-01"
+  },
+  "schema_excerpt": "<section number=\"1\" title=\"General\"/>",
+  "response_schema": {}
+}

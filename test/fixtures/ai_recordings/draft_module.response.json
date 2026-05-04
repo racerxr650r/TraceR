@@ -1,0 +1,5 @@
+{
+  "path": "src/validators/schema.ts",
+  "title": "Schema Validator",
+  "purpose": "Validates AI responses against JSON Schema."
+}

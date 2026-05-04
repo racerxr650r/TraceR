@@ -1,0 +1,10 @@
+{
+  "name": "test_render_produces_valid_output",
+  "purpose": "Verifies that render_doc produces well-formed Markdown.",
+  "traces": [
+    {
+      "target": "LLR",
+      "ref": "LLR-GEN-01"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "intent": "expand.hlr_to_llrs",
+  "target": {
+    "type": "Hlr",
+    "id": "HLR-001",
+    "section": "GEN"
+  },
+  "next_free_ids": {
+    "hlr": "HLR-002",
+    "llr": "LLR-GEN-01"
+  },
+  "schema_excerpt": "<hlr id=\"HLR-001\" name=\"Sample\"/>",
+  "response_schema": {}
+}

@@ -1,0 +1,37 @@
+{
+  "kind": "test",
+  "test": {
+    "name": "test_cascade_telemetry",
+    "purpose": "Verifies telemetry events are emitted on render.",
+    "traces": [
+      {
+        "target": "LLR",
+        "ref": "$new_llr"
+      }
+    ]
+  },
+  "new_llr": {
+    "text": "The telemetry module SHALL emit a render event.",
+    "traces": [
+      {
+        "target": "HLR",
+        "ref": "$new_hlr"
+      }
+    ]
+  },
+  "new_hlr": {
+    "name": "Render Telemetry",
+    "text": "The system shall emit telemetry events when rendering documents.",
+    "traces": [
+      {
+        "target": "SDD",
+        "ref": "$new_module"
+      }
+    ]
+  },
+  "new_module": {
+    "path": "src/telemetry/render.ts",
+    "title": "Render telemetry emitter",
+    "purpose": "Emits telemetry when render_doc completes."
+  }
+}
