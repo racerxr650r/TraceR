@@ -23,7 +23,7 @@
 | [9](#phase-9--create-agents) | Create agents to implement common steps of the daily workflow. | ✅ Done — agents (`ci`, `makefile`, `TracerDevelop`) and prompts (`PR`, `PrepRelease`, `Release`, `UpdateDocs`) created under `.github/`; document templates (`SAR.md.template`, `VR.md.template`, `SDP.md.template`) and `--generate-doc` CLI added to `render_doc.py`; User Manual and Developers Guide updated with new sections. |
 | [10](#phase-10--refactor-vs-code-extension-providers-humble-object-pattern) | Refactor VS Code extension providers to extract testable logic (humble object pattern). | ✅ Done — Humble object pattern applied to all six providers (`LintDiagnosticsProvider`, `CoverageCodeLensProvider`, `ProjectSpecProvider`, `coverageTooltips`, `diffPreview`, `FormPanelProvider`); pure logic extracted into `lintMapping.ts`, `coverageLensLogic.ts`, `treeLogic.ts`, `coverageTooltipLogic.ts`, `diffPreviewLogic.ts`, `formLogic.ts`; providers reduced to thin VS Code API wrappers; 7 new unit-test suites added covering extracted modules. |
 | [11](#phase-11--recordreplay-test-harness-for-ai-authoring-pipeline) | Record/replay test harness for AI authoring pipeline. | ✅ Done — `pipeline.record_exchange()` writes `.bundle.json`/`.response.json` fixture pairs when `TRACER_AI_RECORD_DIR` is set; 11 curated fixtures in `test/fixtures/ai_recordings/` covering every intent (including gap.fix full cascade); `test/test_ai_integration.py` replays all fixtures through translator → `apply_edit` asserting lint-clean XML and resolved placeholders; 5 previously unregistered AI test files registered in Project.xml; Developers Guide §18 documents recording mode. |
-| [12](#phase-12--create-a-sdp-template) | Create a SDP template (similar to PVD template); update `render_doc` to generate it on init. | ✅ Done — `SDP.md.template`, `SAR.md.template`, and `VR.md.template` created under `tools/templates/`; `render_doc.py` extended with `--generate-doc` CLI and `generate_doc()`/`generate_all_docs()` library APIs; `--init` now generates all four hand-authored documents (PVD, SAR, VR, SDP) with interactive prompts before overwriting existing files. |
+| [12](#phase-12--update-ui-tests-and-ci) | Update UI tests and CI: fix double-run on PR, stabilise ExTester UI tests with polling helpers, add provider-level integration tests with FakeSidecarClient, JUnit test-results reporting in CI. | ✅ Done |
 | [TBD](#phase-tbd--address-lint-warnings-and-vulnerabilities) | Address lint warnings and vulnerabilities; security audit report. | 🔲 Not started |
 
 
@@ -1294,21 +1294,49 @@ Create the following agents and prompts
     producing lint-clean XML; no dependency on a live model or network
     access during `make -C tools test-py`.
 
-### Phase 12 — Create a SDP template
-1.  Create a SDP template similar to the PVD template.
-2.  Create SAR (Security Audit Report) and VR (Vulnerability Report)
-    templates in the same style.
-3.  Add `--generate-doc` CLI to `render_doc.py` supporting individual
-    document generation (`--generate-doc SAR`) and batch generation
-    (`--generate-doc all`).
-4.  Update `--init` to generate all four hand-authored documents
-    (PVD, SAR, VR, SDP) during project bootstrap, with interactive
-    prompts before overwriting existing files.
-5.  Add `generate_doc()` and `generate_all_docs()` library APIs for
-    programmatic use by the sidecar.
-6.  Acceptance: `python3 tools/render_doc.py --generate-doc all`
-    generates all four documents; `--init` creates them alongside
-    `Project.xml`; existing files prompt before replacement.
+### Phase 12 — Update UI Tests and CI
+1.  Fix the CI double-run issue: narrow `push.branches` from `['**']`
+    to `[develop]` in `.github/workflows/ci.yml` so PRs only trigger
+    the `pull_request` event, not both `push` and `pull_request`.
+2.  Stabilise the ExTester UI tests (`treeView.test.ts`,
+    `editor.test.ts`, `aiTreeMenu.test.ts`) that fail ~30% of the
+    time in CI but not locally: replace all hard-coded
+    `driver.sleep()` waits with condition-based polling helpers,
+    add `retryOnStale()` for context-menu interactions, add
+    `this.retries(2)` to each suite.
+3.  Extract shared UI test helpers into `test/ui/helpers.ts`:
+    `dismissWelcomeOverlay`, `getProjectSpecSection`,
+    `expandGroup`, `waitForTreeItem`, `waitForEditorTab`,
+    `retryOnStale`, `waitForNotification`.
+4.  Add UI test workspace settings (`enablePreview: false`,
+    `newWindowDimensions: maximized`) to reduce flakiness.
+5.  Create `FakeSidecarClient` (`test/unit/__mocks__/fakeSidecar.ts`)
+    as a test double for `ProjectIoClient`, enabling provider-level
+    integration tests without a running Python sidecar.
+6.  Extend the hand-rolled `vscode` mock with `Uri.scheme`/`path`
+    parsing, `languages.createDiagnosticCollection`,
+    `workspace.openTextDocument`, and hierarchical
+    `affectsConfiguration`.
+7.  Add provider-level integration tests ("Tier 1.5") for:
+    `LintDiagnosticsProvider` (8 tests),
+    `MarkdownPreviewProvider` (9 tests),
+    `AiCapabilityProvider` (9 tests),
+    `ProjectSpecProvider` (8 tests).
+8.  Register the new test files and the previously unregistered
+    `aiTreeMenu.test.ts` in `doc/Project.xml`.
+9.  Add JUnit test-results reporting to CI, mirroring the existing
+    coverage report pipeline: `unittest-xml-reporting` for Python,
+    `mocha-junit-reporter` + `mocha-multi-reporters` for extension
+    unit tests, `tools/test_results_report.py` consolidation script,
+    Makefile targets (`test-py-junit`, `ext-test-unit-junit`,
+    `test_report`), and three CI steps (generate XML, post to step
+    summary, sticky PR comment with `header: test-results`).
+10. Acceptance: `npx tsc -p tsconfig.test.json --noEmit` and
+    `npx tsc -p tsconfig.uitest.json --noEmit` compile cleanly;
+    `npm run test:unit` passes all tests (341); `make -C tools
+    test-py` passes all tests (174); CI runs exactly once per PR;
+    `make -C tools test_report` produces a consolidated Markdown
+    report.
 
 ### Phase TBD — Address Lint Warnings and Vulnerabilities
 1.  Address the remaining lint warnings.

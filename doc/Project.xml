@@ -5579,6 +5579,260 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
+    <file path="tools/vscode-project-xml/test/unit/lintDiagnosticsProvider.test.ts" role="unit-ts" count="8">
+      <header><![CDATA[Provider-level integration tests for `LintDiagnosticsProvider` using `FakeSidecarClient`. Exercises the full lint→diagnostics flow: sidecar calls, diagnostic publishing, error handling, uiHintsIndex caching, and clear/reset.]]></header>
+      <test name="calls lint() and uiHintsIndex() on the sidecar">
+        <purpose><![CDATA[Verifies that `run()` calls both `lint` and `uiHintsIndex` on the sidecar client with the correct `xml_path`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="publishes diagnostics from lint findings">
+        <purpose><![CDATA[Verifies that lint findings (error, warning, note) are translated to VS Code diagnostics and published on the diagnostic collection.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="LLR" ref="LLR-HUM-04"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns the lint result from run()">
+        <purpose><![CDATA[Verifies that `run()` returns the sidecar's `LintResult` so callers can consume it (e.g. status bar).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns undefined when no workspace is open">
+        <purpose><![CDATA[Verifies that `run()` returns `undefined` without calling the sidecar when no workspace folder is open.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="publishes a single error diagnostic when the sidecar fails">
+        <purpose><![CDATA[Verifies that a sidecar error is surfaced as a single error diagnostic so the user sees the failure in the Problems panel.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="caches uiHintsIndex — only calls it once across multiple run()s">
+        <purpose><![CDATA[Verifies that `uiHintsIndex` is fetched once and cached, avoiding redundant sidecar calls on subsequent lint runs.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="falls back gracefully when uiHintsIndex fails">
+        <purpose><![CDATA[Verifies that lint diagnostics are still published even when `uiHintsIndex` fails, by falling back to line-0 positioning.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="clears diagnostics when clear() is called">
+        <purpose><![CDATA[Verifies that `clear()` empties the diagnostic collection.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/markdownPreviewProvider.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Provider-level integration tests for `MarkdownPreviewProvider` using `FakeSidecarClient`. Exercises URI helpers, content rendering via sidecar, caching, cache invalidation, and error handling.]]></header>
+      <test name="round-trips a doc id through URI and back">
+        <purpose><![CDATA[Verifies that `previewUri(id)` → `previewDocId(uri)` round-trips correctly, confirming the `tracer-preview:` scheme and path encoding.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns undefined for non-preview URIs">
+        <purpose><![CDATA[Verifies that `previewDocId` returns `undefined` for URIs that do not use the `tracer-preview` scheme.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="calls listDocuments + render on first content request">
+        <purpose><![CDATA[Verifies that `provideTextDocumentContent` calls `listDocuments` and `render` on the sidecar to produce preview content.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="caches rendered content (second call skips sidecar)">
+        <purpose><![CDATA[Verifies that a second `provideTextDocumentContent` call for the same doc id returns cached content without re-calling the sidecar.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="marks a document as tracked after first preview">
+        <purpose><![CDATA[Verifies that after rendering a preview, `isTracked(docId)` returns `true`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-02"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="markStale(docId) fires onDidChange for that document">
+        <purpose><![CDATA[Verifies that `markStale(docId)` drops the cache and fires `onDidChange` for the specified document's URI.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-02"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="markStale() (no arg) fires onDidChange for all tracked docs">
+        <purpose><![CDATA[Verifies that `markStale()` with no argument drops all cached previews and fires `onDidChange` for every tracked document.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-02"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns a helpful message for unknown doc ids">
+        <purpose><![CDATA[Verifies that requesting content for an unrecognised doc id returns a user-friendly error message rather than throwing.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns a helpful message when render fails">
+        <purpose><![CDATA[Verifies that a sidecar render error is surfaced as a user-friendly message in the preview pane.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/aiCapabilities.test.ts" role="unit-ts" count="9">
+      <header><![CDATA[Provider-level integration tests for `AiCapabilityProvider` state machine. Exercises all gate conditions (workspace trust, `ai.enabled` setting, `selectChatModels` availability), state transitions, event firing, `requireAvailable()`, and reactive re-evaluation on config change.]]></header>
+      <test name="returns available=true when all gates pass">
+        <purpose><![CDATA[Verifies that `evaluate()` returns `{available: true}` when workspace is trusted, `ai.enabled` is true, and at least one chat model is available.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns untrusted when workspace is not trusted">
+        <purpose><![CDATA[Verifies that `evaluate()` returns `{available: false, reason: 'untrusted'}` when the workspace is not trusted.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-045"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns disabled when ai.enabled=false">
+        <purpose><![CDATA[Verifies that `evaluate()` returns `{available: false, reason: 'disabled'}` when `ai.enabled` is false.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="returns no-model when no chat models are available">
+        <purpose><![CDATA[Verifies that `evaluate()` returns `{available: false, reason: 'no-model'}` when `selectChatModels` returns an empty array.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="refresh() fires onDidChange when state transitions">
+        <purpose><![CDATA[Verifies that `refresh()` fires the `onDidChange` event when the capability state transitions (e.g. no-model → available).]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="refresh() does NOT fire onDidChange when state is unchanged">
+        <purpose><![CDATA[Verifies that `refresh()` does not fire `onDidChange` when the state hasn't actually changed, avoiding unnecessary UI updates.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="requireAvailable() throws when AI is unavailable">
+        <purpose><![CDATA[Verifies that `requireAvailable()` throws an error with the reason when AI is unavailable.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="requireAvailable() returns the state when AI is available">
+        <purpose><![CDATA[Verifies that `requireAvailable()` returns the capability state without throwing when AI is available.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="config change fires re-evaluation">
+        <purpose><![CDATA[Verifies that a `workspace.onDidChangeConfiguration` event for `projectXml.ai.*` triggers a re-evaluation and fires `onDidChange` if the state transitions.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-044"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/projectSpecProviderIntegration.test.ts" role="unit-ts" count="8">
+      <header><![CDATA[Provider-level integration tests for `ProjectSpecProvider.getChildren()` using `FakeSidecarClient`. Exercises the full sidecar→tree flow: `parseToJson` calls, top-level group building, item counts, caching, refresh, error handling, and placeholder nodes.]]></header>
+      <test name="calls parseToJson on the sidecar when getting children">
+        <purpose><![CDATA[Verifies that `getChildren()` calls `parseToJson` on the sidecar with the workspace's `xml_path`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="builds top-level groups from parsed project">
+        <purpose><![CDATA[Verifies that the tree root contains HLRs, LLRs, Tests, and SDD groups built from `parseToJson` output.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="group labels include item counts">
+        <purpose><![CDATA[Verifies that group node labels include parenthetical item counts (e.g. "HLRs (2)").]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="caches results — second getChildren() does not call sidecar">
+        <purpose><![CDATA[Verifies that the provider caches the tree and does not re-call `parseToJson` on the second `getChildren()` invocation.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="refresh() clears cache and fires onDidChangeTreeData">
+        <purpose><![CDATA[Verifies that `refresh()` clears the cached tree and fires `onDidChangeTreeData` so the tree re-fetches from the sidecar.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="shows placeholder when no workspace is open">
+        <purpose><![CDATA[Verifies that `getChildren()` returns a single placeholder node when no workspace folder is configured.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="shows error node when sidecar fails">
+        <purpose><![CDATA[Verifies that a sidecar error produces a single error node with the failure message rather than throwing.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="child nodes of HLRs group are expandable sections">
+        <purpose><![CDATA[Verifies that the HLRs group node has expandable section children, confirming the hierarchical tree structure.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+    </file>
     <file path="tools/vscode-project-xml/test/ui/treeView.test.ts" role="ui-ts" count="14">
       <header><![CDATA[ExTester-based UI integration tests for the Project Spec tree view. Launches a real VS Code instance with Selenium WebDriver and exercises tree population, leaf click-to-edit, right-click context menus, group-node context menus, and the view title dropdown menu against a fixture `doc/Project.xml`.]]></header>
       <test name="shows the HLRs group with at least one child">
@@ -5696,8 +5950,8 @@ and shall not block the resolution flow.]]></text>
           <trace target="HLR" ref="HLR-024"/>
         </traces>
       </test>
-      <test name="status bar shows Project Spec lint summary">
-        <purpose><![CDATA[Verifies the extension's status bar item is visible and displays error/warning counts in the format "Project Spec: N errors / M warnings".]]></purpose>
+      <test name="status bar shows TraceR lint summary">
+        <purpose><![CDATA[Verifies the extension's status bar item is visible and displays error/warning counts in the format "TraceR: N errors / M warnings".]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PKG-08"/>
           <trace target="HLR" ref="HLR-023"/>
@@ -5716,6 +5970,30 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-CCL-01"/>
           <trace target="LLR" ref="LLR-CCL-02"/>
           <trace target="HLR" ref="HLR-022"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/ui/aiTreeMenu.test.ts" role="ui-ts" count="3">
+      <header><![CDATA[ExTester-based UI integration tests for the AI tree context menu. Exercises the `gap.fix` intent flow: uncovered HLR visibility, context-menu "Run AI Action…" entry, and end-to-end intent picker → input → outcome.]]></header>
+      <test name="HLR-T02 (uncovered) leaf is visible and has a context menu">
+        <purpose><![CDATA[Verifies that an uncovered HLR leaf (HLR-T02) is visible in the tree and can be right-clicked to open a context menu.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-053"/>
+        </traces>
+      </test>
+      <test name="right-click on uncovered HLR shows Run AI Action… when AI is available">
+        <purpose><![CDATA[Verifies that right-clicking an uncovered HLR leaf shows "Run AI Action…" in the context menu when AI capabilities are available, confirming the `aiTargetable` contextValue token is set.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-053"/>
+        </traces>
+      </test>
+      <test name="gap.fix flow: context menu → intent picker → input → outcome">
+        <purpose><![CDATA[Exercises the full gap.fix AI intent flow from the tree context menu through the intent picker and user input, verifying the end-to-end wiring of the AI tree menu surface.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-053"/>
+          <trace target="HLR" ref="HLR-051"/>
         </traces>
       </test>
     </file>

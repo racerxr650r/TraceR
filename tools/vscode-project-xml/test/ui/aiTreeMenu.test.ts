@@ -16,17 +16,22 @@ import { expect } from 'chai';
 import * as path from 'path';
 import {
     ActivityBar,
-    CustomTreeSection,
     EditorView,
     Input,
     InputBox,
     Notification,
-    SideBarView,
     VSBrowser,
     WebDriver,
     Workbench,
 } from 'vscode-extension-tester';
-import { dismissWelcomeOverlay } from './helpers';
+import {
+    dismissWelcomeOverlay,
+    expandGroup,
+    getProjectSpecSection,
+    retryOnStale,
+    waitForNotification,
+    waitForTreeItem,
+} from './helpers';
 
 const FIXTURE_WORKSPACE = path.resolve(
     __dirname,
@@ -38,68 +43,14 @@ const FIXTURE_WORKSPACE = path.resolve(
     'fixtures',
 );
 
-/**
- * Wait for the Project Spec tree section to appear and return it.
- */
-async function getProjectSpecSection(
-    timeout = 30_000,
-): Promise<CustomTreeSection> {
-    const sidebar = new SideBarView();
-    const deadline = Date.now() + timeout;
-    let lastErr: unknown;
-    while (Date.now() < deadline) {
-        try {
-            const section = (await sidebar
-                .getContent()
-                .getSection('TraceR')) as CustomTreeSection;
-            if (section) {
-                return section;
-            }
-        } catch (e) {
-            lastErr = e;
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    throw new Error(
-        `TraceR section not found within ${timeout}ms: ${lastErr}`,
-    );
-}
-
-/**
- * Poll until a notification matching `predicate` appears, or timeout.
- */
-async function waitForNotification(
-    driver: WebDriver,
-    predicate: (msg: string) => boolean,
-    timeout = 15_000,
-): Promise<Notification | undefined> {
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-        try {
-            const workbench = new Workbench();
-            const notifications = await workbench.getNotifications();
-            for (const n of notifications) {
-                const msg = await n.getMessage();
-                if (predicate(msg)) {
-                    return n;
-                }
-            }
-        } catch {
-            // notifications pane may not be ready
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    return undefined;
-}
-
 describe('AI tree menu — gap.fix (UI)', function () {
     this.timeout(120_000);
+    this.retries(2);
     let driver: WebDriver;
 
     before(async function () {
         driver = VSBrowser.instance.driver;
         await VSBrowser.instance.openResources(FIXTURE_WORKSPACE);
-        await driver.sleep(8000);
         // Dismiss the VS Code onboarding overlay that blocks clicks in CI.
         await dismissWelcomeOverlay(driver);
         // Open the TraceR view
@@ -108,27 +59,9 @@ describe('AI tree menu — gap.fix (UI)', function () {
         if (viewControl) {
             await viewControl.openView();
         }
-        await driver.sleep(3000);
-        // Wait for tree to populate
+        // Wait for tree to populate using shared polling helper
         const section = await getProjectSpecSection();
-        const items = await section.getVisibleItems();
-        const deadline = Date.now() + 30_000;
-        let found = false;
-        while (Date.now() < deadline && !found) {
-            for (const item of await section.getVisibleItems()) {
-                const label = await item.getLabel();
-                if (label.startsWith('HLRs')) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                await new Promise((r) => setTimeout(r, 1000));
-            }
-        }
-        if (!found) {
-            throw new Error('HLRs group never appeared in tree');
-        }
+        await expandGroup(section, 'HLRs');
     });
 
     afterEach(async function () {
@@ -177,11 +110,8 @@ describe('AI tree menu — gap.fix (UI)', function () {
         const section = await getProjectSpecSection();
         // Navigate to HLR-T02 (uncovered — no downstream LLR)
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T02');
-        expect(hlrLeaf, 'HLR-T02 leaf not found in tree').to.not.be
-            .undefined;
-        const menu = await hlrLeaf!.openContextMenu();
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T02');
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         await menu.close();
@@ -195,10 +125,8 @@ describe('AI tree menu — gap.fix (UI)', function () {
     it('right-click on uncovered HLR shows "Run AI Action…" when AI is available', async function () {
         const section = await getProjectSpecSection();
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T02');
-        expect(hlrLeaf).to.not.be.undefined;
-        const menu = await hlrLeaf!.openContextMenu();
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T02');
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const items = await menu.getItems();
         const labels = await Promise.all(items.map((i) => i.getLabel()));
         await menu.close();
@@ -222,13 +150,10 @@ describe('AI tree menu — gap.fix (UI)', function () {
     it('gap.fix flow: context menu → intent picker → input → outcome', async function () {
         const section = await getProjectSpecSection();
         await section.openItem('HLRs (2)', '§1 UI Test Section (2)');
-        await driver.sleep(1000);
-        const hlrLeaf = await section.findItem('HLR-T02');
-        expect(hlrLeaf, 'HLR-T02 leaf not found in tree').to.not.be
-            .undefined;
+        const hlrLeaf = await waitForTreeItem(section, 'HLR-T02');
 
         // Open context menu and look for AI action
-        const menu = await hlrLeaf!.openContextMenu();
+        const menu = await retryOnStale(() => hlrLeaf.openContextMenu());
         const menuItems = await menu.getItems();
         const labels = await Promise.all(menuItems.map((i) => i.getLabel()));
 
@@ -245,7 +170,6 @@ describe('AI tree menu — gap.fix (UI)', function () {
         const aiItem = await menu.getItem('Project Spec: Run AI Action…');
         expect(aiItem).to.not.be.undefined;
         await aiItem!.select();
-        await driver.sleep(1500);
 
         // A Quick Pick should appear listing applicable intents.
         // For an Hlr node: draft.hlr, expand.hlr_to_llrs, review.item,
@@ -284,7 +208,6 @@ describe('AI tree menu — gap.fix (UI)', function () {
 
         // Select the gap.fix intent
         await input.selectQuickPick(gapFixLabel);
-        await driver.sleep(1000);
 
         // An input box should now appear asking for a description
         let descInput: Input;
@@ -308,7 +231,6 @@ describe('AI tree menu — gap.fix (UI)', function () {
             'Add an LLR that covers the untested requirement HLR-T02.',
         );
         await descInput.confirm();
-        await driver.sleep(3000);
 
         // After confirming, the pipeline runs. In a test environment
         // without a language model the outcome is "no-model" warning.

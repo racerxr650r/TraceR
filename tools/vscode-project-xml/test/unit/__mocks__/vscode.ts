@@ -29,18 +29,31 @@ export class Range {
 }
 
 export class Uri {
-    private constructor(public readonly fsPath: string) {}
+    readonly scheme: string;
+    readonly path: string;
+    readonly fsPath: string;
+
+    private constructor(scheme: string, path: string) {
+        this.scheme = scheme;
+        this.path = path;
+        this.fsPath = path;
+    }
     static file(p: string): Uri {
-        return new Uri(p);
+        return new Uri('file', p);
     }
     static parse(s: string): Uri {
-        if (s.startsWith('file://')) {
-            return new Uri(s.slice('file://'.length));
+        const colon = s.indexOf(':');
+        if (colon > 0) {
+            const scheme = s.slice(0, colon);
+            let rest = s.slice(colon + 1);
+            if (rest.startsWith('//')) { rest = rest.slice(2); }
+            return new Uri(scheme, rest);
         }
-        return new Uri(s);
+        return new Uri('file', s);
     }
     toString(): string {
-        return `file://${this.fsPath}`;
+        if (this.scheme === 'file') { return `file://${this.path}`; }
+        return `${this.scheme}:${this.path}`;
     }
 }
 
@@ -136,6 +149,11 @@ export const workspace = {
                 if (idx >= 0) { trustListeners.splice(idx, 1); }
             },
         };
+    },
+    /** Fake openTextDocument: returns a FakeTextDocument with the content
+     *  set via __test.setDocumentContent(), or empty if unset. */
+    async openTextDocument(_uri: unknown): Promise<TextDocument> {
+        return new FakeTextDocument(documentState.content);
     },
 };
 
@@ -292,6 +310,8 @@ export const __test = {
         commandRegistry.clear();
         commandInvocations.length = 0;
         lmState.models = [];
+        documentState.content = '';
+        languagesState.collections.length = 0;
     },
     setTrusted(trusted: boolean): void {
         state.trusted = trusted;
@@ -337,11 +357,19 @@ export const __test = {
     },
     fireConfigChange(affected: ReadonlyArray<string>): void {
         const event = {
-            affectsConfiguration: (key: string) => affected.includes(key),
+            affectsConfiguration: (key: string) => affected.some(a => a === key || a.startsWith(key + '.')),
         };
         for (const l of [...configChangeListeners]) {
             l(event);
         }
+    },
+    /** Set the content returned by workspace.openTextDocument(). */
+    setDocumentContent(content: string): void {
+        documentState.content = content;
+    },
+    /** All diagnostic collections created via languages.createDiagnosticCollection(). */
+    diagnosticCollections(): ReadonlyArray<FakeDiagnosticCollection> {
+        return languagesState.collections;
     },
 };
 
@@ -519,5 +547,56 @@ export class WorkspaceEdit {
         this.ops.push({ kind: 'createFile', uri, options });
     }
 }
+
+// ---------------- Document state (for openTextDocument mock) --------
+
+const documentState = {
+    content: '',
+};
+
+// ---------------- Languages (diagnostics) --------------------------
+
+/** In-memory diagnostic collection for testing. */
+export class FakeDiagnosticCollection {
+    public readonly name: string;
+    private readonly entries = new Map<string, Diagnostic[]>();
+    constructor(name: string) {
+        this.name = name;
+        languagesState.collections.push(this);
+    }
+    set(uri: Uri, diagnostics: Diagnostic[]): void {
+        this.entries.set(uri.fsPath, [...diagnostics]);
+    }
+    get(uri: Uri): Diagnostic[] | undefined {
+        return this.entries.get(uri.fsPath);
+    }
+    has(uri: Uri): boolean {
+        return this.entries.has(uri.fsPath);
+    }
+    delete(uri: Uri): void {
+        this.entries.delete(uri.fsPath);
+    }
+    clear(): void {
+        this.entries.clear();
+    }
+    forEach(callback: (uri: Uri, diagnostics: Diagnostic[]) => void): void {
+        for (const [fsPath, diags] of this.entries) {
+            callback(Uri.file(fsPath), diags);
+        }
+    }
+    dispose(): void {
+        this.entries.clear();
+    }
+}
+
+const languagesState = {
+    collections: [] as FakeDiagnosticCollection[],
+};
+
+export const languages = {
+    createDiagnosticCollection(name: string): FakeDiagnosticCollection {
+        return new FakeDiagnosticCollection(name);
+    },
+};
 
 
