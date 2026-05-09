@@ -13,6 +13,7 @@
 #   verify          Print versions of the required tools.
 #   bootstrap       Create .venv, install Python+Node deps, install
 #                   the redhat.vscode-xml extension. Run after 'prereqs'.
+#   project-init    Bootstrap a new project: skeleton Project.xml + PVD/SAR/VR/SDP.
 #   detect          Print the detected OS family.
 #   lint            Run tools/lint_project.py against doc/Project.xml.
 #   validate-xml    Validate doc/Project.xml against tools/project.xsd.
@@ -79,6 +80,7 @@ endif
 
 .PHONY: help detect prereqs prereqs-ci verify bootstrap \
         prereqs-debian prereqs-fedora prereqs-arch prereqs-macos \
+        project-init \
         ext-build ext-typecheck ext-package ext \
         ext-test-unit ext-test-ui \
         lint validate-xml render test test-py ci \
@@ -353,6 +355,76 @@ bootstrap:
 	@echo "  source $(VENV_DIR)/bin/activate"
 
 # ---------------------------------------------------------------- #
+# Project bootstrap (project-init)                                 #
+# ---------------------------------------------------------------- #
+# Create a skeleton Project.xml plus hand-authored document
+# templates (PVD, SAR, VR, SDP) as the first step of a new project.
+#
+# Required variables:
+#   NAME          Full project name
+#   SHORT_NAME    Short / package name
+#
+# Optional variables:
+#   AUTHOR        Author string (default: TBD)
+#   XML_OUT       Output path for Project.xml (default: doc/Project.xml)
+#   PVD_OUT       Output path for PVD.md (default: doc/PVD.md)
+#   FORCE         Set to 1 to overwrite existing files without prompting
+
+AUTHOR       ?= TBD
+XML_OUT      ?= $(REPO_ROOT)/doc/Project.xml
+PVD_OUT      ?= $(REPO_ROOT)/doc/PVD.md
+PROJ_TMPL    := $(REPO_ROOT)/tools/templates/Project.xml.template
+PVD_TMPL     := $(REPO_ROOT)/tools/templates/PVD.md.template
+FORCE        ?=
+
+project-init:
+	@if [[ -z "$(NAME)" || -z "$(SHORT_NAME)" ]]; then \
+	    echo "ERROR: project-init requires NAME and SHORT_NAME." >&2 ; \
+	    echo "  Usage: make project-init NAME=\"My Product\" SHORT_NAME=\"myprod\"" >&2 ; \
+	    exit 1 ; \
+	fi
+	@if [[ ! -f "$(PVD_TMPL)" ]]; then \
+	    echo "ERROR: PVD template not found: $(PVD_TMPL)" >&2 ; \
+	    exit 1 ; \
+	fi
+	@if [[ -z "$(FORCE)" ]]; then \
+	    existing="" ; \
+	    [[ -f "$(XML_OUT)" ]] && existing="$(XML_OUT)" ; \
+	    [[ -f "$(PVD_OUT)" ]] && existing="$$existing $(PVD_OUT)" ; \
+	    if [[ -n "$$existing" ]]; then \
+	        echo "ERROR: refusing to overwrite existing file(s):" >&2 ; \
+	        for f in $$existing; do echo "  $$f" >&2 ; done ; \
+	        echo "Re-run with FORCE=1 to overwrite." >&2 ; \
+	        exit 1 ; \
+	    fi ; \
+	fi
+	@mkdir -p "$(dir $(XML_OUT))" "$(dir $(PVD_OUT))"
+	@SCHEMA_LOC=$$(python3 -c "import os; print(os.path.relpath('$(REPO_ROOT)/tools/project.xsd', '$(dir $(XML_OUT))'))") ; \
+	TODAY=$$(date +%Y-%m-%d) ; \
+	sed -e "s|@@NAME@@|$(NAME)|g" \
+	    -e "s|@@SHORT_NAME@@|$(SHORT_NAME)|g" \
+	    -e "s|@@DATE@@|$$TODAY|g" \
+	    -e "s|@@AUTHOR@@|$(AUTHOR)|g" \
+	    -e "s|@@SCHEMA_LOCATION@@|$$SCHEMA_LOC|g" \
+	    "$(PROJ_TMPL)" > "$(XML_OUT)"
+	@echo "Wrote skeleton $(XML_OUT)"
+	@TODAY=$$(date +%Y-%m-%d) ; \
+	sed -e "s|<Product Name>|$(NAME)|g" \
+	    -e "s|<short_name>|$(SHORT_NAME)|g" \
+	    -e "s|<YYYY-MM-DD>|$$TODAY|g" \
+	    -e "s|<Your name(s)>|$(AUTHOR)|g" \
+	    "$(PVD_TMPL)" > "$(PVD_OUT)"
+	@echo "Wrote $(PVD_OUT)"
+	@echo ">>> Generating hand-authored documents (SAR, VR, SDP)..."
+	@"$(VENV_PYTHON)" "$(REPO_ROOT)/tools/render_doc.py" --generate-doc SAR VR SDP \
+	    --name "$(NAME)" --short-name "$(SHORT_NAME)" --author "$(AUTHOR)" \
+	    --doc-out-dir "$(dir $(PVD_OUT))" \
+	    $(if $(FORCE),--force,)
+	@echo ""
+	@echo "Next steps: edit doc/PVD.md, then populate doc/Project.xml"
+	@echo "and regenerate the spec documents with render_doc.py."
+
+# ---------------------------------------------------------------- #
 # VS Code extension build                                          #
 # ---------------------------------------------------------------- #
 # These targets cd into tools/vscode-project-xml and run the npm
@@ -525,10 +597,11 @@ ext: ext-build
 
 ext-package: ext-build
 	@echo ">>> Packaging VS Code extension (vsce package)..."
-	cd "$(EXT_DIR)" && npx vsce package
+	$(eval VERSION := $(shell cat "$(REPO_ROOT)/VERSION" | sed 's/^v//'))
+	cd "$(EXT_DIR)" && npx vsce package -o "vscode-project-xml-$(VERSION).vsix"
 	@echo ""
 	@echo "To install, run:"
-	@echo "  code --install-extension $(EXT_DIR)/vscode-project-xml-*.vsix --force"
+	@echo "  code --install-extension $(EXT_DIR)/vscode-project-xml-$(VERSION).vsix --force"
 	@echo "Then reload the VS Code window (Ctrl+Shift+P → Developer: Reload Window)."
 
 # ---------------------------------------------------------------- #

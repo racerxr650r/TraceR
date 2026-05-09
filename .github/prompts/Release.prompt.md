@@ -92,10 +92,24 @@ Report to the user:
 - Number of commits included
 - Any artefacts attached
 
+## 6. Bump VERSION for next development cycle
+
+Only perform this step if all previous steps (tag push and GitHub Release
+creation) succeeded. If any step failed, skip this entirely.
+
+- Read the current version from the `VERSION` file in the project root.
+- Increment the **minor** (second) version number and reset the patch
+  (third) number to zero. For example `v0.3.0` becomes `v0.4.0`.
+- Write the new version string back to the `VERSION` file.
+- Commit the change: `git commit -am "chore: bump VERSION to <new-version>"`
+- Push the commit to the default branch.
+- Inform the user that the working version is now `<new-version>`.
+
 ## Constraints
 
 - Do NOT create a release if the VERSION tag already exists.
-- Do NOT modify source code or spec documents — this prompt only releases.
+- Do NOT modify source code or spec documents (other than the VERSION bump
+  in step 6) — this prompt only releases.
 - Do NOT force-push tags.
 - Do NOT assume fixed paths — discover them from the workspace structure.
 - Present release notes to the user for approval before creating the release.
