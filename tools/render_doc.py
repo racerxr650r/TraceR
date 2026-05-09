@@ -1358,81 +1358,22 @@ def _init_project_cli(
     schema_location: str | None,
     force: bool,
 ) -> int:
-    """CLI wrapper around init_project: preserves the original stderr
-    messages and exit-code conventions.
-    """
-    if not pvd_template.exists():
-        sys.stderr.write(
-            f"render_doc.py --init: PVD template not found: {pvd_template}\n"
-        )
-        return 1
+    """Delegate project bootstrap to `make project-init`."""
+    import subprocess
 
-    if not force:
-        existing = [str(p) for p in (xml_path, pvd_path) if p.exists()]
-        if existing:
-            sys.stderr.write(
-                "render_doc.py --init: refusing to overwrite existing "
-                "file(s):\n"
-            )
-            for p in existing:
-                sys.stderr.write(f"  {p}\n")
-            sys.stderr.write("Re-run with --force to overwrite.\n")
-            return 1
-
-    try:
-        result = init_project(
-            name=name,
-            short_name=short_name,
-            author=author,
-            xml_path=xml_path,
-            pvd_path=pvd_path,
-            pvd_template=pvd_template,
-            schema_location=schema_location,
-            force=force,
-        )
-    except ProjectXmlError as exc:
-        sys.stderr.write(f"render_doc.py --init: {exc}\n")
-        return 1
-
-    sys.stderr.write(f"Wrote skeleton {result['xml_path']}\n")
-    sys.stderr.write(f"Wrote {result['pvd_path']}\n")
-
-    # Generate the other hand-authored templates (SAR, VR, SDP)
-    output_dir = pvd_path.parent
-    for doc_id in ("SAR", "VR", "SDP"):
-        entry = AUTHORED_TEMPLATES[doc_id]
-        output_path = output_dir / entry["output"]
-        do_write = force
-        if output_path.exists() and not force:
-            try:
-                answer = input(
-                    f"{output_path} already exists. Replace? [y/N] "
-                )
-            except (EOFError, KeyboardInterrupt):
-                sys.stderr.write(f"\n  Skipped {output_path}\n")
-                continue
-            do_write = answer.strip().lower() in ("y", "yes")
-        if not do_write and output_path.exists():
-            sys.stderr.write(f"  Skipped {output_path}\n")
-            continue
-        try:
-            doc_result = generate_doc(
-                doc_id=doc_id,
-                name=name,
-                short_name=short_name,
-                author=author,
-                output_dir=output_dir,
-                force=True,
-            )
-            sys.stderr.write(f"Wrote {doc_result['output_path']}\n")
-        except ProjectXmlError as exc:
-            sys.stderr.write(f"  Warning: {exc}\n")
-
-    sys.stderr.write(
-        "Next steps: edit doc/PVD.md, then populate doc/Project.xml "
-        "and regenerate the spec documents with render_doc.py.\n"
-    )
-    return 0
+    tools_dir = Path(__file__).resolve().parent
+    cmd = [
+        "make", "-C", str(tools_dir), "project-init",
+        f"NAME={name}",
+        f"SHORT_NAME={short_name}",
+        f"AUTHOR={author}",
+        f"XML_OUT={xml_path}",
+        f"PVD_OUT={pvd_path}",
+    ]
+    if force:
+        cmd.append("FORCE=1")
+    result = subprocess.run(cmd)
+    return result.returncode
 
 
 def render(template_path: Path, project: SimpleNamespace) -> str:
@@ -1465,11 +1406,15 @@ def main() -> int:
         ),
         epilog=(
             "EXAMPLES\n"
-            "  Bootstrap a new project (writes doc/Project.xml, PVD.md,\n"
-            "  SAR.md, VR.md, SDP.md from skeletons):\n"
+            "  Bootstrap a new project (delegates to make project-init;\n"
+            "  writes doc/Project.xml, PVD.md, SAR.md, VR.md, SDP.md):\n"
             "    python3 tools/render_doc.py --init \\\n"
             "        --name \"My Product\" --short-name myprod \\\n"
             "        --author \"Jane Doe\"\n"
+            "\n"
+            "  Or equivalently via make:\n"
+            "    make -C tools project-init NAME=\"My Product\" \\\n"
+            "        SHORT_NAME=\"myprod\" AUTHOR=\"Jane Doe\"\n"
             "\n"
             "  Generate a single hand-authored document:\n"
             "    python3 tools/render_doc.py --generate-doc SAR \\\n"
@@ -1553,19 +1498,20 @@ def main() -> int:
     )
     init_group = parser.add_argument_group(
         "project bootstrap (--init)",
-        "Create a skeleton Project.xml plus hand-authored document "
-        "templates (PVD, SAR, VR, SDP) as the first step of a new "
-        "project. When --init is given, TEMPLATE and METADATA_ID are "
-        "not required.",
+        "Bootstrap a new project by delegating to `make project-init`. "
+        "Creates a skeleton Project.xml plus hand-authored document "
+        "templates (PVD, SAR, VR, SDP). When --init is given, TEMPLATE "
+        "and METADATA_ID are not required.",
     )
     init_group.add_argument(
         "--init",
         action="store_true",
         help=(
-            "Create a skeleton Project.xml at --xml (default doc/Project.xml) "
-            "and hand-authored documents (PVD, SAR, VR, SDP) under the "
-            "output directory. Prompts before overwriting existing files "
-            "unless --force is also given."
+            "Bootstrap a new project by invoking `make project-init`. "
+            "Creates a skeleton Project.xml at --xml (default "
+            "doc/Project.xml) and hand-authored documents (PVD, SAR, VR, "
+            "SDP). Refuses to overwrite existing files unless --force is "
+            "also given."
         ),
     )
     init_group.add_argument(
