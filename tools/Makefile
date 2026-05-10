@@ -483,6 +483,7 @@ ext-build: ext-typecheck
 # back to the system python3. Override with PYTHON=...
 
 VENV_PYTHON := $(shell [ -x "$(VENV_DIR)/bin/python" ] && echo "$(VENV_DIR)/bin/python" || echo "$(PYTHON)")
+VENV_SEMGREP := $(shell [ -x "$(VENV_DIR)/bin/semgrep" ] && echo "$(VENV_DIR)/bin/semgrep" || echo semgrep)
 PROJECT_XML := $(REPO_ROOT)/doc/Project.xml
 PROJECT_XSD := $(REPO_ROOT)/tools/project.xsd
 TEMPLATES_DIR := $(REPO_ROOT)/tools/templates
@@ -683,12 +684,12 @@ analyze-npm-audit:
 analyze-semgrep:
 	@echo ">>> Running Semgrep (OWASP rules — Python + TypeScript)..."
 	@mkdir -p "$(REPORT_DIR)"
-	semgrep scan \
+	"$(VENV_SEMGREP)" scan \
 	    --config auto \
 	    --json -o "$(REPORT_DIR)/semgrep-report.json" \
 	    "$(REPO_ROOT)/tools" \
 	    --exclude "node_modules" --exclude "dist" --exclude "out" || true
-	@semgrep scan \
+	@"$(VENV_SEMGREP)" scan \
 	    --config auto \
 	    "$(REPO_ROOT)/tools" \
 	    --exclude "node_modules" --exclude "dist" --exclude "out" || true

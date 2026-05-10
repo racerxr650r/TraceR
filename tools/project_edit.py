@@ -261,7 +261,7 @@ def _xsd_attribute_use(
     type_name: str,
 ) -> dict[str, bool]:
     """Return ``{attribute_name: required}`` for the named complex type."""
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
 
     out: dict[str, bool] = {}
     try:
@@ -800,7 +800,7 @@ def next_free_hlr_id(xml_path: Path | str = PROJECT_XML) -> str:
     """Return the next free ``HLR-NNN`` id (zero-padded to the widest
     existing id; default width 3).
     """
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
 
     root = ET.parse(xml_path).getroot()
     ids = [
@@ -821,7 +821,7 @@ def next_free_llr_id(
     the function name only when no LLRs exist yet in that function.
     """
     import re
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
 
     root = ET.parse(xml_path).getroot()
 
