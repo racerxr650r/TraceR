@@ -505,10 +505,13 @@
     "test:screenshots": "extest setup-and-run out/test/ui/screenshots/*.test.js -i -o test/ui/settings.json -r test/ui/fixtures",
     "pretest:ui": "tsc -p tsconfig.uitest.json",
     "pretest:screenshots": "tsc -p tsconfig.uitest.json",
+    "lint": "eslint src/",
+    "lint:report": "eslint src/ -f json -o ../../test_reports/eslint-report.json || true",
     "prepackage": "node scripts/prepackage.js",
     "package": "npm run prepackage && vsce package"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@rjsf/core": "^5.18.0",
     "@rjsf/utils": "^5.18.0",
     "@rjsf/validator-ajv8": "^5.18.0",
@@ -518,10 +521,14 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.2",
     "@vscode/vsce": "^2.15.0",
     "c8": "^11.0.0",
     "chai": "^4.5.0",
     "esbuild": "^0.20.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-security": "^4.0.0",
     "mocha": "^10.4.0",
     "mocha-junit-reporter": "^2.2.1",
     "mocha-multi-reporters": "^1.5.1",
@@ -529,6 +536,7 @@
     "react-dom": "^18.2.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.0",
+    "typescript-eslint": "^8.59.2",
     "vscode-extension-tester": "^8.23.0"
   },
   "overrides": {
