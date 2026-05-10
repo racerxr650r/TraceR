@@ -82,7 +82,7 @@ def _test_file_path(file_path: str | None) -> str:
 
 def _first_test_file(xml_path: Path) -> str | None:
     """Return the path attribute of the first <file> under <tests>, or None."""
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
     try:
         tree = ET.parse(xml_path)
         tests_el = tree.getroot().find("tests")
@@ -434,7 +434,7 @@ def _resolve_placeholder(
 
 def _first_llr_function(xml_path: Path) -> str | None:
     """Return the name attribute of the first <function> under <llrs>, or None."""
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET
     try:
         tree = ET.parse(xml_path)
         llrs_el = tree.getroot().find("llrs")

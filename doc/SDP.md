@@ -24,7 +24,7 @@
 | [10](#phase-10--refactor-vs-code-extension-providers-humble-object-pattern) | Refactor VS Code extension providers to extract testable logic (humble object pattern). | ✅ Done — Humble object pattern applied to all six providers (`LintDiagnosticsProvider`, `CoverageCodeLensProvider`, `ProjectSpecProvider`, `coverageTooltips`, `diffPreview`, `FormPanelProvider`); pure logic extracted into `lintMapping.ts`, `coverageLensLogic.ts`, `treeLogic.ts`, `coverageTooltipLogic.ts`, `diffPreviewLogic.ts`, `formLogic.ts`; providers reduced to thin VS Code API wrappers; 7 new unit-test suites added covering extracted modules. |
 | [11](#phase-11--recordreplay-test-harness-for-ai-authoring-pipeline) | Record/replay test harness for AI authoring pipeline. | ✅ Done — `pipeline.record_exchange()` writes `.bundle.json`/`.response.json` fixture pairs when `TRACER_AI_RECORD_DIR` is set; 11 curated fixtures in `test/fixtures/ai_recordings/` covering every intent (including gap.fix full cascade); `test/test_ai_integration.py` replays all fixtures through translator → `apply_edit` asserting lint-clean XML and resolved placeholders; 5 previously unregistered AI test files registered in Project.xml; Developers Guide §18 documents recording mode. |
 | [12](#phase-12--update-ui-tests-and-ci) | Update UI tests and CI: fix double-run on PR, stabilise ExTester UI tests with polling helpers, add provider-level integration tests with FakeSidecarClient, JUnit test-results reporting in CI. | ✅ Done |
-| [TBD](#phase-tbd--address-lint-warnings-and-vulnerabilities) | Address lint warnings and vulnerabilities; security audit report. | 🔲 Not started |
+| [13](#phase-13--static-analysis-and-vulnerabilities) | Address lint warnings and vulnerabilities; security audit report. | ✅ Done — Bandit, pip-audit, ESLint + eslint-plugin-security, npm audit, and Semgrep integrated into `tools/Makefile` (`analyze` umbrella target); `tools/analyze_report.py` generates a consolidated Markdown report from JSON outputs with `--exit-code` flag for CI gating (errors block, warnings pass); CI workflow (`ci.yml`) runs all five analyzers on every PR with a sticky comment and GitHub Step Summary; PR prompt (`PR.prompt.md`) updated to run static analysis, update SAR.md §5/§6/§7, triage Dependabot alerts via `gh api`, and update VR.md §2–§7. |
 
 
 **Owner:** TBD
@@ -96,13 +96,17 @@ blocker.
 | **Git** | 2.30+ | Required by Phase 5.5 for `git show :1:`/`:2:`/`:3:` blob retrieval during three-way merge resolution. |
 | **Chrome / Chromium** | latest | Required by `vscode-extension-tester` (ExTester) for Selenium WebDriver-based UI tests. ChromeDriver is downloaded automatically by ExTester. |
 | **GitHub CLI** (`gh`) | optional | Convenience for releasing tags that trigger the `.vsix` publish workflow. |
+| **Bandit** | 1.9+ | Dev-only. Python security linter (OWASP-style checks). Installed via `pip install bandit`. |
+| **pip-audit** | 2.x | Dev-only. Audits Python dependencies against known CVE databases. Installed via `pip install pip-audit`. |
+| **ESLint** | 9.x | Dev-only. TypeScript/JavaScript linter with `eslint-plugin-security`. Installed via `npm install` from the extension's `package.json`. |
+| **Semgrep** | 1.x | Dev-only. Cross-language static analysis with community OWASP rulesets. Installed via `pip install semgrep`. |
 
 ### Bootstrapping a fresh checkout
 
 ```sh
 # Python side
 python3 -m venv .venv && source .venv/bin/activate
-pip install jinja2 lxml coverage
+pip install jinja2 lxml coverage bandit pip-audit semgrep
 
 # Extension side
 cd tools/vscode-project-xml
@@ -1338,14 +1342,23 @@ Create the following agents and prompts
     `make -C tools test_report` produces a consolidated Markdown
     report.
 
-### Phase TBD — Address Lint Warnings and Vulnerabilities
-1.  Address the remaining lint warnings.
-2.  Scan third-party packages for vulnerabilities and address any
-    GitHub Dependabot issues.
-3.  Create a Known Anomalies Report and perform a security review
-    of the source code; flag potential safety issues.
-4.  Create a Security Audit Report tracking CVEs and static
-    application security analysis.
+### Phase 13 — Static Analysis and Vulnerabilities
+1. Install Bandit + pip-audit for the Python side (tools),
+   ESLint + eslint-plugin-security + npm audit for the extension
+   (vscode-project-xml), Semgrep across both (single tool,
+   community OWASP rulesets), add them to the prereqs in the
+   makefile
+2. Create an analyze target in the makefile that runs the static
+   code analyzers. These targets should be compatible with the
+   GitHub CI. The target also runs a script that summarizes the
+   output of all the analyzers
+3. Add the static analyzers to the Pull Request CI pipeline with
+   the report working like the test results and code coverage
+   analysis
+4. Update the PR prompt so it updates the Security Audit Report
+   from the static analysis and analyzes the Dependabot
+   vulnerabilities, determines if they are applicable, updates
+   them on GitHub, and updates the Vulnerability Report
 
 ## 9. Risks & Open Questions
 

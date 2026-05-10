@@ -2,7 +2,7 @@
 """Generate a consolidated Markdown coverage report from Cobertura XML files.
 
 Usage:
-    python3 tools/coverage_report.py [--out test_reports/report.md]
+    python3 tools/coverage_report.py [--out test_reports/coverage_report.md]
 
 Parses test_reports/coverage.xml (Python) and test_reports/ext-coverage.xml
 (TypeScript extension) and writes a single Markdown summary to the output path.
@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from xml.etree import ElementTree as ET
+import defusedxml.ElementTree as ET
 
 
 def _parse_cobertura(path: Path) -> dict:
@@ -140,8 +140,8 @@ def _generate_report(py_data: dict | None, ext_data: dict | None) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate consolidated coverage report.")
-    parser.add_argument("--out", default="test_reports/report.md",
-                        help="Output Markdown file (default: test_reports/report.md)")
+    parser.add_argument("--out", default="test_reports/coverage_report.md",
+                        help="Output Markdown file (default: test_reports/coverage_report.md)")
     parser.add_argument("--py-xml", default="test_reports/coverage.xml",
                         help="Python Cobertura XML (default: test_reports/coverage.xml)")
     parser.add_argument("--ext-xml", default="test_reports/ext-coverage.xml",

@@ -14,8 +14,10 @@ Perform the following steps in order. Stop and report if any step fails.
 - Locate `doc/Project.xml` (or the path configured in the workspace).
 - Identify which hand-authored documents exist under `doc/` (SDP.md, SAR.md,
   VR.md, PVD.md — any or all may be absent; only update those that exist).
-- Locate the tools directory containing `lint_project.py` and `render_doc.py`
-  (typically `tools/`).
+- Locate the tools directory containing `lint_project.py`, `render_doc.py`,
+  and `analyze_report.py` (typically `tools/`).
+- Locate the Makefile (typically `tools/Makefile`) — it contains the
+  `analyze` and `analyze_report` targets used for static analysis.
 
 ## 1. Gather context
 
@@ -40,7 +42,90 @@ Perform the following steps in order. Stop and report if any step fails.
 - Stage the changes: `git add doc/SDP.md`.
 - If `doc/SDP.md` does not exist, skip this step.
 
-## 3. Generate a commit message
+## 3. Run static analysis and update doc/SAR.md (if SAR exists)
+
+- Run the full static analysis suite: `make -C tools analyze`.
+  This runs Bandit, pip-audit, ESLint, npm audit, and Semgrep and
+  produces JSON reports under `test_reports/` plus a consolidated
+  `test_reports/analyze-report.md`.
+- Read the generated `test_reports/analyze-report.md` (the summary table
+  and per-tool detail sections).
+- If `doc/SAR.md` exists, update it:
+  - **§6 Static Analysis Findings** — Replace the findings table with the
+    current results. For each finding, set a disposition:
+    - **Fixed**: if the finding was resolved in this branch's changes.
+    - **Accepted risk**: if the finding is a known acceptable pattern
+      (e.g. `xml.etree.ElementTree` used on trusted project files, not
+      untrusted input). Include brief justification.
+    - **False positive**: if the tool flagged something incorrectly.
+    - **Open**: if it genuinely needs remediation.
+  - **§7 Dependency Security** — Update the summary counts from the
+    pip-audit and npm audit sections of the report.
+  - **§5 OWASP Top 10** — If any findings affect the OWASP assessment,
+    update the relevant rows.
+- Stage the changes: `git add doc/SAR.md`.
+- If `doc/SAR.md` does not exist, skip this step.
+
+## 4. Triage Dependabot alerts on GitHub
+
+- If `gh` CLI is available and authenticated, retrieve open Dependabot
+  alerts:
+  ```
+  gh api repos/{owner}/{repo}/dependabot/alerts --jq '.[] | select(.state=="open")'
+  ```
+- For each open alert, determine applicability:
+  - **Is it a direct dependency or transitive?** Check if the vulnerable
+    package appears in the project's direct `requirements.txt` /
+    `pyproject.toml` or `package.json` dependencies.
+  - **Is the vulnerable code path reachable?** Consider how the project
+    uses the dependency — dev-only, test-only, build-only, or runtime.
+  - **Is it already mitigated** by other controls (input validation,
+    sandboxing, network isolation)?
+- Categorise each alert:
+  - **Dismiss** (with justification) if: not exploitable in context,
+    dev/test-only dependency, or already mitigated. Use:
+    ```
+    gh api -X PATCH repos/{owner}/{repo}/dependabot/alerts/{number} \
+        -f state=dismissed \
+        -f dismissed_reason=<reason> \
+        -f dismissed_comment="<justification>"
+    ```
+    Valid reasons: `fix_started`, `inaccurate`, `no_bandwidth`,
+    `not_used`, `tolerable_risk`.
+  - **Leave open** if it represents genuine risk requiring upgrade or
+    mitigation.
+- Present the triage decisions to the user for approval before
+  dismissing any alerts.
+- If `gh` is not available, note the skip and advise manual triage.
+
+## 5. Update doc/VR.md — Vulnerability Report (if VR exists)
+
+- If `doc/VR.md` exists, update it using data from both the static
+  analysis report and the Dependabot triage:
+  - **§2 Summary** — Update the severity counts table to reflect current
+    state (open, mitigated, accepted, dismissed, fixed) across all
+    sources.
+  - **§3 Scanning Configuration** — Ensure the table lists all active
+    scanners (Dependabot, pip-audit, npm audit, Bandit, ESLint, Semgrep)
+    with correct frequencies (e.g. "CI on every PR" for the static
+    analysis tools, "Daily" for Dependabot).
+  - **§4 Open Vulnerabilities** — Add entries for Dependabot alerts left
+    open and any static analysis findings marked "Open", sorted by
+    severity into the subsections (§4.1 Critical, §4.2 High, etc.).
+  - **§5 Accepted Risks** — Add entries for findings deliberately
+    accepted (from both SAR dispositions and Dependabot triage), with
+    justification.
+  - **§6 Dismissed Vulnerabilities** — Add entries for Dependabot alerts
+    dismissed and static analysis findings marked "False positive" or
+    "Not applicable", with the reason.
+  - **§7 Resolved Vulnerabilities** — Move any previously-open entries
+    that are now fixed (check if CVEs from the prior version of VR.md
+    are still present in the current scan results).
+- Stage the changes: `git add doc/VR.md`.
+- If `doc/VR.md` does not exist, note its absence and suggest running
+  `python3 tools/render_doc.py --generate-doc VR` to scaffold it.
+
+## 6. Generate a commit message
 
 Create a commit message following this format:
 
@@ -63,16 +148,16 @@ Where:
 
 Present the proposed commit message to the user for approval before committing.
 
-## 4. Commit
+## 7. Commit
 
 - Stage all remaining changes: `git add -A`
 - Commit with the approved message: `git commit -m "<message>"`
 
-## 5. Push
+## 8. Push
 
 - Push the branch: `git push -u origin <branch-name>`
 
-## 6. Create Pull Request
+## 9. Create Pull Request
 
 - Use the GitHub CLI to create a PR:
   ```
@@ -82,6 +167,8 @@ Present the proposed commit message to the user for approval before committing.
 - The PR body should include:
   - A summary of changes (from the commit body)
   - A checklist of what was done (e.g. `- [x] SDP updated`,
+    `- [x] Static analysis run`, `- [x] SAR updated`,
+    `- [x] Dependabot triaged`, `- [x] VR updated`,
     `- [x] Tests pass`, `- [x] Lint clean`)
   - `Closes #<issue>` if applicable
 
@@ -89,12 +176,16 @@ Present the proposed commit message to the user for approval before committing.
 
 - Do NOT force-push.
 - Do NOT merge the PR — only create it.
-- Do NOT modify source code — only hand-authored doc files (SDP.md, etc.)
-  may be edited.
+- Do NOT modify source code — only hand-authored doc files (SDP.md, SAR.md,
+  VR.md, etc.) may be edited.
 - Do NOT assume fixed paths — discover them from the workspace structure.
 - If `gh` CLI is not installed or not authenticated, stop after the push and
   provide the URL to create the PR manually.
 - If there are uncommitted changes when starting, ask the user whether to
   include them or stash them first.
-- If the SDP or other hand-authored docs do not exist, skip updates to them
-  and note the absence in the PR body.
+- If the SDP, SAR, VR, or other hand-authored docs do not exist, skip
+  updates to them and note the absence in the PR body.
+- Static analysis findings in the SAR should be assessed for disposition —
+  do not blindly list every finding as "Open".
+- When dismissing Dependabot alerts, always present decisions to the user
+  for approval first. Never auto-dismiss without confirmation.

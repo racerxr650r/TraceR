@@ -1,8 +1,8 @@
-# Vulnerability Report: <Product Name> (<short_name>)
+# Vulnerability Report: TraceR (tracer)
 
-**Version:** 0.1
-**Date:** 2026-05-03
-**Author(s):** TBD
+**Version:** 0.2
+**Date:** 2026-05-10
+**Author(s):** AI-assisted (via PR prompt)
 
 > **How to use this template.** This is a living document — update it
 > as vulnerabilities are discovered, mitigated, or accepted. Each
@@ -13,11 +13,11 @@
 ## 1. Purpose
 
 This Vulnerability Report (VR) tracks all known security
-vulnerabilities in `<short_name>` and its dependencies. It serves
+vulnerabilities in TraceR and its dependencies. It serves
 as the canonical inventory of:
 
 - Vulnerabilities discovered by automated scanners (Dependabot,
-  npm audit, pip-audit, CodeQL, etc.)
+  npm audit, pip-audit, Bandit, ESLint, Semgrep)
 - Vulnerabilities identified during manual review or penetration
   testing
 - The disposition of each (fixed, mitigated, accepted, dismissed)
@@ -25,49 +25,42 @@ as the canonical inventory of:
 For the broader security assessment, see the companion
 [Security Audit Report](SAR.md).
 
-> *No prompts — this section is boilerplate. Just substitute the
-> product name above.*
-
 ## 2. Summary
-
-> **Prompts**
-> *   How many open vulnerabilities exist by severity?
-> *   What is the overall trend (improving, stable, degrading)?
 
 | Severity | Open | Mitigated | Accepted | Dismissed | Fixed |
 |----------|------|-----------|----------|-----------|-------|
-| Critical | <n> | <n> | <n> | <n> | <n> |
-| High | <n> | <n> | <n> | <n> | <n> |
-| Medium | <n> | <n> | <n> | <n> | <n> |
-| Low | <n> | <n> | <n> | <n> | <n> |
+| Critical | 0 | 0 | 0 | 0 | 0 |
+| High | 0 | 0 | 0 | 3 | 0 |
+| Medium | 0 | 0 | 0 | 6 | 0 |
+| Low | 0 | 0 | 0 | 1 | 0 |
 
-**Last updated:** 2026-05-03
+**Trend:** First baseline assessment — all 10 Dependabot alerts
+dismissed as dev-only/build-only dependencies not shipped in the
+`.vsix`. SAST findings assessed in [SAR.md](SAR.md) §6 — all
+accepted risks with justification (trusted local input context).
+
+**Last updated:** 2026-05-10
 
 ## 3. Scanning Configuration
 
-> **Prompts**
-> *   What automated scanners are configured?
-> *   How frequently do they run?
-> *   Where do alerts surface (GitHub Security tab, CI logs, etc.)?
-
 | Scanner | Ecosystem | Frequency | Alert Destination |
 |---------|-----------|-----------|-------------------|
-| <Dependabot> | <npm/pip/etc.> | <Daily/Weekly/On PR> | <GitHub Security tab> |
-| <npm audit> | <npm> | <CI on every PR> | <CI logs> |
-| <pip-audit> | <Python> | <CI on every PR> | <CI logs> |
+| Dependabot | npm | Daily | GitHub Security tab |
+| Bandit | Python | CI on every PR | CI logs + PR comment + GitHub Step Summary |
+| pip-audit | Python | CI on every PR | CI logs + PR comment + GitHub Step Summary |
+| ESLint + eslint-plugin-security | TypeScript | CI on every PR | CI logs + PR comment + GitHub Step Summary |
+| npm audit | npm | CI on every PR | CI logs + PR comment + GitHub Step Summary |
+| Semgrep (OWASP community rules) | Python + TypeScript | CI on every PR | CI logs + PR comment + GitHub Step Summary |
 
 ## 4. Open Vulnerabilities
 
-> **Prompts**
-> *   List each open vulnerability with its CVE (if assigned),
->     severity, affected component, and planned action.
-> *   Keep entries sorted by severity (Critical first).
+No open vulnerabilities as of 2026-05-10.
 
 ### 4.1 Critical
 
 | CVE / ID | Component | Version | Description | Planned Action | Target Date |
 |----------|-----------|---------|-------------|----------------|-------------|
-| <CVE-YYYY-NNNNN> | <package> | <version> | <Brief description> | <Upgrade/Patch/Mitigate> | 2026-05-03 |
+| — | — | — | No open critical vulnerabilities. | — | — |
 
 ### 4.2 High
 
@@ -89,46 +82,48 @@ For the broader security assessment, see the companion
 
 ## 5. Accepted Risks
 
-> **Prompts**
-> *   List vulnerabilities that have been assessed and deliberately
->     accepted (not fixed), along with the justification.
-> *   Each acceptance should name who approved it and under what
->     conditions it should be re-evaluated.
+No dependency vulnerabilities accepted as open risks. All SAST
+accepted risks are documented in [SAR.md](SAR.md) §6 (static
+analysis findings with "Accepted risk" disposition).
 
 | CVE / ID | Component | Severity | Justification | Approved By | Re-evaluate |
 |----------|-----------|----------|---------------|-------------|-------------|
-| <CVE-YYYY-NNNNN> | <package> | <Severity> | <Why this is acceptable in context> | <Name> | <Condition or date> |
+| — | — | — | No accepted dependency risks. | — | — |
 
 ## 6. Dismissed Vulnerabilities
 
-> **Prompts**
-> *   List vulnerabilities dismissed as false positives or not
->     applicable, with justification.
+All 10 Dependabot alerts dismissed on 2026-05-10. All are in
+dev-only or build-only npm transitive dependencies not shipped in
+the packaged `.vsix`.
 
 | CVE / ID | Component | Severity | Reason for Dismissal |
 |----------|-----------|----------|---------------------|
-| <CVE-YYYY-NNNNN> | <package> | <Severity> | <Not applicable because…> |
+| CVE-2026-6322 | fast-uri (npm) | High | Transitive devDep via ajv/@rjsf. Not shipped in .vsix. No URI parsing of untrusted input at runtime. (`not_used`) |
+| CVE-2026-6321 | fast-uri (npm) | High | Transitive devDep via ajv/@rjsf. Not shipped in .vsix. No URI parsing of untrusted input at runtime. (`not_used`) |
+| GHSA (no CVE) | serialize-javascript (npm) | High | Transitive devDep via mocha (test framework). Not shipped in .vsix. (`not_used`) |
+| CVE-2026-1527 | undici (npm) | Medium | Override pin for transitive devDep. Extension makes no HTTP requests via undici. Pulled in by cheerio/vsce (dev tools). Not shipped. (`not_used`) |
+| CVE-2026-1525 | undici (npm) | Medium | Transitive devDep via cheerio/vsce. Extension makes no HTTP requests via undici. Not shipped. (`not_used`) |
+| CVE-2025-22150 | undici (npm) | Medium | Transitive devDep. Extension makes no HTTP requests via undici. Not shipped in .vsix. (`not_used`) |
+| CVE-2023-0842 | xml2js (npm) | Medium | Transitive devDep via @vscode/vsce (packaging tool). No XML parsing of untrusted input. Not shipped. (`not_used`) |
+| CVE-2026-34043 | serialize-javascript (npm) | Medium | Transitive devDep via mocha (test framework). Not shipped in .vsix. (`not_used`) |
+| GHSA (no CVE) | esbuild (npm) | Medium | Direct devDep (bundler). Vulnerability is in esbuild's dev server which is not run in production. Risk limited to local dev environments. (`tolerable_risk`) |
+| CVE-2025-47279 | undici (npm) | Low | Transitive devDep. Extension makes no HTTP requests via undici. Not shipped. (`not_used`) |
 
 ## 7. Resolved Vulnerabilities (History)
 
-> **Prompts**
-> *   Keep a log of vulnerabilities that have been fixed, for
->     audit trail purposes. Move entries here from §4 when resolved.
-
 | CVE / ID | Component | Severity | Resolution | Date Fixed |
 |----------|-----------|----------|-----------|------------|
-| <CVE-YYYY-NNNNN> | <package> | <Severity> | <Upgraded to version X.Y.Z> | 2026-05-03 |
+| — | — | — | No resolved vulnerabilities yet (first baseline). | — |
 
 ## 8. Process
 
-> **Prompts**
-> *   How are new vulnerabilities triaged?
-> *   What is the SLA for each severity level?
-> *   Who is responsible for remediation?
+New vulnerabilities are triaged during each pull request using the
+PR prompt workflow (`.github/prompts/PR.prompt.md`), which runs
+static analysis, fetches Dependabot alerts, and updates this report.
 
 | Severity | Response SLA | Remediation SLA | Owner |
 |----------|-------------|-----------------|-------|
-| Critical | <24 hours> | <7 days> | <Role/Name> |
-| High | <48 hours> | <30 days> | <Role/Name> |
-| Medium | <1 week> | <90 days> | <Role/Name> |
-| Low | <2 weeks> | <Next release> | <Role/Name> |
+| Critical | 24 hours | 7 days | Project maintainer |
+| High | 48 hours | 30 days | Project maintainer |
+| Medium | 1 week | 90 days | Project maintainer |
+| Low | 2 weeks | Next release | Project maintainer |

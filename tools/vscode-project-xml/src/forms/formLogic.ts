@@ -409,6 +409,6 @@ export function escapeHtml(s: string): string {
         '<': '&lt;',
         '>': '&gt;',
         '"': '&quot;',
-        "\'": '&#39;',
+        "'": '&#39;',
     }[c] as string));
 }

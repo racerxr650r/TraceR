@@ -35,6 +35,14 @@
 #   ext             ext-typecheck + ext-build (fail on any warning).
 #   test            Run all tests (Python + extension unit + UI).
 #   ci              lint + validate-xml + render + test + ext (CI umbrella).
+#   analyze-bandit  Run Bandit security linter on Python sources.
+#   analyze-pip-audit  Audit Python dependencies for known vulnerabilities.
+#   analyze-eslint  Run ESLint + eslint-plugin-security on the extension.
+#   analyze-npm-audit  Audit npm dependencies for known vulnerabilities.
+#   analyze-semgrep Run Semgrep with OWASP community rules across Python and TS.
+#   analyze         Run all static analysis tools and produce a summary.
+#   analyze_report  Generate consolidated Markdown report from analysis JSON files.
+#   analyze-check-errors  Like analyze_report, but exit 1 if error-level findings exist.
 #   clean           Remove generated docs, extension build output, __pycache__.
 #   clean-docs      Remove generated markdown specs (HLRs/LLRs/SDD/STP/Traceability).
 #   clean-ext       Remove the VS Code extension's dist/ and *.vsix.
@@ -86,6 +94,9 @@ endif
         lint validate-xml render test test-py ci \
         coverage coverage-report coverage_report ext-coverage \
         test-py-junit ext-test-unit-junit test_report \
+        analyze analyze-bandit analyze-pip-audit \
+        analyze-eslint analyze-npm-audit analyze-semgrep \
+        analyze_report analyze-check-errors \
         clean clean-docs clean-ext distclean
 
 help:
@@ -305,6 +316,27 @@ verify:
 	else \
 	    printf "  [WARN]    %-12s (optional; install xmllint or 'pip install lxml' for strict XSD validation)\n" "xmllint/lxml" ; \
 	fi ; \
+	echo "  --- Static analysis tools (installed via bootstrap) ---" ; \
+	if command -v bandit >/dev/null 2>&1 ; then \
+	    printf "  [OK]      %-12s %s\n" "bandit" "$$(bandit --version 2>&1 | head -n1)" ; \
+	else \
+	    printf "  [INFO]    %-12s (install via bootstrap: pip install bandit)\n" "bandit" ; \
+	fi ; \
+	if command -v pip-audit >/dev/null 2>&1 ; then \
+	    printf "  [OK]      %-12s %s\n" "pip-audit" "$$(pip-audit --version 2>&1 | head -n1)" ; \
+	else \
+	    printf "  [INFO]    %-12s (install via bootstrap: pip install pip-audit)\n" "pip-audit" ; \
+	fi ; \
+	if command -v semgrep >/dev/null 2>&1 ; then \
+	    printf "  [OK]      %-12s %s\n" "semgrep" "$$(semgrep --version 2>&1 | head -n1)" ; \
+	else \
+	    printf "  [INFO]    %-12s (install via bootstrap: pip install semgrep)\n" "semgrep" ; \
+	fi ; \
+	if [[ -f "$(EXT_DIR)/node_modules/.bin/eslint" ]] ; then \
+	    printf "  [OK]      %-12s %s\n" "eslint" "$$(cd $(EXT_DIR) && npx eslint --version 2>&1 | head -n1)" ; \
+	else \
+	    printf "  [INFO]    %-12s (install via bootstrap: npm install in extension)\n" "eslint" ; \
+	fi ; \
 	echo ; \
 	if [[ $$status -eq 0 ]] ; then \
 	    echo "All required tools present. Run 'make -C tools bootstrap'" ; \
@@ -337,7 +369,8 @@ bootstrap:
 	fi
 	@echo ">>> Installing Python dependencies (jinja2, lxml, xmlschema)..."
 	"$(VENV_PIP)" install --upgrade pip
-	"$(VENV_PIP)" install jinja2 lxml xmlschema coverage unittest-xml-reporting
+	"$(VENV_PIP)" install jinja2 lxml xmlschema coverage unittest-xml-reporting \
+	    bandit pip-audit semgrep
 	@echo ">>> Installing VS Code extension npm dependencies..."
 	@if [[ -f "$(EXT_DIR)/package.json" ]]; then \
 	    cd "$(EXT_DIR)" && npm install ; \
@@ -450,6 +483,7 @@ ext-build: ext-typecheck
 # back to the system python3. Override with PYTHON=...
 
 VENV_PYTHON := $(shell [ -x "$(VENV_DIR)/bin/python" ] && echo "$(VENV_DIR)/bin/python" || echo "$(PYTHON)")
+VENV_SEMGREP := $(shell [ -x "$(VENV_DIR)/bin/semgrep" ] && echo "$(VENV_DIR)/bin/semgrep" || echo semgrep)
 PROJECT_XML := $(REPO_ROOT)/doc/Project.xml
 PROJECT_XSD := $(REPO_ROOT)/tools/project.xsd
 TEMPLATES_DIR := $(REPO_ROOT)/tools/templates
@@ -512,7 +546,7 @@ coverage_report:
 	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" "$(REPO_ROOT)/tools/coverage_report.py" \
 	    --py-xml test_reports/coverage.xml \
 	    --ext-xml test_reports/ext-coverage.xml \
-	    --out test_reports/report.md
+	    --out test_reports/coverage_report.md
 
 coverage-report:
 	@echo ">>> Generating coverage report (no test re-run)..."
@@ -603,6 +637,89 @@ ext-package: ext-build
 	@echo "To install, run:"
 	@echo "  code --install-extension $(EXT_DIR)/vscode-project-xml-$(VERSION).vsix --force"
 	@echo "Then reload the VS Code window (Ctrl+Shift+P → Developer: Reload Window)."
+
+# ---------------------------------------------------------------- #
+# Static analysis targets                                          #
+# ---------------------------------------------------------------- #
+# Each analyzer writes its report to test_reports/ for CI consumption.
+# 'analyze' runs them all and produces a summary.
+
+REPORT_DIR := $(REPO_ROOT)/test_reports
+
+analyze-bandit:
+	@echo ">>> Running Bandit (Python security linter)..."
+	@mkdir -p "$(REPORT_DIR)"
+	"$(VENV_PYTHON)" -m bandit -r "$(REPO_ROOT)/tools" \
+	    -x "$(EXT_DIR)" \
+	    -f json -o "$(REPORT_DIR)/bandit-report.json" || true
+	@"$(VENV_PYTHON)" -m bandit -r "$(REPO_ROOT)/tools" \
+	    -x "$(EXT_DIR)" \
+	    -f screen || true
+	@echo "  Report: $(REPORT_DIR)/bandit-report.json"
+
+analyze-pip-audit:
+	@echo ">>> Running pip-audit (Python dependency vulnerabilities)..."
+	@mkdir -p "$(REPORT_DIR)"
+	"$(VENV_PYTHON)" -m pip_audit \
+	    -f json -o "$(REPORT_DIR)/pip-audit-report.json" || true
+	@"$(VENV_PYTHON)" -m pip_audit || true
+	@echo "  Report: $(REPORT_DIR)/pip-audit-report.json"
+
+analyze-eslint:
+	@echo ">>> Running ESLint + eslint-plugin-security (TypeScript)..."
+	@if [[ ! -d "$(EXT_DIR)/node_modules" ]]; then \
+	    cd "$(EXT_DIR)" && npm install ; \
+	fi
+	cd "$(EXT_DIR)" && npm run lint:report || true
+	@cd "$(EXT_DIR)" && npx eslint src/ || true
+	@echo "  Report: $(REPORT_DIR)/eslint-report.json"
+
+analyze-npm-audit:
+	@echo ">>> Running npm audit (Node dependency vulnerabilities)..."
+	@mkdir -p "$(REPORT_DIR)"
+	cd "$(EXT_DIR)" && npm audit --json > "$(REPORT_DIR)/npm-audit-report.json" 2>&1 || true
+	@cd "$(EXT_DIR)" && npm audit || true
+	@echo "  Report: $(REPORT_DIR)/npm-audit-report.json"
+
+analyze-semgrep:
+	@echo ">>> Running Semgrep (OWASP rules — Python + TypeScript)..."
+	@mkdir -p "$(REPORT_DIR)"
+	"$(VENV_SEMGREP)" scan \
+	    --config auto \
+	    --json -o "$(REPORT_DIR)/semgrep-report.json" \
+	    "$(REPO_ROOT)/tools" \
+	    --exclude "node_modules" --exclude "dist" --exclude "out" || true
+	@"$(VENV_SEMGREP)" scan \
+	    --config auto \
+	    "$(REPO_ROOT)/tools" \
+	    --exclude "node_modules" --exclude "dist" --exclude "out" || true
+	@echo "  Report: $(REPORT_DIR)/semgrep-report.json"
+
+analyze: analyze-bandit analyze-pip-audit analyze-eslint analyze-npm-audit analyze-semgrep
+	@$(MAKE) --no-print-directory analyze_report
+	@echo ""
+	@echo "All static analysis complete."
+
+analyze_report:
+	@echo ">>> Generating consolidated static-analysis report..."
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" "$(REPO_ROOT)/tools/analyze_report.py" \
+	    --bandit test_reports/bandit-report.json \
+	    --pip-audit test_reports/pip-audit-report.json \
+	    --eslint test_reports/eslint-report.json \
+	    --npm-audit test_reports/npm-audit-report.json \
+	    --semgrep test_reports/semgrep-report.json \
+	    --out test_reports/analyze-report.md
+
+analyze-check-errors:
+	@echo ">>> Checking for error-level findings (warnings allowed)..."
+	cd "$(REPO_ROOT)" && "$(VENV_PYTHON)" "$(REPO_ROOT)/tools/analyze_report.py" \
+	    --bandit test_reports/bandit-report.json \
+	    --pip-audit test_reports/pip-audit-report.json \
+	    --eslint test_reports/eslint-report.json \
+	    --npm-audit test_reports/npm-audit-report.json \
+	    --semgrep test_reports/semgrep-report.json \
+	    --out test_reports/analyze-report.md \
+	    --exit-code
 
 # ---------------------------------------------------------------- #
 # Clean targets                                                    #

@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1379,6 +1379,7 @@ def _init_project_cli(
 def render(template_path: Path, project: SimpleNamespace) -> str:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(template_path.parent),
+        autoescape=False,  # nosec B701 — output is Markdown, not browser-served HTML
         trim_blocks=True,
         lstrip_blocks=False,
         keep_trailing_newline=True,
