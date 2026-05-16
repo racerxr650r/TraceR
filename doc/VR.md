@@ -1,7 +1,7 @@
 # Vulnerability Report: TraceR (tracer)
 
-**Version:** 0.2
-**Date:** 2026-05-10
+**Version:** 0.3
+**Date:** 2026-05-16
 **Author(s):** AI-assisted (via PR prompt)
 
 > **How to use this template.** This is a living document — update it
@@ -34,12 +34,16 @@ For the broader security assessment, see the companion
 | Medium | 0 | 0 | 0 | 6 | 0 |
 | Low | 0 | 0 | 0 | 1 | 0 |
 
-**Trend:** First baseline assessment — all 10 Dependabot alerts
-dismissed as dev-only/build-only dependencies not shipped in the
-`.vsix`. SAST findings assessed in [SAR.md](SAR.md) §6 — all
-accepted risks with justification (trusted local input context).
+**Trend:** No open Dependabot alerts. npm audit and pip-audit both
+report zero vulnerabilities as of 2026-05-16 — the 10 previously
+dismissed advisories no longer appear in the current scan after
+the Phase 14 dependency-tree refresh (undici override pinned to
+`^6.21.1`). They remain listed in §6 for audit history and are
+also mirrored into §7 as resolved. SAST findings are assessed in
+[SAR.md](SAR.md) §6 — all accepted risks with justification
+(trusted local input context).
 
-**Last updated:** 2026-05-10
+**Last updated:** 2026-05-16
 
 ## 3. Scanning Configuration
 
@@ -54,7 +58,7 @@ accepted risks with justification (trusted local input context).
 
 ## 4. Open Vulnerabilities
 
-No open vulnerabilities as of 2026-05-10.
+No open vulnerabilities as of 2026-05-16.
 
 ### 4.1 Critical
 
@@ -94,7 +98,8 @@ analysis findings with "Accepted risk" disposition).
 
 All 10 Dependabot alerts dismissed on 2026-05-10. All are in
 dev-only or build-only npm transitive dependencies not shipped in
-the packaged `.vsix`.
+the packaged `.vsix`. As of 2026-05-16 these CVEs no longer appear
+in npm audit — see §7 for the resolved entries.
 
 | CVE / ID | Component | Severity | Reason for Dismissal |
 |----------|-----------|----------|---------------------|
@@ -113,7 +118,16 @@ the packaged `.vsix`.
 
 | CVE / ID | Component | Severity | Resolution | Date Fixed |
 |----------|-----------|----------|-----------|------------|
-| — | — | — | No resolved vulnerabilities yet (first baseline). | — |
+| CVE-2026-6322 | fast-uri (npm) | High | Resolved via transitive upgrade through ajv/@rjsf; no longer present in npm audit. | 2026-05-16 |
+| CVE-2026-6321 | fast-uri (npm) | High | Resolved via transitive upgrade through ajv/@rjsf; no longer present in npm audit. | 2026-05-16 |
+| GHSA serialize-javascript | serialize-javascript (npm) | High | Resolved via `serialize-javascript: 7.0.5` override in extension `package.json`. | 2026-05-16 |
+| CVE-2026-1527 | undici (npm) | Medium | Resolved via `undici: ^6.21.1` override pinning in extension `package.json`. | 2026-05-16 |
+| CVE-2026-1525 | undici (npm) | Medium | Resolved via `undici: ^6.21.1` override pinning. | 2026-05-16 |
+| CVE-2025-22150 | undici (npm) | Medium | Resolved via `undici: ^6.21.1` override pinning. | 2026-05-16 |
+| CVE-2023-0842 | xml2js (npm) | Medium | Resolved via @vscode/vsce transitive upgrade; no longer present in npm audit. | 2026-05-16 |
+| CVE-2026-34043 | serialize-javascript (npm) | Medium | Resolved via override (see High row above). | 2026-05-16 |
+| GHSA esbuild | esbuild (npm) | Medium | Resolved via esbuild upgrade in extension dev dependencies. | 2026-05-16 |
+| CVE-2025-47279 | undici (npm) | Low | Resolved via `undici: ^6.21.1` override pinning. | 2026-05-16 |
 
 ## 8. Process
 

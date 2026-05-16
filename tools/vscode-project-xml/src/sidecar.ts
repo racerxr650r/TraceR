@@ -630,6 +630,10 @@ export interface ParsedTrace {
 export interface ParsedSddModule {
     path?: string;
     title?: string;
+    purpose?: string;
+    responsibilities?: string[];
+    data_structures?: string;
+    algorithm?: string;
     ui?: UiHints | null;
 }
 
@@ -637,7 +641,17 @@ export interface ParsedSdd {
     modules?: ParsedSddModule[];
 }
 
+export interface ParsedStpFixture {
+    name: string;
+    source?: string;
+    ui?: UiHints | null;
+}
+
 export interface ParsedStp {
+    integration_environment?: {
+        fixtures?: ParsedStpFixture[];
+        [key: string]: unknown;
+    };
     [key: string]: unknown;
 }
 

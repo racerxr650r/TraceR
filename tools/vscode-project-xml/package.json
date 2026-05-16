@@ -300,8 +300,13 @@
           "group": "navigation"
         },
         {
+          "command": "projectXml.addStpFixture",
+          "when": "view == projectXml.tree && viewItem == stpGroup",
+          "group": "navigation"
+        },
+        {
           "command": "projectXml.renderAndPreview",
-          "when": "view == projectXml.tree && viewItem =~ /^(hlrsGroup|llrsGroup|testsGroup|sddGroup)$/",
+          "when": "view == projectXml.tree && viewItem =~ /^(hlrsGroup|llrsGroup|testsGroup|sddGroup|stpGroup)$/",
           "group": "render@1"
         },
         {
@@ -540,7 +545,7 @@
     "vscode-extension-tester": "^8.23.0"
   },
   "overrides": {
-    "undici": "^7.25.0",
+    "undici": "^6.21.1",
     "serialize-javascript": "7.0.5"
   }
 }

@@ -183,6 +183,91 @@ describe('treeLogic', () => {
             assert.ok(labels.some(l => l.startsWith('SDD')));
             assert.ok(labels.some(l => l.startsWith('STP')));
         });
+
+        it('SDD module editArgs includes child element fields', () => {
+            const project: ParsedProject = {
+                hlrs: [], llrs: [], tests: [],
+                sdd: {
+                    modules: [{
+                        path: 'src/foo.ts',
+                        title: 'Foo',
+                        purpose: 'Does foo.',
+                        responsibilities: ['Owns state.', 'Handles events.'],
+                        data_structures: 'FooData record.',
+                        algorithm: 'Linear scan.',
+                    }],
+                },
+            } as unknown as ParsedProject;
+            const nodes = buildTopLevelDescriptors(project, undefined);
+            const sdd = nodes.find(n => n.label.startsWith('SDD'));
+            assert.ok(sdd?.children?.length === 1);
+            const mod = sdd.children[0];
+            assert.ok(mod.editArgs);
+            assert.equal(mod.editArgs.type, 'SddModule');
+            assert.equal(mod.editArgs.basePath, '/sdd/modules/module[path=src/foo.ts]');
+            const fd = mod.editArgs.formData;
+            assert.equal(fd.path, 'src/foo.ts');
+            assert.equal(fd.title, 'Foo');
+            assert.equal(fd.purpose, 'Does foo.');
+            assert.equal(fd.responsibility, 'Owns state.\nHandles events.');
+            assert.equal(fd.data_structures, 'FooData record.');
+            assert.equal(fd.algorithm, 'Linear scan.');
+        });
+
+        it('STP descriptor shows fixtures as editable children', () => {
+            const project: ParsedProject = {
+                hlrs: [], llrs: [], tests: [],
+                sdd: { modules: [] },
+                stp: {
+                    integration_environment: {
+                        fixtures: [
+                            { name: 'rtps', source: 'docker compose up' },
+                            { name: 'db', source: 'pg_ctl start' },
+                        ],
+                    },
+                },
+            } as unknown as ParsedProject;
+            const nodes = buildTopLevelDescriptors(project, undefined);
+            const stp = nodes.find(n => n.label.startsWith('STP'));
+            assert.ok(stp);
+            assert.equal(stp.label, 'STP (2 fixtures)');
+            assert.equal(stp.collapsible, true);
+            assert.equal(stp.contextValue, 'stpGroup');
+            assert.ok(stp.children?.length === 2);
+            const rtps = stp.children[0];
+            assert.equal(rtps.label, 'rtps');
+            assert.ok(rtps.editArgs);
+            assert.equal(rtps.editArgs.type, 'StpFixture');
+            assert.equal(rtps.editArgs.basePath, '/stp/integration_environment/fixture[name=rtps]');
+            assert.deepEqual(rtps.editArgs.formData, { name: 'rtps', source: 'docker compose up' });
+        });
+
+        it('STP descriptor shows empty state when no STP section', () => {
+            const project: ParsedProject = {
+                hlrs: [], llrs: [], tests: [],
+                sdd: { modules: [] },
+            } as unknown as ParsedProject;
+            const nodes = buildTopLevelDescriptors(project, undefined);
+            const stp = nodes.find(n => n.label.startsWith('STP'));
+            assert.ok(stp);
+            assert.equal(stp.label, 'STP (empty)');
+            assert.equal(stp.collapsible, false);
+            assert.equal(stp.contextValue, undefined);
+        });
+
+        it('STP descriptor shows 0 fixtures when STP exists but has no fixtures', () => {
+            const project: ParsedProject = {
+                hlrs: [], llrs: [], tests: [],
+                sdd: { modules: [] },
+                stp: {},
+            } as unknown as ParsedProject;
+            const nodes = buildTopLevelDescriptors(project, undefined);
+            const stp = nodes.find(n => n.label.startsWith('STP'));
+            assert.ok(stp);
+            assert.equal(stp.label, 'STP (0 fixtures)');
+            assert.equal(stp.collapsible, false);
+            assert.equal(stp.contextValue, 'stpGroup');
+        });
     });
 
     describe('buildGenericPayloadDescriptors', () => {
@@ -201,11 +286,12 @@ describe('treeLogic', () => {
     });
 
     describe('COVERED_TYPE_KEYS', () => {
-        it('includes the four legacy types', () => {
+        it('includes the typed builder types', () => {
             assert.ok(COVERED_TYPE_KEYS.has('Hlr'));
             assert.ok(COVERED_TYPE_KEYS.has('Llr'));
             assert.ok(COVERED_TYPE_KEYS.has('Test'));
             assert.ok(COVERED_TYPE_KEYS.has('SddModule'));
+            assert.ok(COVERED_TYPE_KEYS.has('StpFixture'));
         });
     });
 });

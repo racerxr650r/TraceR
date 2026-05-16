@@ -129,6 +129,7 @@ export const COVERED_TYPE_KEYS = new Set([
     'Llr',
     'Test',
     'SddModule',
+    'StpFixture',
 ]);
 
 // ---------------------------------------------------------------------
@@ -287,7 +288,14 @@ function buildSddDescriptor(
             editArgs: m.path ? {
                 type: 'SddModule',
                 basePath: `/sdd/modules/module[path=${m.path}]`,
-                formData: { path: m.path, title: m.title ?? '' },
+                formData: {
+                    path: m.path,
+                    title: m.title ?? '',
+                    purpose: m.purpose ?? '',
+                    responsibility: (m.responsibilities ?? []).join('\n'),
+                    data_structures: m.data_structures ?? '',
+                    algorithm: m.algorithm ?? '',
+                },
                 title: `Edit ${m.path}`,
             } : undefined,
         } as TreeNodeDescriptor)),
@@ -296,13 +304,29 @@ function buildSddDescriptor(
 
 function buildStpDescriptor(project: ParsedProject): TreeNodeDescriptor {
     const present = project.stp != null;
+    const fixtures = (project.stp?.integration_environment?.fixtures ?? []) as
+        import('../sidecar').ParsedStpFixture[];
     return {
-        label: present ? 'STP' : 'STP (empty)',
-        collapsible: false,
+        label: present ? `STP (${fixtures.length} fixtures)` : 'STP (empty)',
+        collapsible: fixtures.length > 0,
         icon: 'checklist',
-        contextValue: present ? 'revealable' : undefined,
+        contextValue: present ? 'stpGroup' : undefined,
         locator: present ? { tag: 'stp', value: '' } : undefined,
         docId: 'STP',
+        children: fixtures.map((f) => ({
+            label: f.name || '(unnamed fixture)',
+            collapsible: false,
+            locator: f.name
+                ? { tag: 'fixture', attr: 'name', value: f.name }
+                : undefined,
+            ui: f.ui,
+            editArgs: f.name ? {
+                type: 'StpFixture',
+                basePath: `/stp/integration_environment/fixture[name=${f.name}]`,
+                formData: { name: f.name, source: f.source ?? '' },
+                title: `Edit ${f.name}`,
+            } : undefined,
+        } as TreeNodeDescriptor)),
     };
 }
 
