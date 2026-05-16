@@ -25,6 +25,7 @@
 | [11](#phase-11--recordreplay-test-harness-for-ai-authoring-pipeline) | Record/replay test harness for AI authoring pipeline. | ✅ Done — `pipeline.record_exchange()` writes `.bundle.json`/`.response.json` fixture pairs when `TRACER_AI_RECORD_DIR` is set; 11 curated fixtures in `test/fixtures/ai_recordings/` covering every intent (including gap.fix full cascade); `test/test_ai_integration.py` replays all fixtures through translator → `apply_edit` asserting lint-clean XML and resolved placeholders; 5 previously unregistered AI test files registered in Project.xml; Developers Guide §18 documents recording mode. |
 | [12](#phase-12--update-ui-tests-and-ci) | Update UI tests and CI: fix double-run on PR, stabilise ExTester UI tests with polling helpers, add provider-level integration tests with FakeSidecarClient, JUnit test-results reporting in CI. | ✅ Done |
 | [13](#phase-13--static-analysis-and-vulnerabilities) | Address lint warnings and vulnerabilities; security audit report. | ✅ Done — Bandit, pip-audit, ESLint + eslint-plugin-security, npm audit, and Semgrep integrated into `tools/Makefile` (`analyze` umbrella target); `tools/analyze_report.py` generates a consolidated Markdown report from JSON outputs with `--exit-code` flag for CI gating (errors block, warnings pass); CI workflow (`ci.yml`) runs all five analyzers on every PR with a sticky comment and GitHub Step Summary; PR prompt (`PR.prompt.md`) updated to run static analysis, update SAR.md §5/§6/§7, triage Dependabot alerts via `gh api`, and update VR.md §2–§7. |
+| [14](#phase-14--update-vs-code-extension-forms-to-work-with-sdd-and-stp) | Update VS Code extension forms to work with SDD and STP. | ✅ Done — `buildStpDescriptor` renders STP as a collapsible tree node with one leaf per `<fixture>` under `<stp>/<integration_environment>`; new `addStpFixture` context menu entry on the STP group node; SDD module edit form pre-populates all child fields (`purpose`, `responsibility`, `data_structures`, `algorithm`) — not just `path`/`title`; `resolveFormParams` adds a `fixture` case so coverage-hint clicks navigate to STP fixture edit forms; `ParsedSddModule` / `ParsedStpFixture` typings widened to expose child fields over the sidecar; 7 new unit tests added (treeLogic + formPanel) pinning LLR-FRM-14 and LLR-PSP-10; undici override pinned to `^6.21.1` to keep transitive dep tree clean. |
 
 
 **Owner:** TBD
@@ -1360,6 +1361,52 @@ Create the following agents and prompts
    vulnerabilities, determines if they are applicable, updates
    them on GitHub, and updates the Vulnerability Report
 
+### Phase 14 — Update VS Code Extension Forms to Work with SDD and STP
+1. Extend `buildStpDescriptor` so the STP tree group renders as a
+   collapsible node `STP (N fixtures)` whose children are the
+   `<fixture>` elements under `<stp>/<integration_environment>`,
+   each carrying `editArgs` for the schema-driven popup edit
+   dialog (LLR-PSP-10).
+2. Add an `addStpFixture` context-menu entry on the STP group
+   (`viewItem == stpGroup`) and extend the existing
+   `renderAndPreview` menu predicate so the STP group is
+   render-and-previewable from the tree (parity with `hlrsGroup`,
+   `llrsGroup`, `testsGroup`, `sddGroup`).
+3. Fix the SDD module edit form so it pre-populates ALL child
+   element fields declared in the XSD `<ui:form>` annotation
+   (`purpose`, `responsibility`, `data_structures`, `algorithm`)
+   in addition to the attribute fields (`path`, `title`) — both
+   when opened via `editPayload` from the tree and when opened
+   via `resolveFormParams` from a coverage-hint click
+   (LLR-FRM-14). Multi-valued children (e.g. multiple
+   `<responsibility>` elements) are joined with newline separators
+   so the textarea widget displays them as a block.
+4. Add a `fixture` case to `resolveFormParams` so coverage-hint
+   clicks on STP fixtures resolve to an `OpenFormParams` with
+   `type='StpFixture'`, `basePath='/stp/integration_environment/fixture[name=X]'`,
+   and `initial` containing `name` and `source` fields
+   (LLR-FRM-11 extension).
+5. Widen the sidecar typings (`ParsedSddModule`, `ParsedStpFixture`,
+   `ParsedStp.integration_environment.fixtures`) so the new child
+   fields are exposed through `parse_project_xml` over JSON-RPC.
+6. Add `StpFixture` to `COVERED_TYPE_KEYS` so STP fixtures get
+   coverage-badge propagation alongside HLR/LLR/Test/SddModule.
+7. Add unit-test coverage: `buildSddDescriptor` includes child
+   element fields in `editArgs.formData`; `buildStpDescriptor`
+   renders fixtures as editable children; `buildOperations`
+   emits replace ops for `SddModule` child fields and
+   `StpFixture` attrs in edit mode; `resolveFormParams` handles
+   the new `fixture` tag plus the not-found case; the SDD module
+   locator test asserts the full `initial` payload.
+8. Pin `undici` override to `^6.21.1` in the extension
+   `package.json` so the transitive dep tree stays on the
+   currently-clean major; refresh `package-lock.json`.
+9. Acceptance: tree shows STP fixtures as editable leaves;
+   double-clicking an SDD module or STP fixture opens the edit
+   form pre-populated; right-clicking the STP group offers
+   `Add STP Fixture`; existing tests stay green; the seven new
+   unit tests pass.
+
 ## 9. Risks & Open Questions
 
 *   **Python discovery.** Need a robust strategy to find Python on
@@ -1435,7 +1482,8 @@ post-baseline improvements tracked as open GitHub issues.
 | 10 | Refactor providers (humble object) | TypeScript | medium | post-baseline |
 | 11 | Record/replay AI test harness | Python | medium | post-baseline |
 | 12 | SDP template | Python + Jinja2 | small | post-baseline |
-| TBD | Lint warnings + security audit | Python + toolchain | small-medium | post-baseline |
+| 13 | Lint warnings + security audit | Python + toolchain | small-medium | post-baseline |
+| 14 | SDD/STP form completeness | TypeScript | small | post-baseline |
 
 ## 11. Out-of-Scope Follow-ups
 

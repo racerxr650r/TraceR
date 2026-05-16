@@ -139,6 +139,8 @@ export async function addModule(
             title: '',
             purpose: '',
             responsibility: '',
+            data_structures: '',
+            algorithm: '',
         },
         appendPath: '/sdd/modules/module/-',
     });

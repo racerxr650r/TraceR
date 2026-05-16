@@ -375,8 +375,30 @@ export function resolveFormParams(
                     return {
                         type: 'SddModule',
                         title: `Edit ${value}`,
-                        initial: { ...m } as Record<string, unknown>,
+                        initial: {
+                            path: m.path,
+                            title: m.title ?? '',
+                            purpose: m.purpose ?? '',
+                            responsibility: ((m as Record<string, unknown>).responsibilities as string[] ?? []).join('\n'),
+                            data_structures: m.data_structures ?? '',
+                            algorithm: m.algorithm ?? '',
+                        } as Record<string, unknown>,
                         basePath: `/sdd/modules/module[path=${value}]`,
+                    };
+                }
+            }
+            return undefined;
+        }
+        case 'fixture': {
+            const fixtures = (parsed.stp?.integration_environment as
+                { fixtures?: Array<{ name: string; source?: string }> } | undefined)?.fixtures ?? [];
+            for (const f of fixtures) {
+                if (f.name === value) {
+                    return {
+                        type: 'StpFixture',
+                        title: `Edit ${value}`,
+                        initial: { name: f.name, source: f.source ?? '' } as Record<string, unknown>,
+                        basePath: `/stp/integration_environment/fixture[name=${value}]`,
                     };
                 }
             }

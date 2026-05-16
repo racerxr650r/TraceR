@@ -910,7 +910,7 @@ gaps or broken refs.]]></responsibility>
 commands per node is derived from the hint registry, not
 hard-coded per element kind.]]></responsibility>
         <responsibility><![CDATA[Set `TreeItem.command` on every leaf node (individual
-`<hlr>`, `<llr>`, `<test>`, `<module>`) to
+`<hlr>`, `<llr>`, `<test>`, `<module>`, `<fixture>`) to
 `projectXml.editPayload`, so that double-clicking a leaf
 in the tree opens the schema-driven popup edit dialog for
 that element. The dialog is a single reusable popup whose
@@ -918,6 +918,11 @@ fields are derived at runtime from the element's XSD
 complex type and `ui:form` hints — no per-payload code
 and no extension changes when a user adds a new document
 or payload kind.]]></responsibility>
+        <responsibility><![CDATA[Render the STP tree group as a collapsible node
+whose children are the `<fixture>` elements under
+`<stp>/<integration_environment>`, each carrying
+`editArgs` so the edit form opens on double-click and
+the context menu exposes `addStpFixture`.]]></responsibility>
         <responsibility><![CDATA[Locate elements in the underlying XML for `Reveal in XML`
 via the generic locator (`util/locator.ts`), which takes
 `(elementName, idAttr, idValue)` from the hint registry.]]></responsibility>
@@ -2809,6 +2814,13 @@ and `diffPreviewLogic.ts`.]]></text>
           <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
         </traces>
       </llr>
+      <llr id="LLR-PSP-10">
+        <text><![CDATA[`buildStpDescriptor` shall render the STP tree group as a collapsible node labelled `STP (N fixtures)` whose children are one leaf per `<fixture>` element under `<stp>/<integration_environment>`. Each fixture leaf shall carry an `editArgs` with `type='StpFixture'`, `basePath='/stp/integration_environment/fixture[name=X]'`, and `formData` containing `name` and `source` fields, and shall set `contextValue` to `stpGroup` on the parent so the context menu exposes the `addStpFixture` command. When no STP section exists the node shall render as `STP (empty)` with no children and no context value.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+        </traces>
+      </llr>
     </function>
     <function number="12" title="`LintDiagnosticsProvider` ([tools/vscode-project-xml/src/diagnostics/LintDiagnosticsProvider.ts](../tools/vscode-project-xml/src/diagnostics/LintDiagnosticsProvider.ts))" name="LintDiagnosticsProvider" source="tools/vscode-project-xml/src/diagnostics/LintDiagnosticsProvider.ts">
       <intro><![CDATA[Mirrors lint findings from `project_io.lint` into a VS Code `DiagnosticCollection` over `Project.xml`. Phase 2.5's stable-`code` retrofit and Quick Fix table layer on top of this Phase 1 surface.]]></intro>
@@ -3234,10 +3246,17 @@ and `diffPreviewLogic.ts`.]]></text>
         </traces>
       </llr>
       <llr id="LLR-FRM-11">
-        <text><![CDATA[`resolveFormParams(parsed, locator)` shall walk the nested project structure (`hlrs`, `llrs`, `tests`, `sdd`) to resolve a `{tag, value}` coverage locator into an `OpenFormParams` object containing the `type`, `basePath`, and pre-populated `initial` data. Supported tags are `hlr`, `llr`, `test`, and `module`; unrecognised tags or missing items shall return `undefined`. The extension host's `openForm` message handler shall call `resolveFormParams` and open a new form panel for the resolved item so coverage-hint clicks navigate directly to the target's edit form.]]></text>
+        <text><![CDATA[`resolveFormParams(parsed, locator)` shall walk the nested project structure (`hlrs`, `llrs`, `tests`, `sdd`, `stp`) to resolve a `{tag, value}` coverage locator into an `OpenFormParams` object containing the `type`, `basePath`, and pre-populated `initial` data. Supported tags are `hlr`, `llr`, `test`, `module`, and `fixture`; unrecognised tags or missing items shall return `undefined`. The extension host's `openForm` message handler shall call `resolveFormParams` and open a new form panel for the resolved item so coverage-hint clicks navigate directly to the target's edit form.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
           <trace target="HLR" ref="HLR-063" name="Tree View Coverage Tooltips"/>
+        </traces>
+      </llr>
+      <llr id="LLR-FRM-14">
+        <text><![CDATA[When the SDD module edit form opens (via `editPayload` or `resolveFormParams`), the `formData` / `initial` object passed to the webview shall include all child element fields declared in the XSD `<ui:form>` annotation (`purpose`, `responsibility`, `data_structures`, `algorithm`) in addition to the attribute fields (`path`, `title`). Multi-valued children (e.g. multiple `<responsibility>` elements) shall be joined with newline separators into a single string so the textarea widget displays them as a block.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-026" name="Structured Form Editing"/>
+          <trace target="HLR" ref="HLR-022" name="Project Spec Tree View"/>
         </traces>
       </llr>
       <llr id="LLR-FRM-12">
@@ -4878,7 +4897,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="25">
+    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="28">
       <header><![CDATA[Phase 3 tests for the pure `buildOperations` helper exported from FormPanelProvider, the `computeCoverage` inline summary, `resolveFormParams` coverage-link navigation, plus `package.json` contribution-point assertions. Pins the JSON Patch shape the form panel posts to the sidecar without needing the VS Code webview API.]]></header>
       <test name="emits a single add op with @attr keys when in add mode">
         <purpose><![CDATA[Pins LLR-FRM-03: in add mode the helper emits exactly one `add` op whose value uses the `@attr` / bare-key convention apply_edit understands.]]></purpose>
@@ -4942,6 +4961,20 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Pins LLR-FRM-06: callers that omit the `fields` argument retain the Phase 3 `id`/`name`-as-attribute behaviour so existing HLR/LLR call sites keep working unchanged.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-FRM-06"/>
+        </traces>
+      </test>
+      <test name="emits replace ops for SddModule attrs and child fields in edit mode">
+        <purpose><![CDATA[Pins LLR-FRM-06 + LLR-FRM-14: in edit mode, buildOperations emits one replace op per attribute (@path, @title) and one per child element body (purpose, responsibility, data_structures, algorithm) when the fields array classifies them correctly.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+          <trace target="LLR" ref="LLR-FRM-14"/>
+        </traces>
+      </test>
+      <test name="emits replace ops for StpFixture attrs in edit mode">
+        <purpose><![CDATA[Pins LLR-FRM-06 + LLR-FRM-07: in edit mode, buildOperations emits replace ops for StpFixture's @name and @source attributes.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-06"/>
+          <trace target="LLR" ref="LLR-FRM-07"/>
         </traces>
       </test>
       <test name="declares one walkthrough with seven steps in the documented order">
@@ -5019,8 +5052,21 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-FRM-11"/>
         </traces>
       </test>
-      <test name="resolves an SDD module locator to form params">
-        <purpose><![CDATA[Pins LLR-FRM-11: `resolveFormParams` maps `{tag:'module', value:'3.1'}` to an `OpenFormParams` with `type='SddModule'` and `basePath='/sdd/modules/module[path=3.1]'`.]]></purpose>
+      <test name="resolves an SDD module locator to form params with child fields">
+        <purpose><![CDATA[Pins LLR-FRM-11 + LLR-FRM-14: `resolveFormParams` maps `{tag:'module', value:'3.1'}` to an `OpenFormParams` with `type='SddModule'`, `basePath='/sdd/modules/module[path=3.1]'`, and `initial` containing all child element fields (purpose, responsibility, data_structures, algorithm).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+          <trace target="LLR" ref="LLR-FRM-14"/>
+        </traces>
+      </test>
+      <test name="resolves an STP fixture locator to form params">
+        <purpose><![CDATA[Pins LLR-FRM-11: `resolveFormParams` maps `{tag:'fixture', value:'rtps'}` to an `OpenFormParams` with `type='StpFixture'` and `basePath='/stp/integration_environment/fixture[name=rtps]'`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-11"/>
+        </traces>
+      </test>
+      <test name="returns undefined for a non-existent fixture">
+        <purpose><![CDATA[Pins LLR-FRM-11: when the locator targets a fixture name that does not exist in the parsed project, `resolveFormParams` returns `undefined`.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-FRM-11"/>
         </traces>
@@ -5032,7 +5078,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
       <test name="returns undefined for an unknown tag">
-        <purpose><![CDATA[Pins LLR-FRM-11: when the locator's `tag` is not one of the recognised item types (`hlr`, `llr`, `test`, `module`), `resolveFormParams` returns `undefined`.]]></purpose>
+        <purpose><![CDATA[Pins LLR-FRM-11: when the locator's `tag` is not one of the recognised item types (`hlr`, `llr`, `test`, `module`, `fixture`), `resolveFormParams` returns `undefined`.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-FRM-11"/>
         </traces>
@@ -5539,7 +5585,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/treeLogic.test.ts" role="unit-ts" count="25">
+    <file path="tools/vscode-project-xml/test/unit/treeLogic.test.ts" role="unit-ts" count="29">
       <header><![CDATA[Tier-1 unit tests for the Phase 10 extracted tree logic in tools/vscode-project-xml/src/treeView/treeLogic.ts. Drives `decorate`, `renderLabel`, `labelSeverity`, `groupSeverity`, `buildLocator`, `filterTraces`, `propagateBadgeSeverity`, and `buildTopLevelDescriptors` with hand-rolled ParsedProject / UiHintsIndex data so tree-structure logic is pinned without a VS Code host.]]></header>
       <test name="prepends badge when present">
         <purpose><![CDATA[Pins LLR-HUM-01: decorate prepends the badge emoji to the label.]]></purpose>
@@ -5574,6 +5620,42 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Pins LLR-HUM-01 + LLR-PSP-01: buildTopLevelDescriptors creates descriptor nodes for all payload groups.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-HUM-01"/>
+          <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="SDD module editArgs includes child element fields">
+        <purpose><![CDATA[Pins LLR-FRM-14 + LLR-PSP-07: buildSddDescriptor populates editArgs.formData with all child element fields (purpose, responsibility, data_structures, algorithm) so the edit form opens pre-filled with existing content.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-14"/>
+          <trace target="LLR" ref="LLR-PSP-07"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="STP descriptor shows fixtures as editable children">
+        <purpose><![CDATA[Pins LLR-PSP-10: buildStpDescriptor renders fixtures as collapsible children with editArgs carrying type='StpFixture', correct basePath, and formData with name/source fields.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-10"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="STP descriptor shows empty state when no STP section">
+        <purpose><![CDATA[Pins LLR-PSP-10: when no STP section exists, the node renders as 'STP (empty)' with no children and no contextValue.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-10"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="STP descriptor shows 0 fixtures when STP exists but has no fixtures">
+        <purpose><![CDATA[Pins LLR-PSP-10: when STP exists but integration_environment has no fixtures, the node renders as 'STP (0 fixtures)' with stpGroup contextValue.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PSP-10"/>
+          <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="includes the typed builder types">
+        <purpose><![CDATA[Pins LLR-PSP-01: COVERED_TYPE_KEYS includes Hlr, Llr, Test, SddModule, and StpFixture so the generic builder skips them.]]></purpose>
+        <traces>
           <trace target="LLR" ref="LLR-PSP-01"/>
           <trace target="HLR" ref="HLR-064"/>
         </traces>

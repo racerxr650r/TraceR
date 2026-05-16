@@ -230,6 +230,65 @@ describe('buildOperations (Phase 4 — schema-driven attribute split)', () => {
             text: 'body',
         });
     });
+
+    it('emits replace ops for SddModule attrs and child fields in edit mode', () => {
+        const base = '/sdd/modules/module[path=src/foo.ts]';
+        const ops = buildOperations(
+            {
+                type: 'SddModule',
+                title: 'Edit src/foo.ts',
+                initial: {},
+                basePath: base,
+            },
+            {
+                path: 'src/foo.ts',
+                title: 'Foo Module',
+                purpose: 'Implements foo logic.',
+                responsibility: 'Owns foo state.',
+                data_structures: 'FooRecord',
+                algorithm: 'Binary search.',
+            },
+            [
+                { kind: 'attr',  target: 'path',            field: 'text',  required: false },
+                { kind: 'attr',  target: 'title',           field: 'text',  required: false },
+                { kind: 'child', target: 'purpose',         field: 'cdata', required: false },
+                { kind: 'child', target: 'responsibility',  field: 'cdata', required: false },
+                { kind: 'child', target: 'data_structures', field: 'cdata', required: false },
+                { kind: 'child', target: 'algorithm',       field: 'cdata', required: false },
+            ],
+        );
+        const paths = ops.map((o) => `${o.op} ${o.path}`).sort();
+        assert.deepEqual(paths, [
+            `replace ${base}/@path`,
+            `replace ${base}/@title`,
+            `replace ${base}/algorithm`,
+            `replace ${base}/data_structures`,
+            `replace ${base}/purpose`,
+            `replace ${base}/responsibility`,
+        ]);
+    });
+
+    it('emits replace ops for StpFixture attrs in edit mode', () => {
+        const base = '/stp/integration_environment/fixture[name=rtps]';
+        const ops = buildOperations(
+            {
+                type: 'StpFixture',
+                title: 'Edit rtps',
+                initial: {},
+                basePath: base,
+            },
+            { name: 'rtps', source: 'docker compose up' },
+            [
+                { kind: 'attr', target: 'name',   field: 'text', required: true },
+                { kind: 'attr', target: 'source', field: 'text', required: false },
+            ],
+        );
+        const paths = ops.map((o) => `${o.op} ${o.path}`).sort();
+        assert.deepEqual(paths, [
+            `replace ${base}/@name`,
+            `replace ${base}/@source`,
+        ]);
+    });
 });
 
 describe('package.json walkthrough contribution (Phase 4)', () => {
@@ -479,7 +538,21 @@ function makeNestedParsed(): ParsedProject {
             },
         ],
         sdd: {
-            modules: [{ path: '3.1', title: 'Module One' }],
+            modules: [{
+                path: '3.1',
+                title: 'Module One',
+                purpose: 'Does stuff.',
+                responsibilities: ['Owns the thing.', 'Cleans up.'],
+                data_structures: 'SomeStruct',
+                algorithm: 'DFS traversal.',
+            }],
+        },
+        stp: {
+            integration_environment: {
+                fixtures: [
+                    { name: 'rtps', source: 'docker compose up' },
+                ],
+            },
         },
     } as unknown as ParsedProject;
 }
@@ -516,7 +589,7 @@ describe('resolveFormParams (coverage link → open form)', () => {
         assert.equal(result.basePath, '/tests/file[path=test/test_alpha.py]/test[name=test_alpha]');
     });
 
-    it('resolves an SDD module locator to form params', () => {
+    it('resolves an SDD module locator to form params with child fields', () => {
         const result = resolveFormParams(
             makeNestedParsed(),
             { tag: 'module', value: '3.1' },
@@ -524,6 +597,34 @@ describe('resolveFormParams (coverage link → open form)', () => {
         assert.ok(result);
         assert.equal(result.type, 'SddModule');
         assert.equal(result.basePath, '/sdd/modules/module[path=3.1]');
+        const init = result.initial as Record<string, unknown>;
+        assert.equal(init.path, '3.1');
+        assert.equal(init.title, 'Module One');
+        assert.equal(init.purpose, 'Does stuff.');
+        assert.equal(init.responsibility, 'Owns the thing.\nCleans up.');
+        assert.equal(init.data_structures, 'SomeStruct');
+        assert.equal(init.algorithm, 'DFS traversal.');
+    });
+
+    it('resolves an STP fixture locator to form params', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'fixture', attr: 'name', value: 'rtps' },
+        );
+        assert.ok(result);
+        assert.equal(result.type, 'StpFixture');
+        assert.equal(result.basePath, '/stp/integration_environment/fixture[name=rtps]');
+        const init = result.initial as Record<string, unknown>;
+        assert.equal(init.name, 'rtps');
+        assert.equal(init.source, 'docker compose up');
+    });
+
+    it('returns undefined for a non-existent fixture', () => {
+        const result = resolveFormParams(
+            makeNestedParsed(),
+            { tag: 'fixture', attr: 'name', value: 'nonexistent' },
+        );
+        assert.equal(result, undefined);
     });
 
     it('returns undefined for a non-existent item', () => {
