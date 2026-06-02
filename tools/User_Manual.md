@@ -763,25 +763,27 @@ see the [Developer's Guide](Developers_Guide.md).
 
 ## Agents and Prompts
 
-TraceR ships reusable VS Code agent and prompt files under
+When you initialise a project with **Project Spec: Initialise
+Project.xml…**, the extension automatically installs a set of
+reusable agent and prompt files into your workspace under
 `.github/agents/` and `.github/prompts/`. These work with AI
 coding assistants (such as GitHub Copilot) that support agent
 and prompt discovery.
 
-### Agents (`.github/agents/`)
+Existing files are **never overwritten**, so your own
+customisations are always preserved.
+
+### Agents installed into your workspace
 
 Agents are interactive — they ask questions and guide you
 through a task.
 
 | Agent | Purpose |
 | ----- | ------- |
-| **ci.agent.md** | Create and maintain GitHub Actions workflows. Presents a menu of common workflow categories (CI, code quality, releases, PR automation, etc.) and generates the YAML. |
-| **makefile.agent.md** | Create and maintain Makefiles. Prompts for targets, implements them with the self-documenting help hack (`make help` lists all targets). |
-| **TracerDevelop.agent.md** | Project-specific development agent. Expert in the TraceR architecture (Python tools, VS Code extension, schema, sidecar, AI pipeline). Use for implementing features. |
-| **build.agent.md** | Build the VS Code extension (`npm run build`). |
-| **package.agent.md** | Package the extension into a `.vsix` (delegates to build, then runs `vsce package`). |
+| **ci.agent.md** | Create and maintain GitHub Actions workflows. Presents a menu of common workflow categories (CI, code quality, releases, PR automation, etc.) and generates the YAML. Works for any language or framework. |
+| **makefile.agent.md** | Create and maintain Makefiles. Asks what targets you need, implements them with the self-documenting help hack (`make help` lists all targets). Works for any project type. |
 
-### Prompts (`.github/prompts/`)
+### Prompts installed into your workspace
 
 Prompts are automated workflows — they execute a fixed sequence of
 steps with approval gates.
@@ -789,32 +791,60 @@ steps with approval gates.
 | Prompt | Purpose |
 | ------ | ------- |
 | **UpdateDocs.prompt.md** | Scan the current branch's changes and update spec documents (SDD, HLRs, LLRs, Tests in Project.xml; SDP, SAR, User Manual, Developers Guide) to match the work done. |
-| **PR.prompt.md** | Update the SDP status, generate a release-note-quality commit message, commit, push, and open a pull request. |
+| **PR.prompt.md** | Update the SDP status, run static analysis, triage Dependabot alerts, generate a release-note-quality commit message, commit, push, and open a pull request. |
 | **PrepRelease.prompt.md** | Prepare a release: bump VERSION, triage Dependabot alerts (dismiss with justification where possible), update the Vulnerability Report, commit, push, and open a release PR. |
-| **Release.prompt.md** | Create a GitHub Release using the version from VERSION, with auto-generated categorised release notes. |
+| **Release.prompt.md** | Create a GitHub Release using the version from VERSION, with auto-generated categorised release notes. Optionally attaches build artefacts. |
+
+All prompts are generic — they discover project paths dynamically
+and work for any project type (embedded C, Python, TypeScript, etc.)
+that uses TraceR to maintain a `Project.xml`.
 
 ### Using agents and prompts
 
 In VS Code with GitHub Copilot, agents and prompts appear in the
-Chat panel. Type `@` to see available agents, or use the prompt
-picker to select a prompt. They can also be invoked from the
-command palette.
+Chat panel. Use the prompt picker (the attachment icon in the
+Chat input box) to select a prompt and run it. Agents appear when
+you type `@` in the Chat panel.
 
-All prompts are generic — they discover project paths dynamically
-and work in any repository that uses TraceR to maintain a
-`Project.xml`.
+### Retrieving installed files manually
 
-## Appendix A: AI Skill Reference (SKILL.md)
+If you created your project before this feature existed, or need
+to reinstall the files, copy them from the extension bundle:
+
+```
+~/.vscode/extensions/tracer.vscode-project-xml-<version>/
+    dist/github/prompts/   ← copy to .github/prompts/
+    dist/github/agents/    ← copy to .github/agents/
+    media/skills/tracer/   ← copy to .github/skills/tracer/
+```
+
+## Appendix A: AI Scaffolding Reference
 
 When you initialise a new project with **Project Spec: Initialise
-Project.xml…**, the extension automatically copies a
-**SKILL.md** file into `.github/skills/tracer/SKILL.md` in your
-workspace. This file is an AI-agent skill definition — AI coding
-assistants (such as GitHub Copilot) that support skill discovery
-will read it automatically and learn how to work with your
-TraceR project.
+Project.xml…**, the extension installs three categories of AI
+scaffolding into your workspace:
 
-### What the skill file contains
+1. **Skill** (`.github/skills/tracer/SKILL.md`) — passive guidance
+   that AI agents read automatically whenever they work in your
+   project.
+2. **Prompts** (`.github/prompts/`) — automated multi-step
+   workflows for PR submission, release preparation, and spec
+   maintenance.
+3. **Agents** (`.github/agents/`) — interactive task assistants
+   for CI workflow authoring and Makefile maintenance.
+
+All three are described in the [Agents and Prompts](#agents-and-prompts)
+section. The remainder of this appendix covers the SKILL.md in
+depth.
+
+### SKILL.md — TraceR workflow guidance
+
+The **SKILL.md** file at `.github/skills/tracer/SKILL.md` is an
+AI-agent skill definition — AI coding assistants (such as GitHub
+Copilot) that support skill discovery will read it automatically
+and learn how to work with your TraceR project.
+
+### What SKILL.md contains
 
 The SKILL.md teaches AI agents:
 
@@ -837,22 +867,12 @@ The SKILL.md teaches AI agents:
   generated files, forgetting traces, not rendering after edits),
   written so the AI agent avoids them too.
 
-### When to use it
+### How the skill works
 
 You don't need to do anything — the skill file works passively. As
 long as it's at `.github/skills/tracer/SKILL.md`, any AI agent
 that supports VS Code skills will discover it and apply the
 guidance when you ask it to work on your TraceR project.
-
-If you're using a project that was created before this feature
-existed, you can copy the file manually from the extension:
-
-```
-~/.vscode/extensions/tracer.vscode-project-xml-<version>/
-    media/skills/tracer/SKILL.md
-```
-
-…into your workspace at `.github/skills/tracer/SKILL.md`.
 
 ### Customising the skill
 
