@@ -792,8 +792,7 @@ steps with approval gates.
 | ------ | ------- |
 | **UpdateDocs.prompt.md** | Scan the current branch's changes and update spec documents (SDD, HLRs, LLRs, Tests in Project.xml; SDP, SAR, User Manual, Developers Guide) to match the work done. |
 | **PR.prompt.md** | Update the SDP status, run static analysis, triage Dependabot alerts, generate a release-note-quality commit message, commit, push, and open a pull request. |
-| **PrepRelease.prompt.md** | Prepare a release: bump VERSION, triage Dependabot alerts (dismiss with justification where possible), update the Vulnerability Report, commit, push, and open a release PR. |
-| **Release.prompt.md** | Create a GitHub Release using the version from VERSION, with auto-generated categorised release notes. Optionally attaches build artefacts. |
+| **Release.prompt.md** | Full release workflow: create `release/<version>` branch, bump VERSION, triage Dependabot alerts, update VR.md, commit and push, open a PR, wait for CI to pass, tag, publish the GitHub Release, merge back to the integration branch, and bump VERSION for the next cycle. |
 
 All prompts are generic — they discover project paths dynamically
 and work for any project type (embedded C, Python, TypeScript, etc.)
