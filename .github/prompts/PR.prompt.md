@@ -44,28 +44,38 @@ Perform the following steps in order. Stop and report if any step fails.
 
 ## 3. Run static analysis and update doc/SAR.md (if SAR exists)
 
-- Run the full static analysis suite: `make -C tools analyze`.
-  This runs Bandit, pip-audit, ESLint, npm audit, and Semgrep and
-  produces JSON reports under `test_reports/` plus a consolidated
-  `test_reports/analyze-report.md`.
-- Read the generated `test_reports/analyze-report.md` (the summary table
-  and per-tool detail sections).
-- **Check the CI error gate before accepting any findings.** Run:
+- Check whether the project's Makefile has an `analyze` target:
+  ```
+  grep -n '^analyze' tools/Makefile 2>/dev/null
+  ```
+  If it does, run the full static analysis suite:
+  ```
+  make -C tools analyze
+  ```
+  This produces reports under `test_reports/` (check the Makefile for the
+  exact output location and which tools are configured for this project).
+  If the project uses a different mechanism (a CI script, `tox`, a
+  `scripts/lint.sh`, etc.), adapt accordingly.
+- Read the generated analysis report. For TraceR-scaffolded projects the
+  consolidated report is `test_reports/analyze-report.md`.
+
+- **Check the CI error gate before accepting any findings.**
+  If the project has an `analyze-check-errors` target, run:
   ```
   make -C tools analyze-check-errors
   ```
-  This re-runs `analyze_report.py --exit-code` using the same logic as
-  CI. If it exits non-zero, the commit will fail CI — the blocking
-  findings **must be fixed** (not merely accepted) before proceeding.
-  The gate blocks on:
-  - Bandit severity HIGH (any count > 0)
-  - ESLint errors > 0
-  - npm audit **critical or high** (any count > 0)
-  - Semgrep ERROR-level rules (any count > 0)
-  pip-audit findings are informational only and do **not** block CI.
-  For npm audit HIGH/critical findings in dev/transitive deps, try
-  `npm audit fix` in the relevant directory first; if that resolves them,
-  update `package-lock.json` and re-run the analysis before committing.
+  This enforces the same thresholds as CI. If it exits non-zero, the
+  blocking findings **must be fixed** (not merely accepted) before
+  proceeding. Inspect the project's `tools/analyze_report.py` (or
+  equivalent gate script) to see the exact thresholds — common blocking
+  criteria are:
+  - SAST findings at **HIGH** severity or above
+  - Linter **errors** (warnings are typically non-blocking)
+  - Dependency audit findings at **critical** or **high** severity
+  For dependency audit HIGH/critical findings in dev-only or transitive
+  deps, try the tool's automatic fix command first (e.g. `npm audit fix`,
+  `pip-audit --fix`) — this often resolves CVEs without changing direct
+  dependency versions. Update any lockfiles and re-run before committing.
 - If `doc/SAR.md` exists, update it:
   - **§6 Static Analysis Findings** — Replace the findings table with the
     current results. For each finding, set a disposition:

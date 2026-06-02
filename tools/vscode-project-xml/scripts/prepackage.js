@@ -55,6 +55,22 @@ const REPO_ROOT = path.resolve(TOOLS_SRC, '..');                 // project root
 const SCREENSHOTS_SRC = path.join(REPO_ROOT, 'images', 'screenshots');
 const SCREENSHOTS_DST_REL = path.join('..', 'images', 'screenshots');  // relative to DIST
 
+// Generic prompts and agents installable into any project that uses TraceR.
+// TraceR-internal agents (TracerDevelop, build, package) are intentionally
+// excluded — they are only meaningful inside this repository.
+const GITHUB_SRC = path.join(REPO_ROOT, '.github');
+const DIST_GITHUB = path.join(EXT_ROOT, 'dist', 'github');
+const GENERIC_PROMPTS = [
+    'PR.prompt.md',
+    'PrepRelease.prompt.md',
+    'Release.prompt.md',
+    'UpdateDocs.prompt.md',
+];
+const GENERIC_AGENTS = [
+    'ci.agent.md',
+    'makefile.agent.md',
+];
+
 /** Recursively remove a directory if it exists. */
 function rmrf(target) {
     if (!fs.existsSync(target)) {
@@ -179,6 +195,29 @@ function main() {
     // Install third-party Python packages into dist/python/ so the sidecar
     // starts successfully in any workspace, not just the TraceR dev env.
     installPythonDeps(DIST);
+
+    // Copy generic prompts and agents into dist/github/ so initProject can
+    // install them into new workspaces without needing the source repo.
+    const distPrompts = path.join(DIST_GITHUB, 'prompts');
+    const distAgents  = path.join(DIST_GITHUB, 'agents');
+    fs.mkdirSync(distPrompts, { recursive: true });
+    fs.mkdirSync(distAgents,  { recursive: true });
+    for (const name of GENERIC_PROMPTS) {
+        const src = path.join(GITHUB_SRC, 'prompts', name);
+        if (fs.existsSync(src)) {
+            fs.copyFileSync(src, path.join(distPrompts, name));
+        }
+    }
+    for (const name of GENERIC_AGENTS) {
+        const src = path.join(GITHUB_SRC, 'agents', name);
+        if (fs.existsSync(src)) {
+            fs.copyFileSync(src, path.join(distAgents, name));
+        }
+    }
+    process.stdout.write(
+        `prepackage: copied ${GENERIC_PROMPTS.length} prompts and ` +
+        `${GENERIC_AGENTS.length} agents into dist/github/\n`,
+    );
 
     const version = readSchemaVersion(path.join(DIST, 'project.xsd'));
     fs.writeFileSync(path.join(DIST, '.bundle_version'), `${version}\n`, 'utf8');
