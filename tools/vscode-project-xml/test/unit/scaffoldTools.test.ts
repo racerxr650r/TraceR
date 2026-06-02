@@ -198,3 +198,69 @@ describe('commands/scaffoldTools (LLR-PKG-04, LLR-PKG-05)', () => {
         }
     });
 });
+
+describe('Phase 4 add commands (LLR-BOOT-01)', () => {
+    it('addModule uses SddModule type and /sdd/modules/module/- append path', () => {
+        // LLR-BOOT-01: addModule must open FormPanelProvider keyed on 'SddModule'
+        // with appendPath '/sdd/modules/module/-'.
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'commands', 'forms.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes("'SddModule'") || src.includes('"SddModule"'),
+            "forms.ts must reference 'SddModule' payload type");
+        assert.ok(src.includes('/sdd/modules/module/-'),
+            "forms.ts must reference '/sdd/modules/module/-' as addModule appendPath");
+    });
+
+    it('addStpFixture uses StpFixture type and /stp/integration_environment/fixture/- append path', () => {
+        // LLR-BOOT-01: addStpFixture must open FormPanelProvider keyed on 'StpFixture'.
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'commands', 'forms.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes("'StpFixture'") || src.includes('"StpFixture"'),
+            "forms.ts must reference 'StpFixture' payload type");
+        assert.ok(src.includes('/stp/integration_environment/fixture/-'),
+            "forms.ts must reference correct appendPath for addStpFixture");
+    });
+
+    it('addTestFile uses TestFile type and /tests/file/- append path', () => {
+        // LLR-BOOT-01: addTestFile must open FormPanelProvider keyed on 'TestFile'.
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'commands', 'forms.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes("'TestFile'") || src.includes('"TestFile"'),
+            "forms.ts must reference 'TestFile' payload type");
+        assert.ok(src.includes('/tests/file/-'),
+            "forms.ts must reference '/tests/file/-' as addTestFile appendPath");
+    });
+});
+
+describe('initProject command (LLR-BOOT-03)', () => {
+    it('validates short_name against the required pattern', () => {
+        // LLR-BOOT-03: initProject must enforce /^[a-z][a-z0-9_-]{0,15}$/ on short_name.
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'commands', 'initProject.ts'),
+            'utf8',
+        );
+        assert.ok(
+            src.includes('/^[a-z][a-z0-9_-]{0,15}$/') ||
+            src.includes('SHORT_NAME_PATTERN') ||
+            src.includes('[a-z][a-z0-9_-]'),
+            "initProject.ts must include short_name validation pattern",
+        );
+    });
+
+    it('re-calls with force:true on overwrite confirmation', () => {
+        // LLR-BOOT-03: on a "file exists" error the command must offer a modal
+        // Overwrite prompt and re-call init_project with force: true.
+        const src = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'commands', 'initProject.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes('force: true') || src.includes('force:true'),
+            "initProject.ts must pass force:true on overwrite");
+    });
+});

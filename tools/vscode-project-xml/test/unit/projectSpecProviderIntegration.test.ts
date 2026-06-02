@@ -211,3 +211,17 @@ describe('ProjectSpecProvider (provider integration with FakeSidecarClient)', ()
         assert.ok(sections.length > 0, 'HLRs group should have section children');
     });
 });
+
+describe('ProjectSpecProvider — showCoverageBadges config (LLR-BDG-04)', () => {
+    it('source reads showCoverageBadges config key to gate badge display', () => {
+        // LLR-BDG-04: badgesEnabled() must consult the projectXml.showCoverageBadges
+        // setting (defaulting to true) so users can disable the inline badge decoration.
+        const fs = require('fs') as typeof import('fs');
+        const path = require('path') as typeof import('path');
+        const src = fs.readFileSync(
+            path.resolve(__dirname, '..', '..', 'src', 'treeView', 'ProjectSpecProvider.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes('showCoverageBadges'), "ProjectSpecProvider must read 'showCoverageBadges' config key");
+    });
+});

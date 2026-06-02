@@ -168,4 +168,53 @@ describe('LintDiagnosticsProvider (provider integration)', () => {
         // After clear, the collection should have no entries.
         // We verify the provider doesn't throw and the collection was cleared.
     });
+
+    it('maps error/warning/note severity to DiagnosticSeverity correctly', async () => {
+        // LLR-LDP-02: errors→Error, warnings→Warning, notes→Information.
+        sidecar.responses.lint = FINDINGS_RESULT;
+        sidecar.responses.uiHintsIndex = UI_HINTS;
+        await provider.run();
+        const coll = vscodeTest.diagnosticCollections().find((c) => c.name === SOURCE);
+        assert.ok(coll, 'diagnostic collection should exist');
+        const allDiags: import('./__mocks__/vscode').Diagnostic[] = [];
+        coll.forEach((_uri, diags) => allDiags.push(...diags));
+        const errorDiags = allDiags.filter((d) => d.severity === DiagnosticSeverity.Error);
+        const warnDiags = allDiags.filter((d) => d.severity === DiagnosticSeverity.Warning);
+        const infoDiags = allDiags.filter((d) => d.severity === DiagnosticSeverity.Information);
+        assert.ok(errorDiags.length >= 1, 'should have at least one Error diagnostic');
+        assert.ok(warnDiags.length >= 1, 'should have at least one Warning diagnostic');
+        assert.ok(infoDiags.length >= 1, 'should have at least one Information diagnostic');
+    });
+
+    it('sets source to DIAGNOSTIC_SOURCE on every diagnostic', async () => {
+        // LLR-LDP-03: each Diagnostic has source = "projectXml" and a defined range.
+        sidecar.responses.lint = FINDINGS_RESULT;
+        sidecar.responses.uiHintsIndex = UI_HINTS;
+        await provider.run();
+        const coll = vscodeTest.diagnosticCollections().find((c) => c.name === SOURCE);
+        assert.ok(coll, 'diagnostic collection should exist');
+        const allDiags: import('./__mocks__/vscode').Diagnostic[] = [];
+        coll.forEach((_uri, diags) => allDiags.push(...diags));
+        assert.ok(allDiags.length > 0, 'should have diagnostics');
+        for (const d of allDiags) {
+            assert.strictEqual(d.source, SOURCE, `diagnostic source should be '${SOURCE}'`);
+            assert.ok(d.range !== undefined, 'diagnostic range should be defined');
+        }
+    });
+
+    it('publishes a single top-of-file Error when sidecar lint rejects', async () => {
+        // LLR-LDP-04: rejection (interpreter missing, sidecar exited) → one
+        // top-of-file Error diagnostic carrying the failure message.
+        sidecar.responses.lint = new Error('python not found');
+        sidecar.responses.uiHintsIndex = UI_HINTS;
+        await provider.run();
+        const coll = vscodeTest.diagnosticCollections().find((c) => c.name === SOURCE);
+        assert.ok(coll, 'diagnostic collection should exist');
+        const allDiags: import('./__mocks__/vscode').Diagnostic[] = [];
+        coll.forEach((_uri, diags) => allDiags.push(...diags));
+        assert.strictEqual(allDiags.length, 1, 'should publish exactly one diagnostic on failure');
+        assert.strictEqual(allDiags[0].severity, DiagnosticSeverity.Error, 'failure diagnostic must be Error');
+        assert.strictEqual(allDiags[0].range.start.line, 0, 'failure diagnostic must be at line 0');
+        assert.ok(allDiags[0].message.includes('python not found'), 'failure message should be included');
+    });
 });

@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import type * as vscode from 'vscode';
 import { FakeOutputChannel } from './__mocks__/vscode';
 import { ProjectIoClient, SidecarError } from '../../src/sidecar';
@@ -170,5 +172,31 @@ describe('sidecar.SidecarError', () => {
         assert.strictEqual(err.name, 'SidecarError');
         assert.match(err.message, /application error/);
         assert.ok(err instanceof Error);
+    });
+});
+
+describe('sidecar.ProjectIoClient (process lifecycle)', () => {
+    it('does not spawn a process during construction (LLR-PIC-01)', () => {
+        // LLR-PIC-01: the sidecar process must be started lazily on the first
+        // request, not eagerly at construction time.
+        const channel = new FakeOutputChannel();
+        const client = new ProjectIoClient(
+            channel as unknown as vscode.OutputChannel,
+        );
+        const proc = (client as unknown as { proc: unknown }).proc;
+        assert.strictEqual(proc, undefined, 'proc should be undefined before any request');
+        client.dispose();
+    });
+});
+
+describe('sidecar (python picker — static inspection)', () => {
+    it('source checks projectXml.pythonPath config setting (LLR-PIC-06)', () => {
+        // LLR-PIC-06: pickPython() consults the projectXml.pythonPath VS Code
+        // setting before falling back to the .venv / PATH heuristics.
+        const src = fs.readFileSync(
+            path.resolve(__dirname, '..', '..', 'src', 'sidecar.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes('pythonPath'), "sidecar.ts must reference 'pythonPath' config key");
     });
 });

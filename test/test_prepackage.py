@@ -126,3 +126,50 @@ class TestVscodeignore(unittest.TestCase):
                 stripped, {"dist", "dist/", "dist/**", "dist/**/*"},
                 f".vscodeignore line `{stripped}` would drop the bundled sidecar",
             )
+
+
+class TestMakefileTargets(unittest.TestCase):
+    """HLR-037..040: Makefile defines required build/install targets."""
+
+    _MAKEFILE = REPO_ROOT / "tools" / "Makefile"
+
+    def _makefile_targets(self) -> set:
+        text = self._MAKEFILE.read_text(encoding="utf-8")
+        return set(re.findall(r"^([a-z][a-z0-9_-]*):", text, re.MULTILINE))
+
+    def test_cross_platform_prereqs_targets_exist(self) -> None:
+        # HLR-037: Makefile exposes per-distro prereq install targets.
+        targets = self._makefile_targets()
+        for t in ("prereqs-debian", "prereqs-fedora", "prereqs-arch", "prereqs-macos"):
+            self.assertIn(t, targets, f"Missing Makefile target: {t}")
+
+    def test_prereqs_ci_target_exists(self) -> None:
+        # HLR-038: slim CI prereq target.
+        self.assertIn("prereqs-ci", self._makefile_targets())
+
+    def test_ci_umbrella_target_exists(self) -> None:
+        # HLR-039: CI umbrella target.
+        self.assertIn("ci", self._makefile_targets())
+
+    def test_bootstrap_target_exists(self) -> None:
+        # HLR-040: bootstrap target.
+        self.assertIn("bootstrap", self._makefile_targets())
+
+
+class TestPackageJson(unittest.TestCase):
+    """Tests for package.json static properties (no build required)."""
+
+    _PKG = EXT_ROOT / "package.json"
+
+    def test_activation_events_include_required_commands(self) -> None:
+        # LLR-PKG-03: activationEvents must include initProject and
+        # scaffoldTools commands so the extension activates when invoked
+        # from the command palette before any workspace file is open.
+        import json
+        pkg = json.loads(self._PKG.read_text(encoding="utf-8"))
+        events = set(pkg.get("activationEvents", []))
+        for cmd in (
+            "onCommand:projectXml.initProject",
+            "onCommand:projectXml.scaffoldTools",
+        ):
+            self.assertIn(cmd, events, f"activationEvents missing: {cmd}")

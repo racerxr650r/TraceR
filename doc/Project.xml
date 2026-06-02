@@ -3826,7 +3826,7 @@ and shall not block the resolution flow.]]></text>
   </llrs>
   <!-- Test sources (see tools/Developers_Guide.md §7). -->
   <tests>
-    <file path="test/test_render_doc.py" role="unit" count="23">
+    <file path="test/test_render_doc.py" role="unit" count="25">
       <header><![CDATA[Tests for the importable surface of tools/render_doc.py: init_project (project bootstrap), load_project / parse_project_to_dict (the renderer's data surface), and render_document (the rendering primitive that the CLI, the JSON-RPC sidecar, and the extension's preview pane all consume).]]></header>
       <test name="test_creates_xml_and_pvd">
         <purpose><![CDATA[Verifies LLR-INI-01 and LLR-INI-02: `init_project` writes a schema-1.1 `Project.xml` skeleton with `name`, `short_name`, and `author` substituted, plus a `PVD.md` derived from the template with the placeholder text replaced.]]></purpose>
@@ -3997,8 +3997,20 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-PPD-07"/>
         </traces>
       </test>
+      <test name="test_parse_project_to_dict_does_not_import_lxml">
+        <purpose><![CDATA[Verifies LLR-PPD-05: `render_doc` module does not import `lxml`; the XML parsing hot-path uses only `xml.etree.ElementTree`-compatible libraries so a fresh checkout needs no heavy XML dependency.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PPD-05"/>
+        </traces>
+      </test>
+      <test name="test_render_document_does_not_import_lxml">
+        <purpose><![CDATA[Verifies LLR-RND-05: `render_document` hot path depends only on stdlib + Jinja2; no `lxml` import is permitted.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RND-05"/>
+        </traces>
+      </test>
     </file>
-    <file path="test/test_lint_project.py" role="unit" count="22">
+    <file path="test/test_lint_project.py" role="unit" count="23">
       <header><![CDATA[Tests for the importable surface of tools/lint_project.py: the `lint` entry point, the `Findings` dataclass, and the human-readable `Findings.report` formatter consumed by both the CLI and the JSON-RPC sidecar.]]></header>
       <test name="test_lint_returns_findings_object">
         <purpose><![CDATA[Verifies LLR-LNT-01: `lint` returns a `Findings` instance (not a tuple, not a dict) so callers consume `.errors`, `.warnings`, `.notes`, and `.ok` by attribute.]]></purpose>
@@ -4037,6 +4049,7 @@ and shall not block the resolution flow.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
           <trace target="HLR" ref="HLR-014" name="Coverage-Gap Reporting"/>
+          <trace target="HLR" ref="HLR-047" name="Self-Verification of TraceR's Own Spec Stack"/>
         </traces>
       </test>
       <test name="test_report_writes_to_supplied_stream">
@@ -4151,6 +4164,12 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Verifies LLR-SEM-06: duplicate `<document id="..."/>` entries within `<metadata>` are reported as errors naming the duplicated id.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-SEM-06"/>
+        </traces>
+      </test>
+      <test name="test_mixed_prefix_warning_when_dominant_prefix_established">
+        <purpose><![CDATA[Verifies LLR-SEM-07: check_semantics emits a mixed-prefix warning when a function contains a dominant prefix (≥4 LLRs) alongside a minority prefix (≤2 LLRs).]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-SEM-07"/>
         </traces>
       </test>
       <test name="test_xsd_reserves_ui_namespace_prefix">
@@ -4268,6 +4287,7 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-SRV-06"/>
           <trace target="LLR" ref="LLR-SRV-07"/>
           <trace target="LLR" ref="LLR-MET-03"/>
+          <trace target="LLR" ref="LLR-AED-05"/>
         </traces>
       </test>
       <test name="test_dispatch_routes_through_methods_table">
@@ -4602,7 +4622,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/sidecar.test.ts" role="unit-ts" count="9">
+    <file path="tools/vscode-project-xml/test/unit/sidecar.test.ts" role="unit-ts" count="11">
       <header><![CDATA[Tier-1 unit tests for the line-framing and dispatch path of ProjectIoClient in tools/vscode-project-xml/src/sidecar.ts. The framing is driven directly by feeding bytes to the private onStdout hook and probing the private pending map; this keeps the tests host-free and independent of the spawned Python sidecar.]]></header>
       <test name="dispatches a complete response line to the matching pending request">
         <purpose><![CDATA[Verifies LLR-PIC-02: pending resolvers are keyed by the response `id`, so a complete response line resolves exactly the matching pending promise and clears it from the in-flight map.]]></purpose>
@@ -4656,6 +4676,18 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Verifies the `SidecarError` constructor contract that LLR-PIC-03 depends on: the error carries the JSON-RPC `code`, identifies as `SidecarError` via its `name`, preserves the `message`, and is an `Error` subclass.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PIC-03"/>
+        </traces>
+      </test>
+      <test name="does not spawn a process during construction (LLR-PIC-01)">
+        <purpose><![CDATA[Verifies LLR-PIC-01: the sidecar process must be started lazily on the first request, not eagerly at construction time. Asserts the private `proc` field is `undefined` immediately after `new ProjectIoClient(channel)`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-01"/>
+        </traces>
+      </test>
+      <test name="source checks projectXml.pythonPath config setting (LLR-PIC-06)">
+        <purpose><![CDATA[Verifies LLR-PIC-06: `pickPython()` consults the `projectXml.pythonPath` VS Code setting before falling back to the `.venv` / PATH heuristics. Asserts the source of `sidecar.ts` contains the string `pythonPath`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PIC-06"/>
         </traces>
       </test>
     </file>
@@ -4731,7 +4763,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/quickFixProvider.test.ts" role="unit-ts" count="9">
+    <file path="tools/vscode-project-xml/test/unit/quickFixProvider.test.ts" role="unit-ts" count="10">
       <header><![CDATA[Tier-1 unit tests for the payload-agnostic CodeActionProvider in tools/vscode-project-xml/src/codeActions/QuickFixProvider.ts. Drives the dispatcher with hand-rolled `vscode.Diagnostic` instances so each Finding.code surfaces exactly the right Quick Fix command — and asserts the provider source contains no payload element name, pinning the SDP §8 Phase 2.5c contract at the lowest tier.]]></header>
       <test name="contributes only the QuickFix code action kind">
         <purpose><![CDATA[Pins LLR-QFX-02: the provider declares only `CodeActionKind.QuickFix`, so VS Code never asks it for refactor or source actions outside its scope.]]></purpose>
@@ -4792,6 +4824,12 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-QFX-02"/>
         </traces>
       </test>
+      <test name="fixNoTest routes through sidecar.applyEdit, not WorkspaceEdit (LLR-ADD-02)">
+        <purpose><![CDATA[Verifies LLR-ADD-02: the no-test Quick Fix must call `ProjectIoClient.applyEdit` so the new `<test>` element passes the XSD + linter gate before the file is rewritten. Asserts the source of `quickFixes.ts` references `applyEdit`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ADD-02"/>
+        </traces>
+      </test>
     </file>
     <file path="test/test_quickfix_acceptance.py" role="acceptance" count="4">
       <header><![CDATA[Acceptance test for the SDP §8 Phase 2.5c contract: triggering each Finding.code value on the `<plan>` fixture surfaces the correct Quick Fix and applying the fix produces a clean re-lint. Each case mutates a copy of test/doc/Project.xml to introduce exactly one finding code, applies the equivalent text edit (mirroring what vscode.WorkspaceEdit would produce), and asserts the linter is clean afterwards.]]></header>
@@ -4828,7 +4866,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="test/test_project_edit.py" role="unit" count="14">
+    <file path="test/test_project_edit.py" role="unit" count="17">
       <header><![CDATA[Phase 3 tests for tools/project_edit.py — apply_edit and the JSON-Schema deriver. Builds an in-tmpdir Project.xml with a CDATA-bearing HLR, a comment, and a covering test, then exercises every supported operation kind plus the validate-then-write contract.]]></header>
       <test name="test_replace_attribute_writes_when_clean">
         <purpose><![CDATA[Pins LLR-AED-01 and LLR-AED-03: a `replace` op against `/hlrs/section[number=1]/hlr[id=HLR-001]/@name` rewrites the attribute and the file is written when the candidate lints clean.]]></purpose>
@@ -4892,6 +4930,24 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-ADD-01"/>
         </traces>
       </test>
+      <test name="test_next_free_llr_id_discovers_established_prefix">
+        <purpose><![CDATA[Verifies LLR-AITR-03: `next_free_llr_id` discovers the established LLR prefix from existing LLRs under the named function, reusing it instead of deriving a new one from the function name.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AITR-03"/>
+        </traces>
+      </test>
+      <test name="test_apply_edit_uses_atomic_os_replace">
+        <purpose><![CDATA[Verifies LLR-AED-04: `apply_edit` uses `os.replace` to swap the validated tmp file into place atomically, preventing partial-write corruption.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-04"/>
+        </traces>
+      </test>
+      <test name="test_apply_edit_normalizes_indentation">
+        <purpose><![CDATA[Verifies LLR-AED-06: after a successful edit, `apply_edit` re-parses and normalizes indentation via `_beautify` so AI-inserted elements receive consistent 2-space indentation.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-AED-06"/>
+        </traces>
+      </test>
       <test name="test_derive_hlr_form_schema_shape">
         <purpose><![CDATA[Pins LLR-FRM-01: `derive_form_schema("Hlr")` returns a JSON Schema whose properties match the `<ui:form>` field list, lifts the HLR id pattern from the XSD `HlrId` simple type, marks `id`/`name` required, and selects the textarea widget for the cdata-kind text body.]]></purpose>
         <traces>
@@ -4941,7 +4997,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="28">
+    <file path="tools/vscode-project-xml/test/unit/formPanel.test.ts" role="unit-ts" count="33">
       <header><![CDATA[Phase 3 tests for the pure `buildOperations` helper exported from FormPanelProvider, the `computeCoverage` inline summary, `resolveFormParams` coverage-link navigation, plus `package.json` contribution-point assertions. Pins the JSON Patch shape the form panel posts to the sidecar without needing the VS Code webview API.]]></header>
       <test name="emits a single add op with @attr keys when in add mode">
         <purpose><![CDATA[Pins LLR-FRM-03: in add mode the helper emits exactly one `add` op whose value uses the `@attr` / bare-key convention apply_edit understands.]]></purpose>
@@ -5127,6 +5183,36 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-FRM-11"/>
         </traces>
       </test>
+      <test name="checks isDirty before opening the form panel (LLR-FRM-02)">
+        <purpose><![CDATA[Verifies LLR-FRM-02: `FormPanelProvider.open()` must check `isDirty` on the Project.xml document before proceeding so unsaved edits are not silently discarded. Asserts `FormPanelProvider.ts` source contains `isDirty`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-02"/>
+        </traces>
+      </test>
+      <test name="generates a CSP nonce for the webview (LLR-FRM-04)">
+        <purpose><![CDATA[Verifies LLR-FRM-04: the webview HTML must carry a Content Security Policy nonce to prevent inline-script injection. Asserts `FormPanelProvider.ts` source contains `nonce-`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-04"/>
+        </traces>
+      </test>
+      <test name="translates AddItemButton to &quot;Add Trace&quot; (LLR-FRM-09)">
+        <purpose><![CDATA[Verifies LLR-FRM-09: the RJSF `translateString` callback must map `TranslatableString.AddItemButton` to the string `Add Trace`. Asserts `formMain.tsx` source contains the literal `Add Trace`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-09"/>
+        </traces>
+      </test>
+      <test name="collects SDD refs by filtering traces where target === SDD (LLR-FRM-10)">
+        <purpose><![CDATA[Verifies LLR-FRM-10: `snapshotRefIds()` builds the SDD reference list from `flat_hlrs` traces whose `target === 'SDD'`. Asserts `FormPanelProvider.ts` source contains the filter expression.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-10"/>
+        </traces>
+      </test>
+      <test name="id replace op is the last op in edit mode (LLR-FRM-13)">
+        <purpose><![CDATA[Verifies LLR-FRM-13: `buildReplaceOperations` collects the `idOp` separately and pushes it last so a rename does not invalidate the XPath selector used by the preceding replace operations.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-FRM-13"/>
+        </traces>
+      </test>
     </file>
     <file path="test/test_project_merge.py" role="unit" count="17">
       <test name="test_disjoint_adds_union">
@@ -5245,7 +5331,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="test/test_prepackage.py" role="unit" count="6">
+    <file path="test/test_prepackage.py" role="unit" count="11">
       <test name="test_prepackage_writes_required_python_files">
         <purpose><![CDATA[Pins LLR-PKG-01: every Python file the sidecar spawns (`project_io.py`, `render_doc.py`, `lint_project.py`, `project_edit.py`, `project_merge.py`, `project.xsd`) lands in `tools/vscode-project-xml/dist/python/` after `npm run prepackage`.]]></purpose>
         <traces>
@@ -5287,6 +5373,36 @@ and shall not block the resolution flow.]]></text>
           <trace target="LLR" ref="LLR-PKG-01"/>
           <trace target="LLR" ref="LLR-PKG-12"/>
           <trace target="HLR" ref="HLR-060"/>
+        </traces>
+      </test>
+      <test name="test_cross_platform_prereqs_targets_exist">
+        <purpose><![CDATA[Verifies HLR-037: `tools/Makefile` defines per-platform prereq targets (`prereqs-debian`, `prereqs-fedora`, `prereqs-arch`, `prereqs-macos`).]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-037"/>
+        </traces>
+      </test>
+      <test name="test_prereqs_ci_target_exists">
+        <purpose><![CDATA[Verifies HLR-038: `tools/Makefile` defines a `prereqs-ci` target for slim CI installs.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-038"/>
+        </traces>
+      </test>
+      <test name="test_ci_umbrella_target_exists">
+        <purpose><![CDATA[Verifies HLR-039: `tools/Makefile` defines a `ci` umbrella target that runs the full test suite.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-039"/>
+        </traces>
+      </test>
+      <test name="test_bootstrap_target_exists">
+        <purpose><![CDATA[Verifies HLR-040: `tools/Makefile` defines a `bootstrap` target for first-time repo setup.]]></purpose>
+        <traces>
+          <trace target="HLR" ref="HLR-040"/>
+        </traces>
+      </test>
+      <test name="test_activation_events_include_required_commands">
+        <purpose><![CDATA[Verifies LLR-PKG-03: `activationEvents` in `package.json` includes `onCommand:projectXml.initProject` and `onCommand:projectXml.scaffoldTools`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PKG-03"/>
         </traces>
       </test>
     </file>
@@ -5344,7 +5460,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/scaffoldTools.test.ts" role="unit-ts" count="6">
+    <file path="tools/vscode-project-xml/test/unit/scaffoldTools.test.ts" role="unit-ts" count="11">
       <header><![CDATA[Tier-1 unit tests for the Phase 6 workspace scaffolder in tools/vscode-project-xml/src/commands/scaffoldTools.ts. Exercises the recursive copy from a fake bundled `dist/python` tree into a temp workspace and pins the collision-prompt branches via the FakeWindow mock's `setNextChoice` hook.]]></header>
       <test name="writes every bundled file into the workspace tools/ when no collisions exist">
         <purpose><![CDATA[Pins LLR-PKG-04: a clean scaffold copies every file under the bundled `dist/python` tree (including nested directories) into the workspace's `<projectXml.toolsDir>` and reports the count via the result.]]></purpose>
@@ -5386,6 +5502,36 @@ and shall not block the resolution flow.]]></text>
         <traces>
           <trace target="LLR" ref="LLR-PKG-04"/>
           <trace target="HLR" ref="HLR-061"/>
+        </traces>
+      </test>
+      <test name="addModule uses SddModule type and /sdd/modules/module/- append path">
+        <purpose><![CDATA[Verifies LLR-BOOT-01: `addModule` must open `FormPanelProvider` keyed on `SddModule` with `appendPath '/sdd/modules/module/-'`. Asserts the source of `forms.ts` contains both strings.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-01"/>
+        </traces>
+      </test>
+      <test name="addStpFixture uses StpFixture type and /stp/integration_environment/fixture/- append path">
+        <purpose><![CDATA[Verifies LLR-BOOT-01: `addStpFixture` must open `FormPanelProvider` keyed on `StpFixture` with the correct `appendPath`. Asserts the source of `forms.ts` contains both strings.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-01"/>
+        </traces>
+      </test>
+      <test name="addTestFile uses TestFile type and /tests/file/- append path">
+        <purpose><![CDATA[Verifies LLR-BOOT-01: `addTestFile` must open `FormPanelProvider` keyed on `TestFile` with `appendPath '/tests/file/-'`. Asserts the source of `forms.ts` contains both strings.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-01"/>
+        </traces>
+      </test>
+      <test name="validates short_name against the required pattern">
+        <purpose><![CDATA[Verifies LLR-BOOT-03: `initProject` enforces `/^[a-z][a-z0-9_-]{0,15}$/` on `short_name`. Asserts the source of `initProject.ts` contains the pattern or the `SHORT_NAME_PATTERN` constant.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-03"/>
+        </traces>
+      </test>
+      <test name="re-calls with force:true on overwrite confirmation">
+        <purpose><![CDATA[Verifies LLR-BOOT-03: on a file-exists error `initProject` must offer a modal Overwrite prompt and re-call `init_project` with `force: true`. Asserts the source of `initProject.ts` contains `force: true`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BOOT-03"/>
         </traces>
       </test>
     </file>
@@ -5713,7 +5859,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/lintDiagnosticsProvider.test.ts" role="unit-ts" count="8">
+    <file path="tools/vscode-project-xml/test/unit/lintDiagnosticsProvider.test.ts" role="unit-ts" count="11">
       <header><![CDATA[Provider-level integration tests for `LintDiagnosticsProvider` using `FakeSidecarClient`. Exercises the full lint→diagnostics flow: sidecar calls, diagnostic publishing, error handling, uiHintsIndex caching, and clear/reset.]]></header>
       <test name="calls lint() and uiHintsIndex() on the sidecar">
         <purpose><![CDATA[Verifies that `run()` calls both `lint` and `uiHintsIndex` on the sidecar client with the correct `xml_path`.]]></purpose>
@@ -5774,8 +5920,26 @@ and shall not block the resolution flow.]]></text>
           <trace target="HLR" ref="HLR-064"/>
         </traces>
       </test>
+      <test name="maps error/warning/note severity to DiagnosticSeverity correctly">
+        <purpose><![CDATA[Verifies LLR-LDP-02: lint errors map to `DiagnosticSeverity.Error`, warnings to `Warning`, and notes to `Information`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-02"/>
+        </traces>
+      </test>
+      <test name="sets source to DIAGNOSTIC_SOURCE on every diagnostic">
+        <purpose><![CDATA[Verifies LLR-LDP-03: every published `Diagnostic` carries `source = &quot;projectXml&quot;` and an anchored single-line range derived from the finding's `line` field.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-03"/>
+        </traces>
+      </test>
+      <test name="publishes a single top-of-file Error when sidecar lint rejects">
+        <purpose><![CDATA[Verifies LLR-LDP-04: when the sidecar rejects the lint call, a single `DiagnosticSeverity.Error` diagnostic at line 0 is published so the error is visible in the Problems panel.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-LDP-04"/>
+        </traces>
+      </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/markdownPreviewProvider.test.ts" role="unit-ts" count="9">
+    <file path="tools/vscode-project-xml/test/unit/markdownPreviewProvider.test.ts" role="unit-ts" count="12">
       <header><![CDATA[Provider-level integration tests for `MarkdownPreviewProvider` using `FakeSidecarClient`. Exercises URI helpers, content rendering via sidecar, caching, cache invalidation, and error handling.]]></header>
       <test name="round-trips a doc id through URI and back">
         <purpose><![CDATA[Verifies that `previewUri(id)` → `previewDocId(uri)` round-trips correctly, confirming the `tracer-preview:` scheme and path encoding.]]></purpose>
@@ -5837,7 +6001,26 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Verifies that a sidecar render error is surfaced as a user-friendly message in the preview pane.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-MPP-01"/>
+          <trace target="LLR" ref="LLR-MPP-03"/>
           <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="renderAndPreview calls markStale before showing the preview (LLR-RAP-02)">
+        <purpose><![CDATA[Verifies LLR-RAP-02: `renderAndPreview` must call `preview.markStale(docId)` to invalidate the cache before dispatching `markdown.showPreviewToSide`. Asserts `render.ts` source contains both `markStale` and `showPreviewToSide`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RAP-02"/>
+        </traces>
+      </test>
+      <test name="renderAll uses withProgress and collects failures (LLR-RAL-02)">
+        <purpose><![CDATA[Verifies LLR-RAL-02: `renderAll` must wrap the batch render in `withProgress` and must continue past individual failures into a `failures[]` array. Asserts `render.ts` source contains both strings.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RAL-02"/>
+        </traces>
+      </test>
+      <test name="renderAll calls markStale for each rendered document (LLR-RAL-03)">
+        <purpose><![CDATA[Verifies LLR-RAL-03: `renderAll` must call `markStale` on the preview provider after rendering so each document's cached preview is refreshed. Asserts `render.ts` source contains `markStale`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-RAL-03"/>
         </traces>
       </test>
     </file>
@@ -5907,7 +6090,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="tools/vscode-project-xml/test/unit/projectSpecProviderIntegration.test.ts" role="unit-ts" count="8">
+    <file path="tools/vscode-project-xml/test/unit/projectSpecProviderIntegration.test.ts" role="unit-ts" count="9">
       <header><![CDATA[Provider-level integration tests for `ProjectSpecProvider.getChildren()` using `FakeSidecarClient`. Exercises the full sidecar→tree flow: `parseToJson` calls, top-level group building, item counts, caching, refresh, error handling, and placeholder nodes.]]></header>
       <test name="calls parseToJson on the sidecar when getting children">
         <purpose><![CDATA[Verifies that `getChildren()` calls `parseToJson` on the sidecar with the workspace's `xml_path`.]]></purpose>
@@ -5935,6 +6118,7 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Verifies that the provider caches the tree and does not re-call `parseToJson` on the second `getChildren()` invocation.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="LLR" ref="LLR-PSP-02"/>
           <trace target="HLR" ref="HLR-064"/>
         </traces>
       </test>
@@ -5942,6 +6126,7 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Verifies that `refresh()` clears the cached tree and fires `onDidChangeTreeData` so the tree re-fetches from the sidecar.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="LLR" ref="LLR-PSP-02"/>
           <trace target="HLR" ref="HLR-064"/>
         </traces>
       </test>
@@ -5956,6 +6141,7 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Verifies that a sidecar error produces a single error node with the failure message rather than throwing.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PSP-01"/>
+          <trace target="LLR" ref="LLR-PSP-04"/>
           <trace target="HLR" ref="HLR-064"/>
         </traces>
       </test>
@@ -5964,6 +6150,105 @@ and shall not block the resolution flow.]]></text>
         <traces>
           <trace target="LLR" ref="LLR-PSP-01"/>
           <trace target="HLR" ref="HLR-064"/>
+        </traces>
+      </test>
+      <test name="source reads showCoverageBadges config key to gate badge display">
+        <purpose><![CDATA[Verifies LLR-BDG-04: `badgesEnabled()` must consult the `projectXml.showCoverageBadges` setting (defaulting to `true`) so users can disable inline badge decoration. Asserts `ProjectSpecProvider.ts` source contains `showCoverageBadges`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-BDG-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/coverageCodeLens.test.ts" role="unit-ts" count="6">
+      <header><![CDATA[Tier-1 unit tests for the schema-driven lens-target resolver and the cache/inflight-coalescing behaviour of `CoverageCodeLensProvider`. Covers `getLensTargets`, `_SUPPORTED_LENS_KINDS`, `_RELATED_DISPATCH`, inflight coalescing (LLR-CCL-05), and cache-drop on `refresh()` (LLR-CCL-06).]]></header>
+      <test name="falls back to legacy hlr/llr/test triple when hints are missing">
+        <purpose><![CDATA[Pins the getLensTargets fallback: when no UiHintsIndex is supplied the resolver returns the hardcoded `hlr / llr / test` triple.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-01"/>
+        </traces>
+      </test>
+      <test name="returns only payloads that carry a supported lens kind">
+        <purpose><![CDATA[Pins the getLensTargets filtering: only UiHintEntry items whose `lenses` array contains a supported `kind` (`coverage` or `tracesCount`) are included in the result.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-01"/>
+        </traces>
+      </test>
+      <test name="falls back to legacy targets when the index has no supported lenses">
+        <purpose><![CDATA[Pins the getLensTargets fallback when the hints index is present but carries no supported lens kinds.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-01"/>
+        </traces>
+      </test>
+      <test name="exposes the supported lens kinds for downstream callers">
+        <purpose><![CDATA[Pins the exported `_SUPPORTED_LENS_KINDS` set for the `coverage` and `tracesCount` kinds.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-01"/>
+        </traces>
+      </test>
+      <test name="coalesces concurrent ensureProject calls into one sidecar request (LLR-CCL-05)">
+        <purpose><![CDATA[Verifies LLR-CCL-05: two concurrent `ensureProject()` calls share the same `inflight` Promise so only one `parseToJson` call reaches the sidecar.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-05"/>
+        </traces>
+      </test>
+      <test name="re-fetches from sidecar after refresh() clears the cache (LLR-CCL-06)">
+        <purpose><![CDATA[Verifies LLR-CCL-06: `refresh()` clears `cachedProject` so the next `ensureProject()` call hits the sidecar again instead of returning the stale cached value.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-CCL-06"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/activation.test.ts" role="unit-ts" count="5">
+      <header><![CDATA[Static-analysis tests for the extension activation entry point (`src/extension.ts`) and the `package.json` manifest. Pins LLR-ACT-01 (subscriptions), LLR-ACT-02 (OutputChannel first), LLR-ACT-03 (save listener gates), and LLR-ACT-04 (extensionDependencies + untrustedWorkspaces).]]></header>
+      <test name="registers commands via context.subscriptions.push">
+        <purpose><![CDATA[Verifies LLR-ACT-01: the `activate` function pushes every disposable into `context.subscriptions` so they are cleaned up on deactivation. Asserts `extension.ts` source contains `context.subscriptions`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ACT-01"/>
+        </traces>
+      </test>
+      <test name="OutputChannel creation appears before component instantiation in activate()">
+        <purpose><![CDATA[Verifies LLR-ACT-02: `vscode.window.createOutputChannel` is called before `new ProjectIoClient(...)` so the channel is available to every component that receives it. Asserts the source position of `createOutputChannel` precedes `new ProjectIoClient`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ACT-02"/>
+        </traces>
+      </test>
+      <test name="subscribes to onDidSaveTextDocument with autoLintOnChange and previewOnSave gates">
+        <purpose><![CDATA[Verifies LLR-ACT-03: the save listener checks both `autoLintOnChange` and `previewOnSave` config gates so users can independently toggle auto-lint and auto-preview on save. Asserts all three strings appear in `extension.ts`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ACT-03"/>
+        </traces>
+      </test>
+      <test name="declares redhat.vscode-xml as an extension dependency">
+        <purpose><![CDATA[Verifies LLR-ACT-04: `package.json` lists `redhat.vscode-xml` in `extensionDependencies`. Asserts the parsed `extensionDependencies` array includes `redhat.vscode-xml`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ACT-04"/>
+        </traces>
+      </test>
+      <test name="sets untrustedWorkspaces.supported to &quot;limited&quot;">
+        <purpose><![CDATA[Verifies LLR-ACT-04: `package.json` sets `capabilities.untrustedWorkspaces.supported` to `"limited"` so the extension opts in to limited-trust mode rather than being disabled in restricted workspaces.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-ACT-04"/>
+        </traces>
+      </test>
+    </file>
+    <file path="tools/vscode-project-xml/test/unit/mergeConflictResolver.test.ts" role="unit-ts" count="3">
+      <header><![CDATA[Static-analysis tests for `MergeConflictResolver` (src/merge/MergeConflictResolver.ts). Pins LLR-MRG-07 (three-way merge via vscode.git + merge_three_way) and LLR-MRG-08 (AI provenance written to ai_history.jsonl with intent / conflict_kind / conflict_key fields).]]></header>
+      <test name="detects Git MERGE state via the vscode.git extension">
+        <purpose><![CDATA[Verifies LLR-MRG-07: `resolve()` must call `vscode.extensions.getExtension('vscode.git')` to check whether a merge is in progress. Asserts the source contains `'vscode.git'`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-07"/>
+        </traces>
+      </test>
+      <test name="calls merge_three_way to merge base/ours/theirs blobs">
+        <purpose><![CDATA[Verifies LLR-MRG-07: the resolver invokes the sidecar's `merge_three_way` method to produce the merged output. Asserts the source contains `merge_three_way`.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-07"/>
+        </traces>
+      </test>
+      <test name="captures required provenance fields: intent, conflict_kind, conflict_key">
+        <purpose><![CDATA[Verifies LLR-MRG-08: `appendProvenance` must record `intent`, `conflict_kind`, and `conflict_key` (plus sha1 hashes, rationale, model, ts) in `.edit_doc/ai_history.jsonl`. Asserts all three field names appear in the source.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-MRG-08"/>
         </traces>
       </test>
     </file>
@@ -6170,48 +6455,58 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies pipeline.prepare() returns a prompt step with user text.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-029" name="Grounded AI Requests"/>
         </traces>
       </test>
       <test name="test_evaluate_applies_valid_response">
         <purpose>Verifies pipeline.evaluate() applies a valid response and writes the result.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-030" name="Typed AI Responses"/>
+          <trace target="HLR" ref="HLR-031" name="Validate-then-Retry Loop"/>
         </traces>
       </test>
       <test name="test_evaluate_dry_run_does_not_write">
         <purpose>Verifies pipeline.evaluate() with write=False validates but does not persist.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-032" name="Diff Preview Before Write"/>
         </traces>
       </test>
       <test name="test_evaluate_returns_retry_prompt_on_schema_failure">
         <purpose>Verifies pipeline returns retry feedback when schema validation fails.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-030" name="Typed AI Responses"/>
+          <trace target="HLR" ref="HLR-031" name="Validate-then-Retry Loop"/>
         </traces>
       </test>
       <test name="test_evaluate_rejects_after_max_retries">
         <purpose>Verifies pipeline rejects after max_retries exhausted.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-031" name="Validate-then-Retry Loop"/>
         </traces>
       </test>
       <test name="test_evaluate_rejects_xml_response">
         <purpose>Verifies pipeline rejects non-JSON (XML) responses.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-030" name="Typed AI Responses"/>
         </traces>
       </test>
       <test name="test_advisory_intent_returns_findings_no_patch">
         <purpose>Verifies advisory intents return findings without producing a patch.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-050" name="AI-Assisted Review of Every Item"/>
         </traces>
       </test>
       <test name="test_pvd_intent_returns_markdown">
         <purpose>Verifies PVD intent returns markdown content without a patch.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-052" name="AI-Assisted PVD Ghostwriting"/>
         </traces>
       </test>
       <test name="test_run_with_stubbed_callback_applies">
@@ -6230,6 +6525,7 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies pipeline.run() retries on schema failure then accepts on corrected response.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-031" name="Validate-then-Retry Loop"/>
         </traces>
       </test>
     </file>
@@ -6238,6 +6534,7 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies build_context() populates all required Bundle fields.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-029" name="Grounded AI Requests"/>
         </traces>
       </test>
       <test name="test_render_system_prompt_includes_user_prompt_and_schema">
@@ -6250,6 +6547,7 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies token budget truncation preserves schema and intent sections.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-029" name="Grounded AI Requests"/>
         </traces>
       </test>
     </file>
@@ -6258,18 +6556,21 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies provenance logger writes a JSONL line to the history file.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-033" name="Audit Trail for AI Decisions"/>
         </traces>
       </test>
       <test name="test_disabled_is_no_op">
         <purpose>Verifies provenance logger is a no-op when disabled.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-033" name="Audit Trail for AI Decisions"/>
         </traces>
       </test>
       <test name="test_append_record_is_jsonl">
         <purpose>Verifies each provenance entry is valid JSON on a single line.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-033" name="Audit Trail for AI Decisions"/>
         </traces>
       </test>
     </file>
@@ -6278,12 +6579,14 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies all required intents are present in the registry.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-048" name="Pluggable Intent Registry"/>
         </traces>
       </test>
       <test name="test_each_intent_has_schema_and_prompt_files">
         <purpose>Verifies every registered intent has schema and prompt files on disk.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-04"/>
+          <trace target="HLR" ref="HLR-048" name="Pluggable Intent Registry"/>
         </traces>
       </test>
       <test name="test_ai_actions_for_type_matches_targets">
@@ -6366,24 +6669,28 @@ and shall not block the resolution flow.]]></text>
         <purpose>Verifies advisory intents (review.item) have no JSON Patch translator.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="HLR" ref="HLR-050" name="AI-Assisted Review of Every Item"/>
         </traces>
       </test>
       <test name="test_response_has_findings">
         <purpose>Verifies review.item fixture response contains findings.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="HLR" ref="HLR-050" name="AI-Assisted Review of Every Item"/>
         </traces>
       </test>
       <test name="test_replay_produces_llr_candidates">
         <purpose>Replays expand.hlr_to_llrs fixture and verifies LLR candidates created.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="HLR" ref="HLR-048" name="Pluggable Intent Registry"/>
         </traces>
       </test>
       <test name="test_replay_produces_test_candidates">
         <purpose>Replays expand.llr_to_tests fixture and verifies test candidates created.</purpose>
         <traces>
           <trace target="LLR" ref="LLR-AITR-05"/>
+          <trace target="HLR" ref="HLR-048" name="Pluggable Intent Registry"/>
         </traces>
       </test>
       <test name="test_replay_creates_llr">
