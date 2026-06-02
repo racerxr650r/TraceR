@@ -2,6 +2,8 @@
 // the addHlr / addLlr commands (path allocation + QuickPick wiring).
 
 import { strict as assert } from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { buildOperations } from '../../src/forms/FormPanelProvider';
 
@@ -641,5 +643,84 @@ describe('resolveFormParams (coverage link → open form)', () => {
             { tag: 'unknown', value: 'X' },
         );
         assert.equal(result, undefined);
+    });
+});
+
+describe('FormPanelProvider — static source assertions', () => {
+    const providerSrc = fs.readFileSync(
+        path.resolve(__dirname, '..', '..', 'src', 'forms', 'FormPanelProvider.ts'),
+        'utf8',
+    );
+
+    it('checks isDirty before opening the form panel (LLR-FRM-02)', () => {
+        // LLR-FRM-02: FormPanelProvider.open() must check whether Project.xml
+        // has unsaved changes before proceeding.
+        assert.ok(providerSrc.includes('isDirty'),
+            "FormPanelProvider.ts must check isDirty");
+    });
+
+    it('generates a CSP nonce for the webview (LLR-FRM-04)', () => {
+        // LLR-FRM-04: the webview HTML must include a CSP nonce to prevent
+        // script injection.
+        assert.ok(providerSrc.includes('nonce-'),
+            "FormPanelProvider.ts must include 'nonce-' in its CSP");
+    });
+
+    it('collects SDD refs by filtering traces where target === SDD (LLR-FRM-10)', () => {
+        // LLR-FRM-10: snapshotRefIds() builds the SDD ref list from flat_hlrs
+        // traces where target === 'SDD'.
+        assert.ok(
+            providerSrc.includes("target === 'SDD'") || providerSrc.includes('target === "SDD"'),
+            "FormPanelProvider.ts must filter traces for target === 'SDD'",
+        );
+    });
+});
+
+describe('formLogic — static source assertions', () => {
+    const logicSrc = fs.readFileSync(
+        path.resolve(__dirname, '..', '..', 'src', 'forms', 'formLogic.ts'),
+        'utf8',
+    );
+
+    it('translates AddItemButton to "Add Trace" (LLR-FRM-09)', () => {
+        // LLR-FRM-09: the RJSF translateString callback must map
+        // TranslatableString.AddItemButton to the string "Add Trace".
+        // This is implemented in src/forms/webview/formMain.tsx.
+        const formMainSrc = fs.readFileSync(
+            path.resolve(__dirname, '..', '..', 'src', 'forms', 'webview', 'formMain.tsx'),
+            'utf8',
+        );
+        assert.ok(
+            formMainSrc.includes('Add Trace'),
+            "formMain.tsx must return 'Add Trace' for AddItemButton translateString callback",
+        );
+    });
+});
+
+describe('buildOperations — id field is pushed last (LLR-FRM-13)', () => {
+    it('id replace op is the last op in edit mode', () => {
+        // LLR-FRM-13: buildReplaceOperations collects the idOp separately and
+        // pushes it last so a rename does not invalidate the XPath selector for
+        // the other replace operations.
+        const base = '/hlrs/section[number=1]/hlr[id=HLR-001]';
+        const ops = buildOperations(
+            {
+                type: 'Hlr',
+                title: 'Edit HLR-001',
+                initial: {},
+                basePath: base,
+            },
+            {
+                id: 'HLR-001',
+                name: 'Renamed',
+                text: 'Updated body.',
+                traces: [],
+            },
+        );
+        const lastOp = ops[ops.length - 1];
+        assert.ok(
+            lastOp.path.endsWith('/@id'),
+            `Expected last op path to end with /@id, got: ${lastOp.path}`,
+        );
     });
 });

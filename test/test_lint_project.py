@@ -379,6 +379,27 @@ class CheckSemanticsTests(unittest.TestCase):
         check_semantics(tree, f)
         self.assertTrue(any('duplicate <document id="SDD">' in e for e in f.errors))
 
+    def test_mixed_prefix_warning_when_dominant_prefix_established(self) -> None:
+        # LLR-SEM-07: warn when a function has a dominant prefix (≥4 LLRs)
+        # alongside a minority prefix (≤2 LLRs).
+        tree = _parse_xml(_wrap_project(
+            '<llrs>'
+            '<function number="1" title="t" name="fn">'
+            '<llr id="LLR-ABC-01"><text>a</text></llr>'
+            '<llr id="LLR-ABC-02"><text>a</text></llr>'
+            '<llr id="LLR-ABC-03"><text>a</text></llr>'
+            '<llr id="LLR-ABC-04"><text>a</text></llr>'
+            '<llr id="LLR-XYZ-01"><text>a</text></llr>'
+            '</function>'
+            '</llrs>'
+        ))
+        f = Findings()
+        check_semantics(tree, f)
+        self.assertTrue(
+            any("mixed" in w.lower() or "prefix" in w.lower() for w in f.warnings),
+            msg=f"expected mixed-prefix warning, got: {f.warnings}",
+        )
+
 
 class SchemaUiNamespaceTests(unittest.TestCase):
     """Phase 2.5 namespace reservation."""

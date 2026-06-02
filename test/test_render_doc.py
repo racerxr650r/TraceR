@@ -192,6 +192,13 @@ class ParseProjectToDictTests(unittest.TestCase):
         data = parse_project_to_dict(self.xml_path, metadata_for="HLRs")
         self.assertEqual(data["metadata"]["id"], "HLRs")
 
+    def test_parse_project_to_dict_does_not_import_lxml(self) -> None:
+        # LLR-PPD-05: parse_project_to_dict shall use no lxml dependency.
+        import inspect
+        src = inspect.getsource(render_doc)
+        self.assertNotIn("import lxml", src)
+        self.assertNotIn("from lxml", src)
+
 
 class RenderDocumentTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -216,6 +223,13 @@ class RenderDocumentTests(unittest.TestCase):
     def test_missing_template_raises_project_xml_error(self) -> None:
         with self.assertRaises(ProjectXmlError):
             render_document(self.tmp / "nope.j2", "HLRs", self.xml_path)
+
+    def test_render_document_does_not_import_lxml(self) -> None:
+        # LLR-RND-05: render_document hot path uses only stdlib + Jinja2.
+        import inspect
+        src = inspect.getsource(render_doc)
+        self.assertNotIn("import lxml", src)
+        self.assertNotIn("from lxml", src)
 
 
 class InitProjectSchemaLocationTests(unittest.TestCase):

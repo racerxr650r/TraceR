@@ -261,6 +261,52 @@ class RoundTripPreservationTests(WorkspaceMixin, unittest.TestCase):
             body,
         )
 
+    def test_apply_edit_uses_atomic_os_replace(self) -> None:
+        # LLR-AED-04: apply_edit must use os.replace for the final write
+        # so a partial-write crash cannot corrupt the file.
+        import inspect
+        src = inspect.getsource(apply_edit)
+        self.assertIn(
+            "os.replace",
+            src,
+            "apply_edit must use os.replace for an atomic POSIX write",
+        )
+
+    def test_apply_edit_normalizes_indentation(self) -> None:
+        # LLR-AED-06: after writing, element lines must have consistent
+        # 2-space indentation (i.e. _beautify was called with
+        # remove_blank_text + etree.indent).
+        apply_edit(
+            [{
+                "op": "replace",
+                "path": "/hlrs/section[number=1]/hlr[id=HLR-001]/@name",
+                "value": "Indent check",
+            }],
+            xml_path=self.xml_path,
+            xsd_path=self.xsd_path,
+        )
+        lines = self.xml_path.read_text(encoding="utf-8").splitlines()
+        in_comment = False
+        for line in lines:
+            stripped = line.lstrip(" ")
+            if not stripped or stripped.startswith("<?"):
+                continue
+            # Skip comment blocks (single-line or multi-line).
+            if "<!--" in stripped:
+                in_comment = not ("-->" in stripped)
+                continue
+            if in_comment:
+                if "-->" in stripped:
+                    in_comment = False
+                continue
+            # Every element line must start with an even number of spaces.
+            indent = len(line) - len(stripped)
+            self.assertEqual(
+                indent % 2,
+                0,
+                f"Odd indentation ({indent} spaces) on line: {line!r}",
+            )
+
 
 # --------------------------------------------------------------------- #
 # next_free_id (HLR-005)                                                 #
@@ -282,6 +328,27 @@ class NextFreeIdTests(WorkspaceMixin, unittest.TestCase):
             next_free_llr_id("NEW", self.xml_path),
             "LLR-NEW-01",
         )
+
+    def test_next_free_llr_id_discovers_established_prefix(self) -> None:
+        # LLR-AITR-03: when existing LLRs use a prefix that differs from
+        # what would be derived from the function name alone, the
+        # established prefix must be reused.
+        xml_text = SAMPLE_XML.replace(
+            'name="core"', 'name="render_helper"',
+        ).replace(
+            'id="LLR-CORE-01"', 'id="LLR-PPD-01"',
+        ).replace(
+            'ref="LLR-CORE-01"', 'ref="LLR-PPD-01"',
+        )
+        xml_path = Path(self._tmp.name) / "prefixed.xml"
+        xml_path.write_text(
+            xml_text.replace("PROJECT_XSD", "project.xsd"),
+            encoding="utf-8",
+        )
+        # "render_helper" → would derive "REND" without established-prefix
+        # discovery, but existing LLR-PPD-01 establishes the "PPD" prefix.
+        result = next_free_llr_id("render_helper", xml_path)
+        self.assertEqual(result, "LLR-PPD-02")
 
 
 # --------------------------------------------------------------------- #

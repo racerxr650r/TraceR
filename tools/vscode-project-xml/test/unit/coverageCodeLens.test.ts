@@ -4,12 +4,16 @@
 // inline coverage lenses with no per-payload regex edits.
 
 import { strict as assert } from 'assert';
+import type * as vscode from 'vscode';
+import { FakeOutputChannel } from './__mocks__/vscode';
 import {
+    CoverageCodeLensProvider,
     _RELATED_DISPATCH,
     _SUPPORTED_LENS_KINDS,
     getLensTargets,
 } from '../../src/codeLens/CoverageCodeLensProvider';
 import { UiHintsIndex } from '../../src/sidecar';
+import type { ProjectIoClient, ParsedProject } from '../../src/sidecar';
 
 const FULL_HINTS: UiHintsIndex = {
     Hlr: {
@@ -107,5 +111,67 @@ describe('getLensTargets (Phase 2.5b Slice F)', () => {
     it('keeps the per-element related dispatch table aligned with legacy elements', () => {
         const keys = Object.keys(_RELATED_DISPATCH).sort();
         assert.deepEqual(keys, ['hlr', 'llr', 'test']);
+    });
+});
+
+// Stub sidecar for provider-level CCL tests
+function makeStubClient(result: ParsedProject): {
+    client: ProjectIoClient;
+    callCount: () => number;
+} {
+    let count = 0;
+    const client = {
+        parseToJson: async (_params: unknown) => {
+            count++;
+            return result;
+        },
+    } as unknown as ProjectIoClient;
+    return { client, callCount: () => count };
+}
+
+const EMPTY_PROJECT: ParsedProject = {};
+
+describe('CoverageCodeLensProvider — cache and inflight coalescing', () => {
+    let channel: FakeOutputChannel;
+
+    beforeEach(() => {
+        channel = new FakeOutputChannel();
+    });
+
+    it('coalesces concurrent ensureProject calls into one sidecar request (LLR-CCL-05)', async () => {
+        // LLR-CCL-05: two concurrent in-flight calls share the same Promise;
+        // only one parseToJson call reaches the sidecar.
+        const { client, callCount } = makeStubClient(EMPTY_PROJECT);
+        const provider = new CoverageCodeLensProvider(
+            client,
+            channel as unknown as vscode.OutputChannel,
+        );
+        const ensureProject = (provider as unknown as { ensureProject(): Promise<ParsedProject> }).ensureProject.bind(provider);
+
+        const [p1, p2] = await Promise.all([ensureProject(), ensureProject()]);
+        assert.equal(callCount(), 1, 'parseToJson should be called only once for concurrent requests');
+        assert.deepEqual(p1, EMPTY_PROJECT);
+        assert.deepEqual(p2, EMPTY_PROJECT);
+    });
+
+    it('re-fetches from sidecar after refresh() clears the cache (LLR-CCL-06)', async () => {
+        // LLR-CCL-06: refresh() clears cachedProject so the next ensureProject
+        // call hits the sidecar again instead of returning the stale value.
+        const { client, callCount } = makeStubClient(EMPTY_PROJECT);
+        const provider = new CoverageCodeLensProvider(
+            client,
+            channel as unknown as vscode.OutputChannel,
+        );
+        const ensureProject = (provider as unknown as { ensureProject(): Promise<ParsedProject> }).ensureProject.bind(provider);
+
+        await ensureProject();
+        assert.equal(callCount(), 1, 'first call hits sidecar');
+
+        await ensureProject();
+        assert.equal(callCount(), 1, 'second call uses cache');
+
+        provider.refresh();
+        await ensureProject();
+        assert.equal(callCount(), 2, 'call after refresh() should hit sidecar again');
     });
 });

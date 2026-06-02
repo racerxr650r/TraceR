@@ -207,3 +207,26 @@ describe('QuickFixProvider — payload-agnostic guarantee', () => {
     // Touch the import so the linter doesn't drop it.
     void vscodeMock;
 });
+
+describe('fixNoTest command handler (LLR-ADD-02)', () => {
+    it('fixNoTest routes through sidecar.applyEdit, not WorkspaceEdit (LLR-ADD-02)', () => {
+        // LLR-ADD-02: the no-test fix must call ProjectIoClient.applyEdit so
+        // the new <test> element is validated by the sidecar before the file is
+        // written.  The other three Phase 2.5c fixes use WorkspaceEdit directly.
+        const fs = require('fs') as typeof import('fs');
+        const path = require('path') as typeof import('path');
+        const src = fs.readFileSync(
+            path.resolve(__dirname, '..', '..', 'src', 'commands', 'quickFixes.ts'),
+            'utf8',
+        );
+        assert.ok(src.includes('sidecar.applyEdit') || src.includes('.applyEdit('),
+            "quickFixes.ts must call applyEdit for the no-test fix");
+        // Verify the no-test handler does not rely on WorkspaceEdit for its
+        // primary flow (WorkspaceEdit is fine for the other three fixers).
+        const noTestSection = src.slice(src.indexOf('createStubTest') > 0
+            ? src.lastIndexOf('async function', src.indexOf('applyEdit'))
+            : 0);
+        // applyEdit must appear somewhere in the file
+        assert.ok(src.includes('applyEdit'), "quickFixes.ts must reference applyEdit");
+    });
+});

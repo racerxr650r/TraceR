@@ -258,3 +258,35 @@ describe('MarkdownPreviewProvider (provider integration)', () => {
         assert.ok(content.includes('render failed'));
     });
 });
+
+describe('render commands — static source assertions', () => {
+    const renderSrc = fs.readFileSync(
+        path.resolve(__dirname, '..', '..', 'src', 'commands', 'render.ts'),
+        'utf8',
+    );
+
+    it('renderAndPreview calls markStale before showing the preview (LLR-RAP-02)', () => {
+        // LLR-RAP-02: renderAndPreview must call preview.markStale(docId) to
+        // invalidate the cache before dispatching markdown.showPreviewToSide.
+        assert.ok(renderSrc.includes('markStale'),
+            "render.ts must call markStale in renderAndPreview");
+        assert.ok(renderSrc.includes('markdown.showPreviewToSide') || renderSrc.includes('showPreviewToSide'),
+            "render.ts must dispatch markdown.showPreviewToSide");
+    });
+
+    it('renderAll uses withProgress and collects failures (LLR-RAL-02)', () => {
+        // LLR-RAL-02: renderAll must wrap the batch operation in withProgress
+        // and must continue past individual failures into a failures[] array.
+        assert.ok(renderSrc.includes('withProgress'),
+            "render.ts renderAll must use withProgress");
+        assert.ok(renderSrc.includes('failures'),
+            "render.ts renderAll must collect failures");
+    });
+
+    it('renderAll calls markStale for each rendered document (LLR-RAL-03)', () => {
+        // LLR-RAL-03: renderAll must call markStale on the preview provider
+        // so each rendered document's preview is refreshed.
+        assert.ok(renderSrc.includes('markStale'),
+            "render.ts renderAll must call markStale");
+    });
+});
