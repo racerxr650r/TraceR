@@ -1,5 +1,5 @@
 ---
-description: "Prepare and publish a release: create release branch, bump VERSION, triage Dependabot, open PR, wait for CI, tag, publish GitHub Release, and merge"
+description: "Prepare and publish a release: create release branch, bump VERSION, triage Dependabot, open PR, wait for CI, tag, publish GitHub Release, and merge. VERSION is not bumped after the release — it will be set when the next release is prepared."
 mode: "agent"
 tools: [execute, read, search, editFiles]
 ---
@@ -167,23 +167,7 @@ chore(release): prepare release <new-version>
 - If the merge fails due to a conflict, report the conflict and stop.
   The user must resolve it manually and re-run from this step.
 
-## 11. Bump VERSION for the next development cycle
-
-Only perform this step if steps 9 and 10 both succeeded.
-
-- Check out the integration branch and pull:
-  `git checkout <integration-branch> && git pull`
-- Increment the **minor** version and reset patch to zero
-  (e.g. `0.3.0` → `0.4.0`).
-- Write the new version to `VERSION`.
-- Commit and push:
-  ```
-  git commit -am "chore: bump VERSION to <next-version> [skip ci]"
-  git push
-  ```
-- Inform the user that the working version is now `<next-version>`.
-
-## 12. Summary
+## 11. Summary
 
 Report:
 - The version released and tag created
@@ -191,7 +175,9 @@ Report:
 - Number of commits included in the release
 - CI check result
 - Whether the release branch was merged
-- The next development version
+
+Do NOT bump VERSION — it will be set to the next release version when the next
+release is prepared (Step 3 of that run).
 
 ## Constraints
 
