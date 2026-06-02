@@ -188,7 +188,7 @@ export class ProjectIoClient implements vscode.Disposable {
     }
 
     private ensureStarted(): ChildProcessWithoutNullStreams {
-        if (this.proc && !this.proc.killed) {
+        if (this.proc && !this.proc.killed && !this.proc.stdin.destroyed) {
             return this.proc;
         }
         if (this.startError) {
@@ -201,6 +201,19 @@ export class ProjectIoClient implements vscode.Disposable {
             this.startError = err;
             throw err;
         }
+        // Guard against the fallback path that getToolsDir() may return
+        // even when neither the workspace tools/ nor the bundled dist/python
+        // exists.  Node.js reports "spawn <python> ENOENT" when the cwd is
+        // missing, which is deeply confusing.  Surface a clear message and
+        // do NOT cache it (restart() clears startError; the script may
+        // appear after the user scaffolds or reinstalls).
+        if (!fs.existsSync(script)) {
+            throw new Error(
+                `project_io.py not found at "${script}". ` +
+                'Re-install the extension or run ' +
+                '"Project Spec: Scaffold tools/ into workspace…" to copy the toolchain.',
+            );
+        }
         const python = pickPython();
         this.outputChannel.appendLine(
             `[sidecar] spawn: ${python} ${script} (cwd=${path.dirname(script)})`,
@@ -212,7 +225,9 @@ export class ProjectIoClient implements vscode.Disposable {
         proc.stdout.setEncoding('utf8');
         proc.stderr.setEncoding('utf8');
         proc.stdout.on('data', (chunk: string) => this.onStdout(chunk));
+        let stderrBuf = '';
         proc.stderr.on('data', (chunk: string) => {
+            stderrBuf += chunk;
             this.outputChannel.append(`[sidecar:stderr] ${chunk}`);
         });
         proc.on('error', (err) => {
@@ -220,15 +235,17 @@ export class ProjectIoClient implements vscode.Disposable {
                 `[sidecar] spawn error: ${err.message}`,
             );
             this.failAll(err);
+            this.proc = undefined;
         });
         proc.on('exit', (code, signal) => {
             this.outputChannel.appendLine(
                 `[sidecar] exited code=${code} signal=${signal ?? ''}`,
             );
-            const err = new Error(
-                `project_io.py exited (code=${code}, signal=${signal ?? ''})`,
-            );
-            this.failAll(err);
+            const detail = stderrBuf.trim();
+            const msg = detail
+                ? `project_io.py exited (code=${code}):\n${detail}`
+                : `project_io.py exited (code=${code}, signal=${signal ?? ''})`;
+            this.failAll(new Error(msg));
             this.proc = undefined;
         });
         this.proc = proc;
@@ -338,7 +355,23 @@ function pickPython(): string {
             return venvPy;
         }
     }
-    // 4. Bare system fallback.
+    // 4. Search PATH for python3 then python (or python then python3 on
+    //    Windows) so we find the interpreter even when only one name is
+    //    registered, and avoid a spurious ENOENT on spawn.
+    const candidates = process.platform === 'win32'
+        ? ['python', 'python3']
+        : ['python3', 'python'];
+    const pathEnv = process.env.PATH ?? '';
+    for (const name of candidates) {
+        for (const dir of pathEnv.split(path.delimiter)) {
+            if (!dir) { continue; }
+            const candidate = path.join(dir, name);
+            if (fs.existsSync(candidate)) {
+                return candidate;
+            }
+        }
+    }
+    // 5. Last-resort bare name — let the OS surface a clear ENOENT.
     return process.platform === 'win32' ? 'python' : 'python3';
 }
 

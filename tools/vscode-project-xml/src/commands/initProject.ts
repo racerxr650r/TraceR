@@ -66,10 +66,18 @@ export async function initProject(
         return undefined;
     }
 
+    const xmlRel = getConfig().get<string>('xmlPath') ?? 'doc/Project.xml';
+    const xmlAbs = path.isAbsolute(xmlRel)
+        ? xmlRel
+        : path.join(folder.uri.fsPath, xmlRel);
+    const pvdAbs = path.join(path.dirname(xmlAbs), 'PVD.md');
+
     const params = {
         name: name.trim(),
         short_name: shortName.trim(),
         author: author.trim() || 'TBD',
+        xml_path: xmlAbs,
+        pvd_path: pvdAbs,
     };
 
     let result;
@@ -142,6 +150,9 @@ export async function initProject(
     // Copy the bundled TraceR SKILL.md into .github/skills/tracer/
     // so AI agents in the new workspace automatically pick up the
     // TraceR workflow guidance.
+    //
+    // Also install the generic prompts and agents bundled in dist/github/
+    // so the PR, release, and Makefile workflows are ready to use.
     const ctx = getExtensionContext();
     if (ctx) {
         const skillSrc = path.join(ctx.extensionPath, 'media', 'skills', 'tracer', 'SKILL.md');
@@ -152,6 +163,27 @@ export async function initProject(
                 fs.copyFileSync(skillSrc, skillDst);
             } catch {
                 // Non-fatal — the skill file is a convenience.
+            }
+        }
+
+        // Install generic prompts (PR, PrepRelease, Release, UpdateDocs) and
+        // agents (ci, makefile) from the bundle into the new workspace.
+        // Existing files are never overwritten so user customisations are safe.
+        const distGithub = path.join(ctx.extensionPath, 'dist', 'github');
+        for (const [subdir] of [['prompts'], ['agents']] as [string][]) {
+            const srcDir = path.join(distGithub, subdir);
+            const dstDir = path.join(folder.uri.fsPath, '.github', subdir);
+            if (!fs.existsSync(srcDir)) { continue; }
+            try {
+                fs.mkdirSync(dstDir, { recursive: true });
+                for (const name of fs.readdirSync(srcDir)) {
+                    const dst = path.join(dstDir, name);
+                    if (!fs.existsSync(dst)) {
+                        fs.copyFileSync(path.join(srcDir, name), dst);
+                    }
+                }
+            } catch {
+                // Non-fatal — prompts and agents are conveniences.
             }
         }
     }

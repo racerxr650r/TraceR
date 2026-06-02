@@ -925,6 +925,7 @@ PVD_TEMPLATE = Path(__file__).resolve().parent / "templates" / "PVD.md.template"
 SAR_TEMPLATE = Path(__file__).resolve().parent / "templates" / "SAR.md.template"
 VR_TEMPLATE = Path(__file__).resolve().parent / "templates" / "VR.md.template"
 SDP_TEMPLATE = Path(__file__).resolve().parent / "templates" / "SDP.md.template"
+TRACER_SKILL_TEMPLATE = Path(__file__).resolve().parent / "templates" / "tracer.skill.md"
 
 # All hand-authored document templates (not Jinja2-rendered from Project.xml)
 AUTHORED_TEMPLATES = {
@@ -1156,10 +1157,10 @@ def init_project(
 
     targets = [xml_path, pvd_path]
     existing = [p for p in targets if p.exists()]
-    if existing and not force:
+    if xml_path.exists() and not force:
         raise ProjectXmlError(
             "refusing to overwrite existing file(s): "
-            + ", ".join(str(p) for p in existing)
+            + str(xml_path)
             + " (pass force=True to overwrite)"
         )
 
@@ -1183,17 +1184,29 @@ def init_project(
 
     # Substitute the obvious header placeholders in the PVD template.
     # Body placeholders (e.g. <Persona 1>, <Capability 1>) are left for
-    # the human author to fill in.
+    # the human author to fill in.  Skip writing if PVD already exists
+    # (preserve any existing hand-authored content).
     pvd_text = pvd_template.read_text()
     pvd_text = pvd_text.replace("<Product Name>", name)
     pvd_text = pvd_text.replace("<short_name>", short_name)
     pvd_text = pvd_text.replace("<YYYY-MM-DD>", today)
     pvd_text = pvd_text.replace("<Your name(s)>", author)
-    pvd_path.write_text(pvd_text)
+    if not pvd_path.exists():
+        pvd_path.write_text(pvd_text)
+
+    # Install the TraceR AI skill file into the project's .github/ directory
+    # so Copilot loads the TraceR working rules for this repository.
+    # The project root is assumed to be two levels above xml_path (i.e.,
+    # <root>/doc/Project.xml → <root>).
+    skill_path = xml_path.resolve().parent.parent / ".github" / "skills" / "tracer" / "SKILL.md"
+    if not skill_path.exists() and TRACER_SKILL_TEMPLATE.exists():
+        skill_path.parent.mkdir(parents=True, exist_ok=True)
+        skill_path.write_text(TRACER_SKILL_TEMPLATE.read_text())
 
     return {
         "xml_path": str(xml_path),
         "pvd_path": str(pvd_path),
+        "skill_path": str(skill_path),
         "existing": [str(p) for p in existing] if force else [],
     }
 
