@@ -50,13 +50,30 @@ Perform the following steps in order. Stop and report if any step fails.
   `test_reports/analyze-report.md`.
 - Read the generated `test_reports/analyze-report.md` (the summary table
   and per-tool detail sections).
+- **Check the CI error gate before accepting any findings.** Run:
+  ```
+  make -C tools analyze-check-errors
+  ```
+  This re-runs `analyze_report.py --exit-code` using the same logic as
+  CI. If it exits non-zero, the commit will fail CI — the blocking
+  findings **must be fixed** (not merely accepted) before proceeding.
+  The gate blocks on:
+  - Bandit severity HIGH (any count > 0)
+  - ESLint errors > 0
+  - npm audit **critical or high** (any count > 0)
+  - Semgrep ERROR-level rules (any count > 0)
+  pip-audit findings are informational only and do **not** block CI.
+  For npm audit HIGH/critical findings in dev/transitive deps, try
+  `npm audit fix` in the relevant directory first; if that resolves them,
+  update `package-lock.json` and re-run the analysis before committing.
 - If `doc/SAR.md` exists, update it:
   - **§6 Static Analysis Findings** — Replace the findings table with the
     current results. For each finding, set a disposition:
     - **Fixed**: if the finding was resolved in this branch's changes.
     - **Accepted risk**: if the finding is a known acceptable pattern
       (e.g. `xml.etree.ElementTree` used on trusted project files, not
-      untrusted input). Include brief justification.
+      untrusted input). Include brief justification. Note: "Accepted risk"
+      is only valid for findings that do NOT trigger the CI gate above.
     - **False positive**: if the tool flagged something incorrectly.
     - **Open**: if it genuinely needs remediation.
   - **§7 Dependency Security** — Update the summary counts from the
