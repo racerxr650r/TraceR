@@ -306,3 +306,18 @@ function or index in [tools/render_doc.py](../../../tools/render_doc.py).
     informational; the canonical counts come from counting child
     elements at render time. Update them when convenient but do not
     rely on them.
+*   **Pushing commits to a branch that has already been merged.**
+    Before staging a commit and pushing, check whether the current
+    branch has already been merged into the integration branch:
+    ```bash
+    git branch -r --merged origin/develop | grep "$(git branch --show-current)"
+    ```
+    If the branch appears in the output it has been merged. In that
+    case ask the user: **"This branch has already been merged into
+    develop. Create a new branch for these changes?"**
+    - If **yes**: ask for a branch name (or suggest one based on the
+      work), run `git checkout -b <new-branch>`, then proceed to
+      stage, commit, push, and open a PR targeting `develop`.
+    - If **no**: stop and let the user decide how to proceed.
+    Never push additional commits to a merged feature branch — they
+    will not be part of any open PR and will be invisible to reviewers.
