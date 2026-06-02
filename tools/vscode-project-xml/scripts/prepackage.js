@@ -62,7 +62,6 @@ const GITHUB_SRC = path.join(REPO_ROOT, '.github');
 const DIST_GITHUB = path.join(EXT_ROOT, 'dist', 'github');
 const GENERIC_PROMPTS = [
     'PR.prompt.md',
-    'PrepRelease.prompt.md',
     'Release.prompt.md',
     'UpdateDocs.prompt.md',
 ];
@@ -198,6 +197,8 @@ function main() {
 
     // Copy generic prompts and agents into dist/github/ so initProject can
     // install them into new workspaces without needing the source repo.
+    // Wipe first so removed files don't persist across builds.
+    rmrf(DIST_GITHUB);
     const distPrompts = path.join(DIST_GITHUB, 'prompts');
     const distAgents  = path.join(DIST_GITHUB, 'agents');
     fs.mkdirSync(distPrompts, { recursive: true });
