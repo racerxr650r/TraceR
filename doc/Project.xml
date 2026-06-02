@@ -494,8 +494,9 @@ hand-authored document templates for project bootstrap.
 
 **Status:** as-built (Phase 1 + Phase 9/12). All five generated
 documents (`SDD`, `HLRs`, `LLRs`, `STP`, `Traceability`) plus
-four bootstrap templates (`PVD.md.template`, `SAR.md.template`,
-`VR.md.template`, `SDP.md.template`) are present.]]></purpose>
+five bootstrap templates (`PVD.md.template`, `SAR.md.template`,
+`VR.md.template`, `SDP.md.template`, `tracer.skill.md`) are
+present.]]></purpose>
         <responsibility><![CDATA[One template per `<metadata><document>` entry. Each consumes
 the `project.*` namespace exposed by `render_doc.py` and
 emits Markdown.]]></responsibility>
@@ -509,10 +510,11 @@ schema, the renderer, and the template to be updated together.]]></responsibilit
 `Traceability.md.j2`. New documents add a sibling template
 plus a `<metadata><document id="…">` entry; from Phase 2.5
 the extension picks them up automatically.]]></interface>
-          <interface title="Bootstrap template"><![CDATA[`PVD.md.template`, `SAR.md.template`, `VR.md.template`, and
-`SDP.md.template` are consumed by `render_doc.py --init` and
-`render_doc.py --generate-doc` to seed hand-authored documents
-for new projects.]]></interface>
+          <interface title="Bootstrap template"><![CDATA[`PVD.md.template`, `SAR.md.template`, `VR.md.template`,
+`SDP.md.template`, and `tracer.skill.md` are consumed by
+`render_doc.py --init` and `render_doc.py --generate-doc` to
+seed hand-authored documents and repository-local AI workflow
+guidance for new projects.]]></interface>
         </interfaces>
         <dependencies>
           <dep><![CDATA[`jinja2`.]]></dep>
@@ -567,7 +569,8 @@ non-zero exit blocks merge.]]></responsibility>
 ext, fail-fast).]]></interface>
           <interface title="VS Code extension"><![CDATA[`make -C tools ext-typecheck`, `make -C tools ext-build`,
 `make -C tools ext` (alias), `make -C tools ext-package`
-(produces `.vsix` via `vsce`).]]></interface>
+(produces `.vsix` via `vsce`), `make -C tools install`
+(builds, packages, and installs the extension into VS Code).]]></interface>
           <interface title="Cleanup"><![CDATA[`make -C tools clean`, `make -C tools clean-docs`,
 `make -C tools clean-ext`, `make -C tools distclean`.]]></interface>
         </interfaces>
@@ -624,8 +627,10 @@ locator providers consume this exclusively.]]></interface>
 write. Refuses if `expect_clean` is true and the in-editor
 text buffer is dirty (the extension prompts the user to
 save or discard).]]></interface>
-          <interface title="init_project"><![CDATA[`init_project(name, short_name, author) -> { paths_written
-}` — wraps `render_doc.py --init`.]]></interface>
+          <interface title="init_project"><![CDATA[`init_project(name, short_name, author, xml_path?, pvd_path?,
+force?) -> { xml_path, pvd_path, skill_path, existing }` — wraps
+`render_doc.py --init`, preserving an existing `PVD.md` unless
+`force=true` while still writing a fresh `Project.xml`.]]></interface>
           <interface title="list_documents"><![CDATA[`list_documents() -> [{ id, title, source, template,
 ui_document }]` — enumerates `<metadata><document>`
 entries; the extension's "Render <Doc>" command palette
@@ -828,10 +833,13 @@ render, Stage A merge) keep working in untrusted mode.]]></responsibility>
 the sidecar spawns at runtime —
 `project_io.py`, `render_doc.py`, `lint_project.py`,
 `project_edit.py`, `project_merge.py`, `project.xsd`, the
-`templates/` directory, and the `ai/` package — under
+`templates/` directory, the `ai/` package, and required
+third-party Python dependencies (`defusedxml`, `jinja2`,
+`lxml`) — under
 `dist/python/` inside the `.vsix`. An npm `prepackage`
 script copies `tools/` into `dist/python/` immediately
-before `vsce package` and writes the source XSD's
+before `vsce package`, installs those dependencies into the
+same bundle directory, and writes the source XSD's
 `schema_version` into `dist/python/.bundle_version`. The
 `.vscodeignore` excludes source directories but explicitly
 keeps `dist/python/` so the bundle survives packaging.
@@ -1627,9 +1635,13 @@ this API.]]></text>
       </hlr>
       <hlr id="HLR-009" name="Project Bootstrap">
         <text><![CDATA[The renderer shall provide an `--init` mode that creates a
-skeleton `doc/Project.xml` and substitutes
-`tools/templates/PVD.md.template` into a new `doc/PVD.md`,
-allowing a fresh project to be set up in one command.]]></text>
+skeleton `doc/Project.xml`, substitutes
+`tools/templates/PVD.md.template` into `doc/PVD.md` when
+that file does not already exist, and installs
+`.github/skills/tracer/SKILL.md` from
+`tools/templates/tracer.skill.md` for repository-local AI
+workflow guidance, allowing a fresh project to be set up in
+one command without overwriting hand-authored PVD content.]]></text>
         <traces>
           <trace target="SDD" ref="4"/>
           <trace target="SDD" ref="6"/>
@@ -1907,7 +1919,8 @@ unless the user explicitly confirms an overwrite.]]></text>
 every Python file the extension spawns at runtime —
 `project_io.py`, `render_doc.py`, `lint_project.py`,
 `project_edit.py`, `project_merge.py`, `project.xsd`, the
-`templates/` directory, and the `ai/` package — under
+`templates/` directory, the `ai/` package, and the runtime
+third-party Python dependencies those tools import — under
 `dist/python/` inside the extension. The extension's
 `getToolsDir()` resolver shall fall back to the bundled
 `<extensionPath>/dist/python` directory when the workspace
@@ -2518,6 +2531,12 @@ and `diffPreviewLogic.ts`.]]></text>
         <text><![CDATA[`init_project` shall compute a relative `xsi:noNamespaceSchemaLocation` from the new `Project.xml`'s parent directory to `tools/project.xsd` when the caller does not supply `schema_location` so XSD-aware editors (Red Hat XML, the Phase 1 extension's host) resolve the schema with no further configuration.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-002" name="Schema-Constrained Payloads"/>
+          <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
+        </traces>
+      </llr>
+      <llr id="LLR-INI-05">
+        <text><![CDATA[`init_project` shall treat `Project.xml` and `PVD.md` asymmetrically when `force` is false: an existing `Project.xml` is a hard stop (`ProjectXmlError`), while an existing `PVD.md` is preserved in place and SHALL NOT be overwritten. The same call shall install `.github/skills/tracer/SKILL.md` from `tools/templates/tracer.skill.md` when missing so Copilot/agent sessions in the new repository load TraceR-specific workflow guidance automatically.]]></text>
+        <traces>
           <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
         </traces>
       </llr>
@@ -3414,7 +3433,10 @@ directory, and the `ai/` package (when present) from the
 TraceR `tools/` source tree into
 `tools/vscode-project-xml/dist/python/`. The script shall
 overwrite any pre-existing `dist/python/` so each package
-build starts from a clean copy. The
+build starts from a clean copy, then install the required
+runtime Python dependencies (`defusedxml`, `jinja2`, `lxml`)
+into the same `dist/python/` directory so the bundled sidecar
+can start without any workspace-local pip install. The
 `tools/vscode-project-xml/.vscodeignore` file shall not
 exclude `dist/python/`, so the bundled tree survives
 `vsce package`.]]></text>
@@ -3430,9 +3452,11 @@ workspace folder contains the configured
 `context.extensionUri.fsPath + '/dist/python'`. The
 fallback shall apply only when the bundled directory exists
 on disk; if neither the workspace nor the bundle resolve,
-the existing "Could not find tools" error shall remain.
-`getProjectIoPath()` and the sidecar spawn shall use the
-returned path as `cwd` unchanged.]]></text>
+the path helper may still return the configured workspace
+path, but sidecar startup MUST fail fast with an actionable
+`project_io.py not found at ...` error instead of a generic
+spawn `ENOENT`. `getProjectIoPath()` and the sidecar spawn
+shall use the returned path as `cwd` unchanged.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
         </traces>
@@ -3576,6 +3600,12 @@ paths resolve correctly when the manual is served from
 `dist/python/User_Manual.md` inside the packaged `.vsix`.
 The copy shall be skipped silently when the source directory
 does not exist.]]></text>
+        <traces>
+          <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
+        </traces>
+      </llr>
+      <llr id="LLR-PKG-12">
+        <text><![CDATA[`scripts/prepackage.js` shall install the third-party runtime Python dependencies imported by the bundled toolchain (`defusedxml`, `jinja2`, `lxml`) into `dist/python/` alongside the copied TraceR sources, preferring the workspace `.venv` interpreter when present and otherwise falling back to `python3`/`python` on PATH. A missing interpreter or pip-install failure shall fail packaging with an explicit error message.]]></text>
         <traces>
           <trace target="HLR" ref="HLR-060" name="Self-Contained Extension Package"/>
         </traces>
@@ -3796,7 +3826,7 @@ and shall not block the resolution flow.]]></text>
   </llrs>
   <!-- Test sources (see tools/Developers_Guide.md §7). -->
   <tests>
-    <file path="test/test_render_doc.py" role="unit" count="21">
+    <file path="test/test_render_doc.py" role="unit" count="23">
       <header><![CDATA[Tests for the importable surface of tools/render_doc.py: init_project (project bootstrap), load_project / parse_project_to_dict (the renderer's data surface), and render_document (the rendering primitive that the CLI, the JSON-RPC sidecar, and the extension's preview pane all consume).]]></header>
       <test name="test_creates_xml_and_pvd">
         <purpose><![CDATA[Verifies LLR-INI-01 and LLR-INI-02: `init_project` writes a schema-1.1 `Project.xml` skeleton with `name`, `short_name`, and `author` substituted, plus a `PVD.md` derived from the template with the placeholder text replaced.]]></purpose>
@@ -3822,6 +3852,19 @@ and shall not block the resolution flow.]]></text>
         <traces>
           <trace target="LLR" ref="LLR-INI-01"/>
           <trace target="LLR" ref="LLR-PPD-02"/>
+        </traces>
+      </test>
+      <test name="test_preserves_existing_pvd_when_xml_is_missing">
+        <purpose><![CDATA[Pins LLR-INI-05: when `Project.xml` is missing but `PVD.md` already exists, `init_project` writes the new XML skeleton and preserves the existing hand-authored PVD bytes unchanged.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-05"/>
+        </traces>
+      </test>
+      <test name="test_installs_tracer_skill_file">
+        <purpose><![CDATA[Pins LLR-INI-05: `init_project` writes `.github/skills/tracer/SKILL.md` from the bundled template and reports the path in the result payload.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-INI-05"/>
+          <trace target="HLR" ref="HLR-009" name="Project Bootstrap"/>
         </traces>
       </test>
       <test name="test_load_known_metadata_id">
@@ -4156,10 +4199,11 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
       <test name="test_init_project_method">
-        <purpose><![CDATA[Verifies LLR-SRV-07 and LLR-INI-01: the `init_project` method delegates to `render_doc.init_project`, writes the new files, and echoes the destination paths in the response.]]></purpose>
+        <purpose><![CDATA[Verifies LLR-SRV-07, LLR-INI-01, and LLR-INI-05: the `init_project` method delegates to `render_doc.init_project`, writes the new files (`Project.xml`, `PVD.md`, `.github/skills/tracer/SKILL.md`), and echoes the destination paths in the response.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-SRV-07"/>
           <trace target="LLR" ref="LLR-INI-01"/>
+          <trace target="LLR" ref="LLR-INI-05"/>
         </traces>
       </test>
       <test name="test_init_project_refuses_overwrite">
@@ -5201,7 +5245,7 @@ and shall not block the resolution flow.]]></text>
         </traces>
       </test>
     </file>
-    <file path="test/test_prepackage.py" role="unit" count="5">
+    <file path="test/test_prepackage.py" role="unit" count="6">
       <test name="test_prepackage_writes_required_python_files">
         <purpose><![CDATA[Pins LLR-PKG-01: every Python file the sidecar spawns (`project_io.py`, `render_doc.py`, `lint_project.py`, `project_edit.py`, `project_merge.py`, `project.xsd`) lands in `tools/vscode-project-xml/dist/python/` after `npm run prepackage`.]]></purpose>
         <traces>
@@ -5234,6 +5278,14 @@ and shall not block the resolution flow.]]></text>
         <purpose><![CDATA[Pins LLR-PKG-11: after `npm run prepackage`, the `dist/images/screenshots/` directory exists and contains at least one `.png` file, so the User Manual's relative `../images/screenshots/` paths resolve inside the packaged `.vsix`.]]></purpose>
         <traces>
           <trace target="LLR" ref="LLR-PKG-11"/>
+          <trace target="HLR" ref="HLR-060"/>
+        </traces>
+      </test>
+      <test name="test_prepackage_bundles_third_party_python_dependencies">
+        <purpose><![CDATA[Pins LLR-PKG-01 / LLR-PKG-12: after `npm run prepackage`, `dist/python/` contains the vendored runtime dependency packages (`defusedxml`, `jinja2`, `lxml`) required by the bundled sidecar tools.]]></purpose>
+        <traces>
+          <trace target="LLR" ref="LLR-PKG-01"/>
+          <trace target="LLR" ref="LLR-PKG-12"/>
           <trace target="HLR" ref="HLR-060"/>
         </traces>
       </test>

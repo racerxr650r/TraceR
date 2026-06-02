@@ -94,6 +94,14 @@ class TestPrepackage(unittest.TestCase):
         pngs = list(screenshots_dir.glob("*.png"))
         self.assertGreaterEqual(len(pngs), 1, "no .png files found in dist/images/screenshots/")
 
+    def test_prepackage_bundles_third_party_python_dependencies(self) -> None:
+        # LLR-PKG-12: prepackage vendors runtime Python dependencies so
+        # the bundled sidecar can start in a workspace that has Python
+        # but no pre-installed TraceR packages.
+        expected = ("defusedxml", "jinja2", "lxml")
+        missing = [name for name in expected if not (self._dist_py / name).exists()]
+        self.assertEqual(missing, [], f"missing bundled dependency dirs: {missing}")
+
 
 class TestVscodeignore(unittest.TestCase):
     """Tests that do NOT require a prepackage run."""

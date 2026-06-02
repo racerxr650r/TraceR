@@ -1,7 +1,7 @@
 # Vulnerability Report: TraceR (tracer)
 
-**Version:** 0.3
-**Date:** 2026-05-16
+**Version:** 0.4
+**Date:** 2026-06-02
 **Author(s):** AI-assisted (via PR prompt)
 
 > **How to use this template.** This is a living document — update it
@@ -30,20 +30,20 @@ For the broader security assessment, see the companion
 | Severity | Open | Mitigated | Accepted | Dismissed | Fixed |
 |----------|------|-----------|----------|-----------|-------|
 | Critical | 0 | 0 | 0 | 0 | 0 |
-| High | 0 | 0 | 0 | 3 | 0 |
-| Medium | 0 | 0 | 0 | 6 | 0 |
+| High | 0 | 0 | 0 | 4 | 0 |
+| Medium | 0 | 0 | 2 | 8 | 0 |
 | Low | 0 | 0 | 0 | 1 | 0 |
 
-**Trend:** No open Dependabot alerts. npm audit and pip-audit both
-report zero vulnerabilities as of 2026-05-16 — the 10 previously
-dismissed advisories no longer appear in the current scan after
-the Phase 14 dependency-tree refresh (undici override pinned to
-`^6.21.1`). They remain listed in §6 for audit history and are
-also mirrored into §7 as resolved. SAST findings are assessed in
-[SAR.md](SAR.md) §6 — all accepted risks with justification
-(trusted local input context).
+**Trend:** No open Dependabot alerts. Three new Dependabot alerts
+(#18 `tmp` high, #17 `qs` moderate, #16 `uuid` moderate) were
+triaged and dismissed on 2026-06-02. `npm audit fix` on 2026-06-02
+upgraded transitive devDeps (`tmp`, `brace-expansion`, `qs`, `uuid`,
+`ws`) — npm audit now reports 0 vulnerabilities. pip-audit not run this
+cycle (not installed in `.venv`); Phase 13 baseline was clean. SAST
+findings are assessed in [SAR.md](SAR.md) §6 — all accepted risks
+with justification (trusted local input context).
 
-**Last updated:** 2026-05-16
+**Last updated:** 2026-06-02
 
 ## 3. Scanning Configuration
 
@@ -58,7 +58,7 @@ also mirrored into §7 as resolved. SAST findings are assessed in
 
 ## 4. Open Vulnerabilities
 
-No open vulnerabilities as of 2026-05-16.
+No open vulnerabilities as of 2026-06-02.
 
 ### 4.1 Critical
 
@@ -96,13 +96,15 @@ analysis findings with "Accepted risk" disposition).
 
 ## 6. Dismissed Vulnerabilities
 
-All 10 Dependabot alerts dismissed on 2026-05-10. All are in
-dev-only or build-only npm transitive dependencies not shipped in
-the packaged `.vsix`. As of 2026-05-16 these CVEs no longer appear
-in npm audit — see §7 for the resolved entries.
+13 total Dependabot alerts dismissed: 10 on 2026-05-10, plus 3 new
+alerts (#18 `tmp`, #17 `qs`, #16 `uuid`) dismissed on 2026-06-02.
+All are transitive devDependencies not shipped in the packaged `.vsix`.
 
 | CVE / ID | Component | Severity | Reason for Dismissal |
 |----------|-----------|----------|---------------------|
+| GHSA-ph9p-34f9-6g65 (#18) | tmp (npm) | High | Transitive devDep via `vscode-extension-tester`. Path Traversal only reachable in test tooling. Not shipped in .vsix. (`not_used`) — dismissed 2026-06-02 |
+| GHSA-q8mj-m7cp-5q26 (#17) | qs (npm) | Moderate | Transitive devDep. `qs.stringify` DoS not reachable in production code. Not shipped in .vsix. (`not_used`) — dismissed 2026-06-02 |
+| GHSA-w5hq-g745-h8pq (#16) | uuid (npm) | Moderate | Transitive devDep via `@azure/msal-node` → `vscode-extension-tester`. Buffer bounds issue only in test tooling. Not shipped in .vsix. (`not_used`) — dismissed 2026-06-02 |
 | CVE-2026-6322 | fast-uri (npm) | High | Transitive devDep via ajv/@rjsf. Not shipped in .vsix. No URI parsing of untrusted input at runtime. (`not_used`) |
 | CVE-2026-6321 | fast-uri (npm) | High | Transitive devDep via ajv/@rjsf. Not shipped in .vsix. No URI parsing of untrusted input at runtime. (`not_used`) |
 | GHSA (no CVE) | serialize-javascript (npm) | High | Transitive devDep via mocha (test framework). Not shipped in .vsix. (`not_used`) |
@@ -118,6 +120,11 @@ in npm audit — see §7 for the resolved entries.
 
 | CVE / ID | Component | Severity | Resolution | Date Fixed |
 |----------|-----------|----------|-----------|------------|
+| GHSA-ph9p-34f9-6g65 | tmp (npm) | High | Resolved via `npm audit fix` upgrading transitive devDeps; no longer present in npm audit. | 2026-06-02 |
+| GHSA-jxxr-4gwj-5jf2 | brace-expansion (npm) | Moderate | Resolved via `npm audit fix`; no longer present in npm audit. | 2026-06-02 |
+| GHSA-q8mj-m7cp-5q26 | qs (npm) | Moderate | Resolved via `npm audit fix`; no longer present in npm audit. | 2026-06-02 |
+| GHSA-w5hq-g745-h8pq | uuid (npm) | Moderate | Resolved via `npm audit fix`; no longer present in npm audit. | 2026-06-02 |
+| GHSA-58qx-3vcg-4xpx | ws (npm) | Moderate | Resolved via `npm audit fix`; no longer present in npm audit. | 2026-06-02 |
 | CVE-2026-6322 | fast-uri (npm) | High | Resolved via transitive upgrade through ajv/@rjsf; no longer present in npm audit. | 2026-05-16 |
 | CVE-2026-6321 | fast-uri (npm) | High | Resolved via transitive upgrade through ajv/@rjsf; no longer present in npm audit. | 2026-05-16 |
 | GHSA serialize-javascript | serialize-javascript (npm) | High | Resolved via `serialize-javascript: 7.0.5` override in extension `package.json`. | 2026-05-16 |

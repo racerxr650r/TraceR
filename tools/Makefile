@@ -29,6 +29,7 @@
 #   ext-typecheck   Run 'tsc --noEmit' on the VS Code extension.
 #   ext-build       Bundle the VS Code extension via esbuild.
 #   ext-package     Produce a .vsix via 'vsce package'.
+#   install         Build, package, and install the extension into VS Code.
 #   ext-test-unit   Run the VS Code extension's mocha unit tests.
 #   ext-test-ui     Run the ExTester Selenium UI tests (needs Chrome).
 #   ext-screenshots Capture documentation screenshots via ExTester.
@@ -72,7 +73,7 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
   OS_FAMILY := macos
 else ifeq ($(UNAME_S),Linux)
-  ID_LIKE := $(shell . /etc/os-release 2>/dev/null; echo "$$ID $$ID_LIKE")
+  ID_LIKE := $(shell . /etc/os-release 2>/dev/null; echo "$${ID:-} $${ID_LIKE:-}")
   ifneq (,$(findstring debian,$(ID_LIKE))$(findstring ubuntu,$(ID_LIKE))$(findstring mx,$(ID_LIKE)))
     OS_FAMILY := debian
   else ifneq (,$(findstring fedora,$(ID_LIKE))$(findstring rhel,$(ID_LIKE))$(findstring centos,$(ID_LIKE)))
@@ -89,7 +90,7 @@ endif
 .PHONY: help detect prereqs prereqs-ci verify bootstrap \
         prereqs-debian prereqs-fedora prereqs-arch prereqs-macos \
         project-init \
-        ext-build ext-typecheck ext-package ext \
+        ext-build ext-typecheck ext-package install ext \
         ext-test-unit ext-test-ui \
         lint validate-xml render test test-py ci \
         coverage coverage-report coverage_report ext-coverage \
@@ -184,7 +185,7 @@ ifneq ($(CI_SLIM),1)
 	        | gpg --dearmor | $(SUDO) tee /usr/share/keyrings/packages.microsoft.gpg >/dev/null ; \
 	    echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" \
 	        | $(SUDO) tee /etc/apt/sources.list.d/vscode.list >/dev/null ; \
-	    $(SUDO) apt update && $(SUDO) apt install -y code ; 
+	    $(SUDO) apt update && $(SUDO) apt install -y code ; \
 	fi
 	$(SUDO) npm install -g @vscode/vsce
 endif
@@ -632,11 +633,20 @@ ext: ext-build
 ext-package: ext-build
 	@echo ">>> Packaging VS Code extension (vsce package)..."
 	$(eval VERSION := $(shell cat "$(REPO_ROOT)/VERSION" | sed 's/^v//'))
+	cd "$(EXT_DIR)" && node scripts/prepackage.js
 	cd "$(EXT_DIR)" && npx vsce package -o "vscode-project-xml-$(VERSION).vsix"
 	@echo ""
 	@echo "To install, run:"
 	@echo "  code --install-extension $(EXT_DIR)/vscode-project-xml-$(VERSION).vsix --force"
 	@echo "Then reload the VS Code window (Ctrl+Shift+P → Developer: Reload Window)."
+
+install: ext-package
+	@echo ">>> Installing VS Code extension..."
+	$(eval VERSION := $(shell cat "$(REPO_ROOT)/VERSION" | sed 's/^v//'))
+	code --install-extension "$(EXT_DIR)/vscode-project-xml-$(VERSION).vsix" --force
+	@echo ""
+	@echo "Extension installed. Reload the VS Code window to activate it."
+	@echo "  Ctrl+Shift+P → Developer: Reload Window"
 
 # ---------------------------------------------------------------- #
 # Static analysis targets                                          #

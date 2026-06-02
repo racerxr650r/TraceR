@@ -1,6 +1,6 @@
 ---
 name: project-xml
-description: "Use when editing, regenerating, or interpreting any of the project's spec documents (PVD, SDD, HLRs, LLRs, Test Plan, Traceability) or their generator inputs. doc/Project.xml is the SINGLE SOURCE OF TRUTH for the project's design, requirements, and verification — and the canonical store from which traceability (SDD→HLR→LLR→Test) is measured. doc/PVD.md is the hand-authored Product Vision Document that sits above the generated stack; the AI is expected to draft and fill in PVD content under the developer's direction, asking targeted questions when sections are thin or missing. USE FOR: any change to doc/PVD.md, doc/SDD.md, doc/HLRs.md, doc/LLRs.md, doc/STP.md, doc/Traceability.md; drafting or revising the Product Vision Document; adding/removing/renumbering HLRs or LLRs; adding new tests under test/ that need traceability annotations; updating Project.xml schema; authoring new Jinja2 templates under tools/templates/; running tools/render_doc.py. DO NOT USE FOR: edits to source code under src/ that do not change a documented behaviour, design element, or requirement; routine build/test/coverage work; non-doc tooling under tools/ that is unrelated to render_doc.py."
+description: "Use when editing, regenerating, interpreting, or verifying any of the project's spec documents (PVD, SDD, HLRs, LLRs, Test Plan, Traceability) or their generator inputs. doc/Project.xml is the SINGLE SOURCE OF TRUTH for the project's design, requirements, and verification — and the canonical store from which traceability (SDD→HLR→LLR→Test) is measured. doc/PVD.md is the hand-authored Product Vision Document that sits above the generated stack; the AI is expected to draft and fill in PVD content under the developer's direction, asking targeted questions when sections are thin or missing. USE FOR: any change to doc/PVD.md, doc/Project.xml, doc/SDD.md, doc/HLRs.md, doc/LLRs.md, doc/STP.md, doc/Traceability.md; drafting or revising the Product Vision Document; adding/removing/renumbering HLRs or LLRs; adding new tests under test/ that need traceability annotations; updating Project.xml schema; authoring new Jinja2 templates under tools/templates/; running tools/render_doc.py; verifying those spec edits with lint/render/tests. DO NOT USE FOR: edits to source code under src/ that do not change a documented behaviour, design element, or requirement; routine build/test/coverage work unrelated to a spec/doc change; non-doc tooling under tools/ that is unrelated to render_doc.py."
 ---
 
 # Project.xml — Source of Truth for Design, Requirements, and Traceability
@@ -228,6 +228,37 @@ Validate the XML before regenerating:
 
 ```bash
 python3 -c "import xml.etree.ElementTree as ET; ET.parse('doc/Project.xml')"
+```
+
+## Verification Environment (Required)
+
+When verifying spec/document edits made under this skill, always use the
+repository's existing virtual environment first and avoid installing
+tooling unless strictly necessary.
+
+1. **Prefer the existing repo venv** at `.venv/bin/python` for lint,
+    render, and Python tests.
+2. **Do not install into system Python** (PEP 668 / externally-managed
+    environments). Avoid `pip install --user` or global package installs.
+3. **Do not create or recreate `.venv` if it already exists.**
+4. **Only install missing packages when verification is blocked and needed
+    for the current task**, and only inside the existing `.venv`.
+5. **Before any install attempt, check what is already present**:
+
+```bash
+.venv/bin/python -m pip show defusedxml jinja2 lxml
+```
+
+Recommended verification commands for this project:
+
+```bash
+.venv/bin/python tools/lint_project.py
+
+.venv/bin/python tools/render_doc.py tools/templates/SDD.md.j2          SDD          --out doc/SDD.md
+.venv/bin/python tools/render_doc.py tools/templates/HLRs.md.j2         HLRs         --out doc/HLRs.md
+.venv/bin/python tools/render_doc.py tools/templates/LLRs.md.j2         LLRs         --out doc/LLRs.md
+.venv/bin/python tools/render_doc.py tools/templates/STP.md.j2          STP          --out doc/STP.md
+.venv/bin/python tools/render_doc.py tools/templates/Traceability.md.j2 Traceability --out doc/Traceability.md
 ```
 
 ## Build, Test, and Package via Makefile

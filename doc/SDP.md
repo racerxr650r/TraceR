@@ -26,6 +26,7 @@
 | [12](#phase-12--update-ui-tests-and-ci) | Update UI tests and CI: fix double-run on PR, stabilise ExTester UI tests with polling helpers, add provider-level integration tests with FakeSidecarClient, JUnit test-results reporting in CI. | ✅ Done |
 | [13](#phase-13--static-analysis-and-vulnerabilities) | Address lint warnings and vulnerabilities; security audit report. | ✅ Done — Bandit, pip-audit, ESLint + eslint-plugin-security, npm audit, and Semgrep integrated into `tools/Makefile` (`analyze` umbrella target); `tools/analyze_report.py` generates a consolidated Markdown report from JSON outputs with `--exit-code` flag for CI gating (errors block, warnings pass); CI workflow (`ci.yml`) runs all five analyzers on every PR with a sticky comment and GitHub Step Summary; PR prompt (`PR.prompt.md`) updated to run static analysis, update SAR.md §5/§6/§7, triage Dependabot alerts via `gh api`, and update VR.md §2–§7. |
 | [14](#phase-14--update-vs-code-extension-forms-to-work-with-sdd-and-stp) | Update VS Code extension forms to work with SDD and STP. | ✅ Done — `buildStpDescriptor` renders STP as a collapsible tree node with one leaf per `<fixture>` under `<stp>/<integration_environment>`; new `addStpFixture` context menu entry on the STP group node; SDD module edit form pre-populates all child fields (`purpose`, `responsibility`, `data_structures`, `algorithm`) — not just `path`/`title`; `resolveFormParams` adds a `fixture` case so coverage-hint clicks navigate to STP fixture edit forms; `ParsedSddModule` / `ParsedStpFixture` typings widened to expose child fields over the sidecar; 7 new unit tests added (treeLogic + formPanel) pinning LLR-FRM-14 and LLR-PSP-10; undici override pinned to `^6.21.1` to keep transitive dep tree clean. |
+| [15](#phase-15--init-project-hardening-skill-installation-and-extension-packaging) | `init_project` hardening, skill installation, and extension packaging improvements. | ✅ Done — `init_project` now preserves an existing `PVD.md` (asymmetric overwrite guard — only `Project.xml` is replaced on re-init; LLR-INI-05); `init_project` installs `.github/skills/tracer/SKILL.md` from `tools/templates/tracer.skill.md` and returns `skill_path` in its result (LLR-INI-05); `prepackage.js` vendors `defusedxml`, `jinja2`, and `lxml` into `dist/python/` so the bundled extension is fully self-contained without a system Python environment (LLR-PKG-12); sidecar `ensureStarted()` guards against writing to a destroyed `stdin`; `pickPython()` searches all PATH entries for `python3`/`python` before falling back to the bare name; sidecar stderr is buffered and included in exit error messages; new LLRs LLR-INI-05 and LLR-PKG-12 added to `doc/Project.xml`; 5 new regression tests across `test_render_doc.py`, `test_project_io.py`, `test_prepackage.py`; all generated spec docs regenerated; `User_Manual.md` updated with Copilot Chat guidance; project-xml agent SKILL.md updated with verification-environment policy. |
 
 
 **Owner:** TBD
@@ -1406,6 +1407,50 @@ Create the following agents and prompts
    form pre-populated; right-clicking the STP group offers
    `Add STP Fixture`; existing tests stay green; the seven new
    unit tests pass.
+
+### Phase 15 — init-project Hardening, Skill Installation, and Extension Packaging
+1. Make `init_project` asymmetric: stop on an existing
+   `Project.xml` (as before), but **skip** overwriting an existing
+   `PVD.md` — preserving any hand-authored content the user
+   already has (LLR-INI-05).
+2. Install `.github/skills/tracer/SKILL.md` from
+   `tools/templates/tracer.skill.md` during `init_project`, and
+   return `skill_path` in the JSON-RPC result so the VS Code
+   command can surface the file to the user (LLR-INI-05).
+3. Extend `prepackage.js` with an `installPythonDeps()` function
+   that pip-installs `defusedxml`, `jinja2`, and `lxml` into
+   `dist/python/` using the venv Python (or PATH fallback), so
+   the shipped `.vsix` contains a fully self-contained Python
+   dependency tree (LLR-PKG-12).
+4. Guard sidecar `ensureStarted()` against writing to a destroyed
+   `stdin` (raised when the child process exits before the first
+   write).
+5. Improve `pickPython()` to search every `PATH` entry for
+   `python3` and `python` executables before falling back to
+   passing the bare name to the shell.
+6. Buffer sidecar stderr and include the buffered output in the
+   error message emitted when the child process exits
+   unexpectedly.
+7. Add new LLRs LLR-INI-05 (asymmetric overwrite + skill install)
+   and LLR-PKG-12 (vendor Python deps in prepackage) to
+   `doc/Project.xml`; update HLR-009 and HLR-060 to reference
+   the new behaviour.
+8. Add 5 regression tests: `test_preserves_existing_pvd_when_xml_is_missing`,
+   `test_installs_tracer_skill_file` (render_doc); update
+   `test_init_project_method` to assert `skill_path` and
+   `.github/skills/tracer/SKILL.md` on disk (project_io);
+   `test_prepackage_bundles_third_party_python_dependencies`
+   (prepackage).
+9. Regenerate all five generated spec docs (SDD, HLRs, LLRs, STP,
+   Traceability); update `User_Manual.md` with a new "Using
+   Copilot Chat" section; update the project-xml agent SKILL.md
+   with a "Verification Environment" policy section.
+10. Acceptance: `init_project` on a workspace that already has
+    `PVD.md` leaves it intact; `.github/skills/tracer/SKILL.md`
+    is created by `init_project`; the packaged `.vsix` contains
+    `dist/python/defusedxml`, `dist/python/jinja2`, and
+    `dist/python/lxml`; all 56 Python tests pass; lint reports
+    0 errors.
 
 ## 9. Risks & Open Questions
 

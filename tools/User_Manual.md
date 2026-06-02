@@ -167,6 +167,124 @@ The five generated `*.md` files are rebuilt from `Project.xml`
 every time you render. If you edit them by hand your changes will
 be overwritten — change `Project.xml` instead.
 
+### Using Copilot Chat to manage your project
+
+When **GitHub Copilot Chat** is active in VS Code, you can describe
+what you want in plain English and Copilot will handle the
+`Project.xml` edits, traceability links, and document regeneration
+for you.
+
+The key is the TraceR skill file installed at
+`.github/skills/tracer/SKILL.md` during project initialization. That
+file teaches Copilot the TraceR rules — what is generated vs.
+hand-authored, how IDs work, how traces connect requirements to tests,
+and which documents to regenerate after each edit. If your project
+was initialized before this file existed, create it by running
+**Project Spec: Initialize Project.xml** again (it will not overwrite
+your existing `Project.xml` or `PVD.md`).
+
+Open the Chat panel (`Ctrl/Cmd+Alt+I`) and try prompts like the ones
+below.
+
+#### Drafting and scaffolding
+
+```
+Read doc/PVD.md and suggest HLRs for any sections that have no
+requirements yet.
+```
+
+```
+Generate a starter SDD section for the <module name> module.
+Trace it to the most relevant HLRs.
+```
+
+```
+Draft a Product Vision Document for a <short description>.
+The target users are <who> and the key goal is <what>.
+```
+
+#### Adding requirements
+
+```
+Add an HLR for <feature>. Trace it to SDD section <N.N>.
+```
+
+```
+Add an HLR for <feature> and suggest two or three LLRs that
+implement it. Include traces for all of them.
+```
+
+```
+Add three LLRs under HLR-<NNN> covering <topic 1>, <topic 2>,
+and <topic 3>.
+```
+
+```
+HLR-<NNN> is too vague to test. Suggest improved wording that is
+specific and traceable.
+```
+
+#### Adding tests and closing coverage gaps
+
+```
+Add a test entry for <function_name>() in test/<file>.c.
+It should trace to LLR-<XXX-NN>.
+```
+
+```
+Show me all LLRs that have no test. For each one, suggest a test
+name and a one-line purpose.
+```
+
+```
+HLR-<NNN> is showing as untested in Traceability.md. Walk me
+through what is missing and how to fix it.
+```
+
+```
+Check my test coverage and list every requirement that has a gap.
+```
+
+#### Generating and updating documents
+
+```
+Regenerate all five spec documents from the current Project.xml.
+```
+
+```
+Update the Traceability matrix after I added two new tests.
+```
+
+```
+Preview the HLRs document without writing it to disk.
+```
+
+#### Review and consistency
+
+```
+Review Project.xml for broken traces or ID format problems.
+```
+
+```
+Are there any LLRs that trace to an HLR outside their expected
+section? Flag anything that looks misplaced.
+```
+
+```
+The linter is reporting a warning on HLR-<NNN>. What does it
+mean and how do I fix it?
+```
+
+```
+Trace HLR-<NNN> all the way to its tests and show me the full
+chain.
+```
+
+> **Tip:** The more specific you are, the better the result. Mentioning
+> the exact HLR or LLR ID, the function name, or the test file path
+> helps Copilot locate the right node in `Project.xml` and produce a
+> clean, ready-to-paste edit rather than a generic suggestion.
+
 ## VS Code Extension
 
 When the extension is active, you get the following surfaces. They
@@ -536,7 +654,8 @@ python3 tools/render_doc.py --all
 # Regenerate just one document by name.
 python3 tools/render_doc.py tools/templates/HLRs.md.j2 HLRs --out doc/HLRs.md
 
-# Bootstrap a brand-new project (creates Project.xml, PVD, SAR, VR, SDP).
+# Bootstrap a brand-new project (creates Project.xml, PVD, and the
+# Copilot TraceR skill file at .github/skills/tracer/SKILL.md).
 python3 tools/render_doc.py --init \
     --name "MyProject" --short-name MP --author "Me" \
     --xml doc/Project.xml
@@ -583,6 +702,7 @@ make -C tools lint          # run the linter
 make -C tools validate-xml  # validate against the schema only
 make -C tools test          # run the test suite
 make -C tools ci            # render + lint + validate + test
+make -C tools install       # build, package, and install the extension
 ```
 
 This is what you'd normally wire into a continuous-integration

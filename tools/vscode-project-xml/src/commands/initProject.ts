@@ -66,10 +66,18 @@ export async function initProject(
         return undefined;
     }
 
+    const xmlRel = getConfig().get<string>('xmlPath') ?? 'doc/Project.xml';
+    const xmlAbs = path.isAbsolute(xmlRel)
+        ? xmlRel
+        : path.join(folder.uri.fsPath, xmlRel);
+    const pvdAbs = path.join(path.dirname(xmlAbs), 'PVD.md');
+
     const params = {
         name: name.trim(),
         short_name: shortName.trim(),
         author: author.trim() || 'TBD',
+        xml_path: xmlAbs,
+        pvd_path: pvdAbs,
     };
 
     let result;

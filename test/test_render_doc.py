@@ -90,6 +90,43 @@ class InitProjectTests(unittest.TestCase):
         self.assertEqual(buf_err.getvalue(), "")
         self.assertEqual(buf_out.getvalue(), "")
 
+    def test_preserves_existing_pvd_when_xml_is_missing(self) -> None:
+        # LLR-INI-05: existing hand-authored PVD content must survive
+        # bootstrap when only Project.xml is missing.
+        existing = "# Existing PVD\n\nDo not overwrite me.\n"
+        self.pvd_path.write_text(existing)
+
+        result = init_project(
+            name="KeepPvd",
+            short_name="kp",
+            author="Alice",
+            xml_path=self.xml_path,
+            pvd_path=self.pvd_path,
+        )
+
+        self.assertEqual(result["existing"], [])
+        self.assertTrue(self.xml_path.exists())
+        self.assertEqual(self.pvd_path.read_text(), existing)
+
+    def test_installs_tracer_skill_file(self) -> None:
+        # LLR-INI-05: bootstrap installs .github/skills/tracer/SKILL.md
+        # for Copilot guidance in the new workspace.
+        xml_path = self.tmp / "doc" / "Project.xml"
+        pvd_path = self.tmp / "doc" / "PVD.md"
+
+        result = init_project(
+            name="SkillProj",
+            short_name="sp",
+            author="Alice",
+            xml_path=xml_path,
+            pvd_path=pvd_path,
+        )
+
+        skill_path = self.tmp / ".github" / "skills" / "tracer" / "SKILL.md"
+        self.assertEqual(result["skill_path"], str(skill_path))
+        self.assertTrue(skill_path.exists())
+        self.assertIn("name: tracer", skill_path.read_text())
+
 
 class LoadProjectTests(unittest.TestCase):
     def setUp(self) -> None:

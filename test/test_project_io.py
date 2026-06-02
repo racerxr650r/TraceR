@@ -119,6 +119,7 @@ class HandleRequestTests(unittest.TestCase):
     def test_init_project_method(self) -> None:
         xml_path = self.tmp / "new" / "Project.xml"
         pvd_path = self.tmp / "new" / "PVD.md"
+        skill_path = self.tmp / ".github" / "skills" / "tracer" / "SKILL.md"
         resp = handle_request({
             "id": 5, "method": "init_project",
             "params": {
@@ -130,8 +131,10 @@ class HandleRequestTests(unittest.TestCase):
         })
         self.assertIn("result", resp)
         self.assertEqual(resp["result"]["xml_path"], str(xml_path))
+        self.assertEqual(resp["result"]["skill_path"], str(skill_path))
         self.assertTrue(xml_path.exists())
         self.assertTrue(pvd_path.exists())
+        self.assertTrue(skill_path.exists())
 
     def test_init_project_refuses_overwrite(self) -> None:
         xml_path = _bootstrap_project(self.tmp)
